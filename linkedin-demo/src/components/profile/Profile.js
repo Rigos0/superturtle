@@ -9,6 +9,7 @@ import {
   Tabs,
   Tab,
 } from "@material-ui/core";
+import ArrowBackIcon from "@material-ui/icons/ArrowBack";
 import LocationOnIcon from "@material-ui/icons/LocationOn";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
@@ -82,6 +83,17 @@ const Profile = ({ onBack, userId = null }) => {
   return (
     <div className={classes.profile}>
       <Paper elevation={1} className={classes.card}>
+        <div className={classes.backButtonRow}>
+          <Button
+            variant="text"
+            onClick={onBack}
+            className={classes.backButton}
+            startIcon={<ArrowBackIcon fontSize="small" />}
+          >
+            Back to feed
+          </Button>
+        </div>
+
         <div className={classes.coverArea}>
           <Avatar src={userAvatar} className={classes.avatar} />
         </div>
@@ -97,15 +109,15 @@ const Profile = ({ onBack, userId = null }) => {
           {location && (
             <Typography variant="body2" color="textSecondary" className={classes.metaItem}>
               <LocationOnIcon style={{ fontSize: 16, marginRight: 4 }} />
-              {location}
+              <span>{location}</span>
             </Typography>
           )}
-          <Typography variant="body2" style={{ color: "#2e7d32", fontSize: "0.8rem" }}>
+          <Typography variant="body2" className={classes.networkMeta}>
             {connections} connections · {followers} followers
           </Typography>
         </div>
 
-        <div className={classes.section} style={{ marginTop: 12, display: "flex", gap: 8 }}>
+        <div className={classes.actionRow}>
           <Button
             variant="contained"
             size="small"
@@ -144,14 +156,14 @@ const Profile = ({ onBack, userId = null }) => {
           indicatorColor="primary"
           textColor="primary"
           variant="fullWidth"
-          style={{ width: "100%" }}
+          className={classes.tabs}
         >
-          <Tab label="Posts" />
-          <Tab label="About" />
+          <Tab label="Posts" className={classes.tab} />
+          <Tab label="About" className={classes.tab} />
         </Tabs>
 
         {activeTab === 0 && (
-          <div className={classes.section} style={{ marginTop: 8 }}>
+          <div className={`${classes.section} ${classes.postsSection}`}>
             {posts === undefined ? (
               <Typography variant="body2" color="textSecondary">
                 Loading posts...
@@ -212,17 +224,6 @@ const Profile = ({ onBack, userId = null }) => {
             ))}
           </div>
         )}
-
-        <div className={classes.section} style={{ marginTop: 20 }}>
-          <Button
-            variant="text"
-            size="small"
-            onClick={onBack}
-            style={{ textTransform: "none", color: "#2e7d32", fontWeight: 600 }}
-          >
-            ← Back to feed
-          </Button>
-        </div>
       </Paper>
     </div>
   );
