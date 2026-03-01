@@ -26,11 +26,16 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile }) => {
   const photoURL = user?.photoURL;
 
   const items = [
-    { Icon: <HomeIcon />, title: "Home", arrow: false },
-    { Icon: <GroupIcon />, title: "My Network", arrow: false },
-    { Icon: <WorkIcon />, title: "Jobs", arrow: false },
-    { Icon: <TelegramIcon />, title: "Messaging", arrow: false },
-    { Icon: <NotificationsIcon />, title: "Notifications", arrow: false },
+    { Icon: <HomeIcon />, title: "Home", arrow: false, onClick: () => setActiveTab("home") },
+    { Icon: <GroupIcon />, title: "My Network", arrow: false, onClick: () => setActiveTab("network") },
+    { Icon: <WorkIcon />, title: "Jobs", arrow: false, onClick: () => setActiveTab("jobs") },
+    { Icon: <TelegramIcon />, title: "Messaging", arrow: false, onClick: () => setActiveTab("messaging") },
+    {
+      Icon: <NotificationsIcon />,
+      title: "Notifications",
+      arrow: false,
+      onClick: () => setActiveTab("notifications"),
+    },
     { Icon: <Avatar src={photoURL} />, title: "Me", arrow: true },
     { Icon: <AppsIcon />, title: "Apps", arrow: true },
   ];
@@ -39,6 +44,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile }) => {
     { key: "home", icon: HomeIcon },
     { key: "network", icon: GroupIcon },
     { key: "post", icon: AddBoxIcon },
+    { key: "messaging", icon: TelegramIcon },
     { key: "notifications", icon: NotificationsIcon },
     { key: "jobs", icon: WorkIcon },
   ];

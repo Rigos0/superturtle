@@ -6,6 +6,7 @@ import { ThemeProvider, createMuiTheme } from "@material-ui/core";
 import Header from "./components/header/Header";
 import Form from "./components/form/Form";
 import Login from "./components/login/Login";
+import Messaging from "./components/messaging/Messaging";
 import Posts from "./components/posts/Posts";
 import Profile from "./components/profile/Profile";
 import Sidebar from "./components/sidebar/Sidebar";
@@ -44,6 +45,7 @@ const App = () => {
     home: "Home",
     network: "My Network",
     post: "Post",
+    messaging: "Messaging",
     notifications: "Notifications",
     jobs: "Jobs",
   }[activeTab] || "This section";
@@ -100,6 +102,8 @@ const App = () => {
           <Grid item className={classes.body__feed} xs={12} sm={8} md={5}>
             {view === "profile" ? (
               <Profile onBack={() => setView("feed")} />
+            ) : activeTab === "messaging" ? (
+              <Messaging />
             ) : activeTab === "home" ? (
               <>
                 {/* Feed */}
