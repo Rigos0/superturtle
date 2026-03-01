@@ -45,7 +45,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile }) => {
         <div className={classes.header__logo}>
           <span
             style={{
-              color: "#0a66c2",
+              color: "#2e7d32",
               fontSize: 24,
               lineHeight: 1,
               fontWeight: 700,
@@ -54,7 +54,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile }) => {
               flexShrink: 0,
             }}
           >
-            Bíbr In
+            Turtle In
           </span>
           <div className={classes.search}>
             <SearchIcon />

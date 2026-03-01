@@ -1,5 +1,5 @@
 ## Current Task
-Update header brand in `linkedin-demo/src/components/header/Header.js`: change text from "Bíbr In" to "Turtle In", change color from "#0a66c2" to "#2e7d32".
+Update profile page in `linkedin-demo/src/components/profile/Profile.js`: change all "#0a66c2" to "#2e7d32", change cover gradient from blues to greens (e.g. "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)").
 
 ## End Goal with Specs
 - App name: "Turtle In" everywhere (header, title, manifest, tests, banner)
@@ -12,8 +12,8 @@ Update header brand in `linkedin-demo/src/components/header/Header.js`: change t
 
 ## Backlog
 - [x] Update Colors.js at `linkedin-demo/src/assets/Colors.js`: change LinkedInBlue from "#0073b1" to "#2e7d32" (Material green 800), LinkedInLightBlue from "#70b5f9" to "#66bb6a" (Material green 400), LinkedInBgColor stays "#f3f2ef"
-- [ ] Update header brand in `linkedin-demo/src/components/header/Header.js`: change text from "Bíbr In" to "Turtle In", change color from "#0a66c2" to "#2e7d32" <- current
-- [ ] Update profile page in `linkedin-demo/src/components/profile/Profile.js`: change all "#0a66c2" to "#2e7d32", change cover gradient from blues to greens (e.g. "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)")
+- [x] Update header brand in `linkedin-demo/src/components/header/Header.js`: change text from "Bíbr In" to "Turtle In", change color from "#0a66c2" to "#2e7d32"
+- [ ] Update profile page in `linkedin-demo/src/components/profile/Profile.js`: change all "#0a66c2" to "#2e7d32", change cover gradient from blues to greens (e.g. "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)") <- current
 - [ ] Update profile Style.js at `linkedin-demo/src/components/profile/Style.js`: change any blue references to green
 - [ ] Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In"
 - [ ] Update `linkedin-demo/public/manifest.json`: change short_name and name to "Turtle In"
