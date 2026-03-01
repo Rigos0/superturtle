@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   Avatar,
   Button,
@@ -48,9 +48,10 @@ const resolveProfilePhoto = (photoURL) => {
   return photoURL;
 };
 
-const Profile = ({ onBack, userId = null }) => {
+const Profile = ({ onBack, onNavigateMessaging = () => {}, userId = null }) => {
   const classes = Style();
   const authUser = useConvexUser();
+  const getOrCreateConversation = useMutation(api.messaging.getOrCreateConversation);
   const profileUser = useQuery(api.users.getUser, userId ? { id: userId } : "skip");
   const resolvedUser = profileUser ?? (!userId ? authUser : null);
   const resolvedUserId = userId ?? authUser?._id ?? null;
@@ -61,6 +62,7 @@ const Profile = ({ onBack, userId = null }) => {
   const isUserLoading = userId ? profileUser === undefined : resolvedUser === null;
 
   const [activeTab, setActiveTab] = useState(0);
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
 
   const userAvatar = resolveProfilePhoto(
     resolvedUser?.photoURL ?? resolvedUser?.image ?? DEFAULT_PROFILE.photoURL,
@@ -82,6 +84,26 @@ const Profile = ({ onBack, userId = null }) => {
       ? resolvedUser.experience
       : ["No experience added yet."];
   const userPosts = posts ?? [];
+
+  const handleMessageClick = async () => {
+    if (!authUser?._id || !resolvedUserId || isStartingConversation) {
+      return;
+    }
+
+    setIsStartingConversation(true);
+
+    try {
+      if (authUser._id !== resolvedUserId) {
+        await getOrCreateConversation({
+          userId1: authUser._id,
+          userId2: resolvedUserId,
+        });
+      }
+      onNavigateMessaging();
+    } finally {
+      setIsStartingConversation(false);
+    }
+  };
 
   return (
     <div className={classes.profile}>
@@ -162,6 +184,8 @@ const Profile = ({ onBack, userId = null }) => {
               <Button
                 variant="outlined"
                 size="small"
+                onClick={handleMessageClick}
+                disabled={isStartingConversation || !authUser?._id || !resolvedUserId}
                 style={{
                   textTransform: "none",
                   borderRadius: 16,

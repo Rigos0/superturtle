@@ -74,6 +74,11 @@ const App = () => {
     setView("feed");
   };
 
+  const onNavigateMessaging = () => {
+    setActiveTab("messaging");
+    setView("feed");
+  };
+
   if (isLoading) {
     return null;
   }
@@ -128,6 +133,7 @@ const App = () => {
                 <Profile
                   userId={profileUserId}
                   onBack={() => setView("feed")}
+                  onNavigateMessaging={onNavigateMessaging}
                 />
               ) : activeTab === "messaging" ? (
                 <Messaging />

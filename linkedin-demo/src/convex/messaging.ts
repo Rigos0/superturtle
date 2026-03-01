@@ -43,6 +43,39 @@ export const createConversation = mutation({
   },
 });
 
+export const getOrCreateConversation = mutation({
+  args: {
+    userId1: v.id("users"),
+    userId2: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    if (args.userId1 === args.userId2) {
+      throw new Error("A conversation must include two different users");
+    }
+
+    const normalizedArgs = normalizeParticipants([
+      String(args.userId1),
+      String(args.userId2),
+    ]);
+    const conversations = await ctx.db.query("conversations").collect();
+    const existingConversation = conversations.find((conversation) => {
+      const normalizedConversation = normalizeParticipants(
+        conversation.participants.map(String),
+      );
+      return sameParticipants(normalizedConversation, normalizedArgs);
+    });
+
+    if (existingConversation) {
+      return existingConversation._id;
+    }
+
+    return await ctx.db.insert("conversations", {
+      participants: [args.userId1, args.userId2],
+      createdAt: Date.now(),
+    });
+  },
+});
+
 export const sendMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
