@@ -1,5 +1,5 @@
 ## Current Task
-Add expandable comment section below the footer actions in `Post.js` with real comments and add-comment form.
+Add delete button for own posts in `Post.js` (three-dot menu), auth-gated to post author only.
 
 ## End Goal with Specs
 - Like button calls `toggleLike` mutation with current user ID, shows filled/unfilled state
@@ -14,8 +14,8 @@ Add expandable comment section below the footer actions in `Post.js` with real c
 ## Backlog
 - [x] Pass `postId` and `likesCount` props from `Posts.js` → `Post.js`. In `linkedin-demo/src/components/posts/Posts.js`, add `postId={post._id}` and `likesCount={post.likesCount}` and `commentsCount={post.commentsCount}` to each `<Post>` component. The `listPosts` query already returns real `likesCount` from the likes table.
 - [x] Wire like button in `Post.js`. Remove the random `likesCount`/`commentsCount` useState + useEffect. Accept `postId`, `likesCount`, `commentsCount` as props. Import `useMutation, useQuery` from `convex/react` and `api` from convex. Import `useConvexUser` from `../../hooks/useConvexUser`. Get current user via `useConvexUser()`. Add `liked` state using `useQuery(api.likes.getLikeStatus, { userId: user?._id, postId })`. On Like button click: call `toggleLike({ userId: user._id, postId })`. Show `ThumbUpAltOutlinedIcon` when not liked, `ThumbUpAltIcon` (solid, import from `@material-ui/icons/ThumbUpAlt`) when liked. Display real `likesCount` prop.
-- [ ] Add expandable comment section below the footer actions in `Post.js`. Add a `showComments` boolean state (default false). Clicking "Comment" action toggles `showComments`. When open: query `useQuery(api.comments.listComments, { postId })`. Render each comment as: Avatar (author.photoURL) + author.displayName + comment body + ReactTimeago timestamp. Add a comment input form at bottom: text input + Send button. On submit: call `addComment({ postId, authorId: user._id, body: commentText })`. Display real `commentsCount` prop (not random). <- current
-- [ ] Add delete button for own posts. In `Post.js`, accept `authorId` prop (passed from Posts.js as `post.authorId`). Compare `authorId === user?._id`. If match, show a Delete option in the three-dot menu (replace the static `MoreHorizOutlinedIcon` with a clickable menu). On delete click: call `deletePost({ postId })`. Import `deletePost` mutation.
+- [x] Add expandable comment section below the footer actions in `Post.js`. Add a `showComments` boolean state (default false). Clicking "Comment" action toggles `showComments`. When open: query `useQuery(api.comments.listComments, { postId })`. Render each comment as: Avatar (author.photoURL) + author.displayName + comment body + ReactTimeago timestamp. Add a comment input form at bottom: text input + Send button. On submit: call `addComment({ postId, authorId: user._id, body: commentText })`. Display real `commentsCount` prop (not random).
+- [ ] Add delete button for own posts. In `Post.js`, accept `authorId` prop (passed from Posts.js as `post.authorId`). Compare `authorId === user?._id`. If match, show a Delete option in the three-dot menu (replace the static `MoreHorizOutlinedIcon` with a clickable menu). On delete click: call `deletePost({ postId })`. Import `deletePost` mutation. <- current
 - [ ] Update `Posts.js` to pass new props: `postId={post._id}`, `likesCount={post.likesCount}`, `commentsCount={post.commentsCount}`, `authorId={post.authorId}`.
 - [ ] Push functions to Convex: `cd linkedin-demo && npx convex dev --once`
 - [ ] Build: `cd linkedin-demo && npm run build`

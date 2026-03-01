@@ -37,11 +37,22 @@ const Post = forwardRef(
     const handleProfileClick = isFeaturedUser ? onNavigateProfile : undefined;
     const user = useConvexUser();
     const toggleLike = useMutation(api.likes.toggleLike);
+    const addComment = useMutation(api.comments.addComment);
+
+    const [showComments, setShowComments] = React.useState(false);
+    const [commentText, setCommentText] = React.useState("");
+
     const liked = useQuery(
       api.likes.getLikeStatus,
       user?._id ? { userId: user._id, postId } : "skip"
     );
+    const comments = useQuery(
+      api.comments.listComments,
+      showComments ? { postId } : "skip"
+    );
+
     const isLiked = liked ?? false;
+    const commentsList = comments ?? [];
 
     const capitalize = (_string = "") => {
       return _string.charAt(0).toUpperCase() + _string.slice(1);
@@ -62,6 +73,25 @@ const Post = forwardRef(
         await toggleLike({ userId: user._id, postId });
       } catch (error) {
         console.error("Failed to toggle like:", error);
+      }
+    };
+
+    const handleCommentSubmit = async (event) => {
+      event.preventDefault();
+      if (!user?._id) {
+        return;
+      }
+
+      const body = commentText.trim();
+      if (!body) {
+        return;
+      }
+
+      try {
+        await addComment({ postId, authorId: user._id, body });
+        setCommentText("");
+      } catch (error) {
+        console.error("Failed to add comment:", error);
       }
     };
 
@@ -129,9 +159,9 @@ const Post = forwardRef(
               )}
               <h4 style={isLiked ? { color: "#2e7d32" } : undefined}>Like</h4>
             </div>
-            <div className={classes.action__icons}>
-              <CommentOutlinedIcon />
-              <h4>Comment</h4>
+            <div className={classes.action__icons} onClick={() => setShowComments((prev) => !prev)}>
+              <CommentOutlinedIcon style={showComments ? { color: "#2e7d32" } : undefined} />
+              <h4 style={showComments ? { color: "#2e7d32" } : undefined}>Comment</h4>
             </div>
             <div className={classes.action__icons}>
               <ReplyOutlinedIcon style={{ transform: "scaleX(-1)" }} />
@@ -142,6 +172,44 @@ const Post = forwardRef(
               <h4>Send</h4>
             </div>
           </div>
+
+          {showComments && (
+            <div className={classes.comments__section}>
+              <div className={classes.comments__list}>
+                {commentsList.map((comment) => (
+                  <div key={comment._id} className={classes.comment__item}>
+                    <Avatar
+                      className={classes.comment__avatar}
+                      src={comment.author?.photoURL}
+                      alt={comment.author?.displayName ?? "Comment author"}
+                    />
+                    <div className={classes.comment__content}>
+                      <div className={classes.comment__meta}>
+                        <h5>{comment.author?.displayName ?? "Unknown user"}</h5>
+                        <span>
+                          <ReactTimeago date={new Date(comment.createdAt).toUTCString()} units="minute" />
+                        </span>
+                      </div>
+                      <p>{comment.body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <form className={classes.comment__form} onSubmit={handleCommentSubmit}>
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(event) => setCommentText(event.target.value)}
+                  placeholder="Add a comment"
+                  aria-label="Add a comment"
+                />
+                <button type="submit" disabled={!commentText.trim() || !user?._id}>
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </Paper>
     );
