@@ -1,5 +1,5 @@
 ## Current Task
-Create `linkedin-demo/src/convex/messaging.ts` with createConversation, sendMessage, listConversations, and listMessages.
+Create messaging UI component at `linkedin-demo/src/components/messaging/Messaging.js` (conversation list + message thread).
 
 ## End Goal with Specs
 - `conversations` table in Convex schema: participants (array of user IDs), createdAt
@@ -14,12 +14,12 @@ Create `linkedin-demo/src/convex/messaging.ts` with createConversation, sendMess
 
 ## Backlog
 - [x] Add `conversations` and `messages` tables to `linkedin-demo/src/convex/schema.ts`. Conversations: `participants` (v.array(v.id("users"))), `createdAt` (v.number()). Messages: `conversationId` (v.id("conversations")), `senderId` (v.id("users")), `body` (v.string()), `createdAt` (v.number()).
-- [ ] Create `linkedin-demo/src/convex/messaging.ts` with these functions: <- current
+- [x] Create `linkedin-demo/src/convex/messaging.ts` with these functions:
   - `createConversation` mutation: args { participantIds: v.array(v.id("users")) }. Check if conversation with same participants already exists (query all conversations, filter). If exists return existing ID. Otherwise insert new conversation.
   - `sendMessage` mutation: args { conversationId: v.id("conversations"), senderId: v.id("users"), body: v.string() }. Insert message.
   - `listConversations` query: args { userId: v.id("users") }. Query all conversations, filter where participants includes userId. For each, join the OTHER participant's user data (displayName, photoURL) and get the latest message. Sort by latest message createdAt desc.
   - `listMessages` query: args { conversationId: v.id("conversations") }. Query all messages for the conversation, join sender data (displayName, photoURL), sort by createdAt asc.
-- [ ] Create messaging UI component at `linkedin-demo/src/components/messaging/Messaging.js`. Two sub-views:
+- [ ] Create messaging UI component at `linkedin-demo/src/components/messaging/Messaging.js`. Two sub-views: <- current
   1. **ConversationList** — default view. Uses `useQuery(api.messaging.listConversations, { userId: user._id })`. Each item shows: Avatar of other participant, their displayName, last message preview (truncated to 50 chars), time ago. Clicking a conversation opens the thread.
   2. **MessageThread** — shows when a conversation is selected. Header with back arrow + other user's name. Scrollable message list (own messages right-aligned green, others left-aligned grey). Input bar at bottom with text input + Send button.
   Import `useConvexUser` from hooks. Import `useMutation, useQuery` from `convex/react`. Import `api` from convex.

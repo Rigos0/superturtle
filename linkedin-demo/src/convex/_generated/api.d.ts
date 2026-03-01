@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
 import type * as http from "../http.js";
 import type * as likes from "../likes.js";
+import type * as messaging from "../messaging.js";
 import type * as posts from "../posts.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   http: typeof http;
   likes: typeof likes;
+  messaging: typeof messaging;
   posts: typeof posts;
   seed: typeof seed;
   users: typeof users;
