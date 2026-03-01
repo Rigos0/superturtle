@@ -1,5 +1,5 @@
 ## Current Task
-Fix bottom nav styling in `linkedin-demo/src/components/header/Style.js` (z-index, background, spacing, active icon color, and top border line).
+Mobile-fix feed layout in `linkedin-demo/src/Style.js`: ensure `body__feed` has `padding: "0 8px"` at xs, and `app__body` has at least 60px bottom padding on xs to clear bottom nav.
 
 ## End Goal with Specs
 - All views render correctly on mobile (320px–600px width)
@@ -14,8 +14,8 @@ Fix bottom nav styling in `linkedin-demo/src/components/header/Style.js` (z-inde
 
 ## Backlog
 - [x] Audit bottom nav in `linkedin-demo/src/components/header/Header.js`: The `header__bottom__nav` class already shows at xs breakpoint (Style.js line ~186). Verify it contains icons for Home, Network, Post (create), Messaging, Notifications. Each icon should call the appropriate `setActiveTab` + `onNavigateHome` handler. Active icon should be colored green (#2e7d32).
-- [ ] Fix bottom nav in `linkedin-demo/src/components/header/Style.js`: Ensure `header__bottom__nav` has zIndex 100, backgroundColor white, and proper icon spacing. Active icon color should be #2e7d32. Add a top border-line (1px solid #e0e0e0). <- current
-- [ ] Mobile-fix feed layout in `linkedin-demo/src/Style.js`: Ensure `body__feed` has `padding: "0 8px"` at xs breakpoint instead of 0 (needs a little breathing room). Ensure `app__body` paddingBottom at xs is at least 60px to clear the bottom nav.
+- [x] Fix bottom nav in `linkedin-demo/src/components/header/Style.js`: Ensure `header__bottom__nav` has zIndex 100, backgroundColor white, and proper icon spacing. Active icon color should be #2e7d32. Add a top border-line (1px solid #e0e0e0).
+- [ ] Mobile-fix feed layout in `linkedin-demo/src/Style.js`: Ensure `body__feed` has `padding: "0 8px"` at xs breakpoint instead of 0 (needs a little breathing room). Ensure `app__body` paddingBottom at xs is at least 60px to clear the bottom nav. <- current
 - [ ] Mobile-fix profile in `linkedin-demo/src/components/profile/Style.js` + `Profile.js`: Ensure the profile header, tabs, and post list don't overflow. Profile cover image should be responsive. Back button should be visible and tappable.
 - [ ] Mobile-fix messaging in `linkedin-demo/src/components/messaging/Style.js`: At xs breakpoint, set `root` height to `calc(100vh - 110px)` to account for bottom nav. Ensure input bar doesn't get hidden behind bottom nav. Thread header back button needs adequate tap target.
 - [ ] Mobile-fix network in `linkedin-demo/src/components/network/Style.js` + `Network.js`: Grid of user cards should go to single column on xs. Cards should have full width. Search/filter input should be full width.

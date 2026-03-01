@@ -323,9 +323,9 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
               key={key}
               onClick={onClick}
               aria-label={key}
-              style={{
-                color: isActive ? "#2e7d32" : "grey",
-              }}
+              className={`${classes.bottomNavIcon} ${
+                isActive ? classes.bottomNavIconActive : ""
+              }`}
             />
           ))}
         </Paper>
