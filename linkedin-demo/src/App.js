@@ -64,6 +64,11 @@ const App = () => {
     setView("profile");
   };
 
+  const handleSetActiveTab = (tab) => {
+    setActiveTab(tab);
+    setView("feed");
+  };
+
   const onNavigateHome = () => {
     setActiveTab("home");
     setView("feed");
@@ -105,7 +110,7 @@ const App = () => {
           {/* Header */}
           <Header
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={handleSetActiveTab}
             onNavigateProfile={onNavigateProfile}
             onNavigateHome={onNavigateHome}
           />

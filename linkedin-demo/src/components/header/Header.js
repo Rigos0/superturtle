@@ -19,7 +19,7 @@ import TelegramIcon from "@material-ui/icons/Telegram";
 import NotificationsIcon from "@material-ui/icons/Notifications";
 import Brightness4Icon from "@material-ui/icons/Brightness4";
 import BrightnessHighIcon from "@material-ui/icons/BrightnessHigh";
-import AddBoxIcon from "@material-ui/icons/AddBox";
+import PersonIcon from "@material-ui/icons/Person";
 import AppsIcon from "@material-ui/icons/Apps";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
@@ -144,7 +144,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
       arrow: false,
       onClick: () => setActiveTab("notifications"),
     },
-    { Icon: <Avatar src={photoURL} />, title: "Me", arrow: true },
+    { Icon: <Avatar src={photoURL} />, title: "Me", arrow: true, onClick: () => onNavigateProfile(user?._id ?? null) },
     { Icon: <AppsIcon />, title: "Apps", arrow: true },
   ];
 
@@ -156,18 +156,6 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
     setActiveTab("home");
   };
 
-  const handleCreatePostNav = () => {
-    navigateToHome();
-    window.setTimeout(() => {
-      const postInput = document.querySelector('input[placeholder="Start a post"]');
-      if (!postInput) {
-        return;
-      }
-      postInput.scrollIntoView({ behavior: "smooth", block: "center" });
-      postInput.focus();
-    }, 120);
-  };
-
   const tabItems = [
     { key: "home", icon: HomeIcon, onClick: navigateToHome, isActive: activeTab === "home" },
     {
@@ -176,7 +164,6 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
       onClick: () => setActiveTab("network"),
       isActive: activeTab === "network",
     },
-    { key: "post", icon: AddBoxIcon, onClick: handleCreatePostNav, isActive: false },
     {
       key: "messaging",
       icon: TelegramIcon,
@@ -188,6 +175,12 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
       icon: NotificationsIcon,
       onClick: () => setActiveTab("notifications"),
       isActive: activeTab === "notifications",
+    },
+    {
+      key: "profile",
+      icon: PersonIcon,
+      onClick: () => onNavigateProfile(user?._id ?? null),
+      isActive: false,
     },
   ];
 
@@ -299,7 +292,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
           </ClickAwayListener>
           <Avatar
             src={photoURL}
-            onClick={onNavigateProfile}
+            onClick={() => onNavigateProfile(user?._id ?? null)}
             style={{ cursor: "pointer" }}
           />
         </div>
