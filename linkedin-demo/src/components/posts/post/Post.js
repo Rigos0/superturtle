@@ -7,7 +7,6 @@ import Paper from "@material-ui/core/Paper";
 import MoreHorizOutlinedIcon from "@material-ui/icons/MoreHorizOutlined";
 import ThumbUpAltIcon from "@material-ui/icons/ThumbUpAlt";
 import ThumbUpAltOutlinedIcon from "@material-ui/icons/ThumbUpAltOutlined";
-import ReplyOutlinedIcon from "@material-ui/icons/ReplyOutlined";
 import FiberManualRecordRoundedIcon from "@material-ui/icons/FiberManualRecordRounded";
 import SendIcon from "@material-ui/icons/Send";
 import CommentOutlinedIcon from "@material-ui/icons/CommentOutlined";
@@ -281,10 +280,6 @@ const Post = forwardRef(
             <div className={classes.action__icons} onClick={() => setShowComments((prev) => !prev)}>
               <CommentOutlinedIcon style={showComments ? { color: "#2e7d32" } : undefined} />
               <h4 style={showComments ? { color: "#2e7d32" } : undefined}>Comment</h4>
-            </div>
-            <div className={classes.action__icons}>
-              <ReplyOutlinedIcon style={{ transform: "scaleX(-1)" }} />
-              <h4>Share</h4>
             </div>
             <div className={classes.action__icons}>
               <SendIcon style={{ transform: "rotate(-45deg)" }} />
