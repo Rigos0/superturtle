@@ -76,4 +76,11 @@ export default makeStyles((theme) => ({
     width: "100%",
     padding: theme.spacing(0, 2),
   },
+  postsList: {
+    width: "100%",
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1.5),
+    paddingBottom: theme.spacing(1),
+  },
 }));

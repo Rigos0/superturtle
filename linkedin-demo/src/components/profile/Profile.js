@@ -1,19 +1,31 @@
-import { Avatar, Button, Paper, Typography, Divider } from "@material-ui/core";
+import { useState } from "react";
+import { useQuery } from "convex/react";
+import {
+  Avatar,
+  Button,
+  Paper,
+  Typography,
+  Divider,
+  Tabs,
+  Tab,
+} from "@material-ui/core";
 import LocationOnIcon from "@material-ui/icons/LocationOn";
+import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
+import Post from "../posts/post/Post";
 import Style from "./Style";
 
 const DEFAULT_PROFILE = {
   displayName: "Alex Turner",
   photoURL: "https://i.pravatar.cc/200?img=68",
-  title: "🐢 Full-Stack Developer | Building things that matter",
+  title: "Turtle In builder",
   location: "San Francisco, CA",
   about:
     "Passionate developer with a love for clean code and great UX. Previously built products at startups and scale-ups.",
   experience: [
-    "🚀 Senior Developer — TechStartup (Building the future)",
-    "💡 Product Engineer — ScaleUp Inc (Shipping fast)",
-    "🎓 CS Graduate — State University",
+    "Senior Developer - TechStartup",
+    "Product Engineer - ScaleUp Inc",
+    "CS Graduate - State University",
   ],
   connections: 500,
   followers: 750,
@@ -25,38 +37,55 @@ const resolveProfilePhoto = (photoURL) => {
   if (typeof photoURL !== "string" || photoURL.length === 0) {
     return DEFAULT_PROFILE_PHOTO;
   }
+
   if (photoURL.startsWith("/")) {
     return DEFAULT_PROFILE_PHOTO;
   }
+
   return photoURL;
 };
 
-const Profile = ({
-  onBack,
-  avatar = DEFAULT_PROFILE.photoURL,
-  name = DEFAULT_PROFILE.displayName,
-  title = DEFAULT_PROFILE.title,
-}) => {
+const Profile = ({ onBack, userId = null }) => {
   const classes = Style();
-  const featuredUser = useConvexUser();
-  const userAvatar = resolveProfilePhoto(featuredUser?.photoURL) ?? avatar;
-  const userName = featuredUser?.displayName ?? name;
-  const userTitle = featuredUser?.title ?? title;
-  const location = featuredUser?.location ?? DEFAULT_PROFILE.location;
-  const connections = featuredUser?.connections ?? DEFAULT_PROFILE.connections;
-  const followers = featuredUser?.followers ?? DEFAULT_PROFILE.followers;
-  const about = featuredUser?.about ?? DEFAULT_PROFILE.about;
-  const experience = featuredUser?.experience ?? DEFAULT_PROFILE.experience;
+  const authUser = useConvexUser();
+  const profileUser = useQuery(api.users.getUser, userId ? { id: userId } : "skip");
+  const resolvedUser = profileUser ?? (!userId ? authUser : null);
+  const resolvedUserId = userId ?? authUser?._id ?? null;
+  const posts = useQuery(
+    api.posts.listPostsByUser,
+    resolvedUserId ? { authorId: resolvedUserId } : "skip",
+  );
+
+  const [activeTab, setActiveTab] = useState(0);
+
+  const userAvatar = resolveProfilePhoto(
+    resolvedUser?.photoURL ?? resolvedUser?.image ?? DEFAULT_PROFILE.photoURL,
+  );
+  const userName =
+    resolvedUser?.displayName ??
+    resolvedUser?.name ??
+    DEFAULT_PROFILE.displayName;
+  const userTitle = resolvedUser?.title ?? DEFAULT_PROFILE.title;
+  const location = resolvedUser?.location ?? DEFAULT_PROFILE.location;
+  const connections = resolvedUser?.connections ?? DEFAULT_PROFILE.connections;
+  const followers = resolvedUser?.followers ?? DEFAULT_PROFILE.followers;
+  const about =
+    typeof resolvedUser?.about === "string" && resolvedUser.about.trim().length > 0
+      ? resolvedUser.about
+      : "No about information yet.";
+  const experience =
+    Array.isArray(resolvedUser?.experience) && resolvedUser.experience.length > 0
+      ? resolvedUser.experience
+      : ["No experience added yet."];
+  const userPosts = posts ?? [];
 
   return (
     <div className={classes.profile}>
       <Paper elevation={1} className={classes.card}>
-        {/* Cover + avatar */}
-        <div className={classes.coverArea} style={{ background: "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)" }}>
+        <div className={classes.coverArea}>
           <Avatar src={userAvatar} className={classes.avatar} />
         </div>
 
-        {/* Identity */}
         <Typography variant="h6" className={classes.name}>
           {userName}
         </Typography>
@@ -64,7 +93,6 @@ const Profile = ({
           {userTitle}
         </Typography>
 
-        {/* Meta */}
         <div className={classes.metaRow}>
           {location && (
             <Typography variant="body2" color="textSecondary" className={classes.metaItem}>
@@ -77,7 +105,6 @@ const Profile = ({
           </Typography>
         </div>
 
-        {/* Action buttons */}
         <div className={classes.section} style={{ marginTop: 12, display: "flex", gap: 8 }}>
           <Button
             variant="contained"
@@ -109,35 +136,83 @@ const Profile = ({
           </Button>
         </div>
 
-        {/* About */}
-        {about && (
-          <div className={classes.section}>
-            <Divider style={{ margin: "16px 0 12px" }} />
-            <Typography variant="subtitle2" style={{ fontWeight: 700, marginBottom: 6 }}>
-              About
-            </Typography>
-            <Typography variant="body2" color="textSecondary" style={{ lineHeight: 1.65, whiteSpace: "pre-line" }}>
-              {about}
-            </Typography>
+        <Divider style={{ margin: "16px 0 0" }} />
+
+        <Tabs
+          value={activeTab}
+          onChange={(_, nextTab) => setActiveTab(nextTab)}
+          indicatorColor="primary"
+          textColor="primary"
+          variant="fullWidth"
+          style={{ width: "100%" }}
+        >
+          <Tab label="Posts" />
+          <Tab label="About" />
+        </Tabs>
+
+        {activeTab === 0 && (
+          <div className={classes.section} style={{ marginTop: 8 }}>
+            {posts === undefined ? (
+              <Typography variant="body2" color="textSecondary">
+                Loading posts...
+              </Typography>
+            ) : userPosts.length === 0 ? (
+              <Typography variant="body2" color="textSecondary">
+                No posts yet.
+              </Typography>
+            ) : (
+              <div className={classes.postsList}>
+                {userPosts.map((post) => (
+                  <Post
+                    key={post._id}
+                    postId={post._id}
+                    authorId={post.authorId}
+                    likesCount={post.likesCount}
+                    commentsCount={post.commentsCount}
+                    profile={resolveProfilePhoto(post.author?.photoURL ?? userAvatar)}
+                    username={post.author?.displayName ?? userName}
+                    timestamp={{ toDate: () => new Date(post.createdAt) }}
+                    description={post.description}
+                    fileType={post.fileType}
+                    fileData={post.fileData}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Experience */}
-        {experience && experience.length > 0 && (
+        {activeTab === 1 && (
           <div className={classes.section}>
+            <Typography variant="subtitle2" style={{ fontWeight: 700, marginBottom: 6 }}>
+              About
+            </Typography>
+            <Typography
+              variant="body2"
+              color="textSecondary"
+              style={{ lineHeight: 1.65, whiteSpace: "pre-line" }}
+            >
+              {about}
+            </Typography>
+
             <Divider style={{ margin: "16px 0 12px" }} />
+
             <Typography variant="subtitle2" style={{ fontWeight: 700, marginBottom: 6 }}>
               Experience
             </Typography>
-            {experience.map((exp, i) => (
-              <Typography key={i} variant="body2" color="textSecondary" style={{ marginBottom: 4, lineHeight: 1.55 }}>
+            {experience.map((exp, index) => (
+              <Typography
+                key={`${exp}-${index}`}
+                variant="body2"
+                color="textSecondary"
+                style={{ marginBottom: 4, lineHeight: 1.55 }}
+              >
                 {exp}
               </Typography>
             ))}
           </div>
         )}
 
-        {/* Back */}
         <div className={classes.section} style={{ marginTop: 20 }}>
           <Button
             variant="text"

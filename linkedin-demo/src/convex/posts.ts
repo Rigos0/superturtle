@@ -31,6 +31,41 @@ export const listPosts = query({
   },
 });
 
+export const listPostsByUser = query({
+  args: {
+    authorId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const posts = await ctx.db
+      .query("posts")
+      .filter((q) => q.eq(q.field("authorId"), args.authorId))
+      .collect();
+    const sortedPosts = [...posts].sort((a, b) => b.createdAt - a.createdAt);
+
+    return await Promise.all(
+      sortedPosts.map(async (post) => {
+        const author = await ctx.db.get(post.authorId);
+        const likes = await ctx.db
+          .query("likes")
+          .filter((q) => q.eq(q.field("postId"), post._id))
+          .collect();
+
+        return {
+          ...post,
+          likesCount: likes.length,
+          author: author
+            ? {
+                displayName: author.displayName,
+                photoURL: author.photoURL,
+                title: author.title,
+              }
+            : null,
+        };
+      }),
+    );
+  },
+});
+
 export const createPost = mutation({
   args: {
     authorId: v.id("users"),

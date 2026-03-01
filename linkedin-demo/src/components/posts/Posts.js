@@ -8,7 +8,7 @@ import useConvexPosts from "../../hooks/useConvexPosts";
 
 const DEFAULT_PROFILE_PHOTO = "https://i.pravatar.cc/200?img=68";
 
-const Posts = ({ onNavigateProfile }) => {
+const Posts = ({ onNavigateProfile, onViewProfile }) => {
   const classes = Style();
   const posts = useConvexPosts();
 
@@ -39,6 +39,7 @@ const Posts = ({ onNavigateProfile }) => {
               fileType={post.fileType}
               fileData={post.fileData}
               onNavigateProfile={onNavigateProfile}
+              onViewProfile={onViewProfile}
             />
           ))}
         </FlipMove>

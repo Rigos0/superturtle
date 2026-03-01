@@ -20,6 +20,7 @@ const App = () => {
   const mode = useSelector((state) => state.util);
   const [activeTab, setActiveTab] = useState("home");
   const [view, setView] = useState("feed");
+  const [profileUserId, setProfileUserId] = useState(null);
   const { isAuthenticated, isLoading } = useConvexAuth();
   const seedData = useMutation(api.seed.seedData);
 
@@ -50,7 +51,15 @@ const App = () => {
     jobs: "Jobs",
   }[activeTab] || "This section";
 
-  const onNavigateProfile = () => setView("profile");
+  const onNavigateProfile = (userId) => {
+    setProfileUserId(userId ?? null);
+    setView("profile");
+  };
+
+  const onViewProfile = (userId) => {
+    setProfileUserId(userId);
+    setView("profile");
+  };
 
   if (isLoading) {
     return null;
@@ -101,7 +110,10 @@ const App = () => {
           </Hidden>
           <Grid item className={classes.body__feed} xs={12} sm={8} md={5}>
             {view === "profile" ? (
-              <Profile onBack={() => setView("feed")} />
+              <Profile
+                userId={profileUserId}
+                onBack={() => setView("feed")}
+              />
             ) : activeTab === "messaging" ? (
               <Messaging />
             ) : activeTab === "home" ? (
@@ -111,7 +123,10 @@ const App = () => {
                   <Form />
                 </Grid>
                 <Grid item className={classes.feed__posts}>
-                  <Posts onNavigateProfile={onNavigateProfile} />
+                  <Posts
+                    onNavigateProfile={onNavigateProfile}
+                    onViewProfile={onViewProfile}
+                  />
                 </Grid>
               </>
             ) : (

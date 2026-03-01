@@ -32,12 +32,11 @@ const Post = forwardRef(
       fileType,
       fileData,
       onNavigateProfile,
+      onViewProfile,
     },
     ref
   ) => {
     const classes = Style();
-    const isFeaturedUser = username === "Alex Turner";
-    const handleProfileClick = isFeaturedUser ? onNavigateProfile : undefined;
     const user = useConvexUser();
     const toggleLike = useMutation(api.likes.toggleLike);
     const addComment = useMutation(api.comments.addComment);
@@ -60,6 +59,9 @@ const Post = forwardRef(
     const commentsList = comments ?? [];
     const isOwnPost = Boolean(authorId && user?._id && authorId === user._id);
     const isMenuOpen = Boolean(menuAnchorEl);
+    const canNavigateProfile =
+      (typeof onViewProfile === "function" && Boolean(authorId)) ||
+      typeof onNavigateProfile === "function";
 
     const capitalize = (_string = "") => {
       return _string.charAt(0).toUpperCase() + _string.slice(1);
@@ -126,6 +128,17 @@ const Post = forwardRef(
       }
     };
 
+    const handleProfileClick = () => {
+      if (typeof onViewProfile === "function" && authorId) {
+        onViewProfile(authorId);
+        return;
+      }
+
+      if (typeof onNavigateProfile === "function") {
+        onNavigateProfile(authorId);
+      }
+    };
+
     const Reactions = () => {
       return (
         <div className={classes.footer__stats}>
@@ -148,13 +161,13 @@ const Post = forwardRef(
         <div className={classes.post__header}>
           <Avatar
             src={profile}
-            onClick={handleProfileClick}
-            style={isFeaturedUser ? { cursor: "pointer" } : undefined}
+            onClick={canNavigateProfile ? handleProfileClick : undefined}
+            style={canNavigateProfile ? { cursor: "pointer" } : undefined}
           />
           <div className={classes.header__info}>
             <h4
-              onClick={handleProfileClick}
-              style={isFeaturedUser ? { cursor: "pointer" } : { cursor: "default" }}
+              onClick={canNavigateProfile ? handleProfileClick : undefined}
+              style={canNavigateProfile ? { cursor: "pointer" } : { cursor: "default" }}
             >
               {capitalize(username)}
             </h4>
