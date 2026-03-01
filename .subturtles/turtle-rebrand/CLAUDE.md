@@ -1,5 +1,5 @@
 ## Current Task
-Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In".
+Update `linkedin-demo/public/manifest.json`: change short_name and name to "Turtle In".
 
 ## End Goal with Specs
 - App name: "Turtle In" everywhere (header, title, manifest, tests, banner)
@@ -15,8 +15,8 @@ Update `linkedin-demo/public/index.html`: change title and banner text from "Bí
 - [x] Update header brand in `linkedin-demo/src/components/header/Header.js`: change text from "Bíbr In" to "Turtle In", change color from "#0a66c2" to "#2e7d32"
 - [x] Update profile page in `linkedin-demo/src/components/profile/Profile.js`: change all "#0a66c2" to "#2e7d32", change cover gradient from blues to greens (e.g. "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)")
 - [x] Update profile Style.js at `linkedin-demo/src/components/profile/Style.js`: change any blue references to green
-- [ ] Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In" <- current
-- [ ] Update `linkedin-demo/public/manifest.json`: change short_name and name to "Turtle In"
+- [x] Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In"
+- [ ] Update `linkedin-demo/public/manifest.json`: change short_name and name to "Turtle In" <- current
 - [ ] Update `linkedin-demo/src/App.test.js`: change any "Bíbr In" references to "Turtle In"
 - [ ] Replace mock user data in `linkedin-demo/src/mock/user.js`: change displayName to "Alex Turner", remove tadeas-bibr.jpg import (use "https://i.pravatar.cc/200?img=68" instead), title to "🐢 Full-Stack Developer | Building things that matter", headline to "Turning ideas into products", location to "San Francisco, CA", about to "Passionate developer with a love for clean code and great UX. Previously built products at startups and scale-ups.", experience to ["🚀 Senior Developer — TechStartup (Building the future)", "💡 Product Engineer — ScaleUp Inc (Shipping fast)", "🎓 CS Graduate — State University"], connections 500, followers 750
 - [ ] Replace mock posts in `linkedin-demo/src/mock/posts.js`: change mockUsers.tadeas to use the new Alex Turner data (no tadeasBibrAvatar import, use pravatar URL). Update post descriptions to be generic professional LinkedIn-style posts (not Tadeáš box jokes). Keep the same structure and other users (Avery, Devin, Sofia) but remove any Tadeáš references from their posts too.
