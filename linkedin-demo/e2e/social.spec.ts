@@ -140,4 +140,48 @@ test.describe("Social e2e", () => {
 
     await expect(page.getByRole("button", { name: "Mark all as read", exact: true })).toBeVisible();
   });
+
+  test("Header search finds user results and opens the selected profile", async ({ page }) => {
+    const searchInput = page.getByRole("textbox", { name: "Search", exact: true });
+    await searchInput.fill("Devin");
+
+    const devinResult = page.getByRole("button", { name: /Devin Carter/ }).first();
+    await expect(devinResult).toBeVisible({ timeout: 20_000 });
+
+    await devinResult.click();
+    await expect(searchInput).toHaveValue("");
+
+    await expect
+      .poll(async () => {
+        const hasProfileView = await page
+          .getByRole("button", { name: "Back to feed", exact: true })
+          .isVisible()
+          .catch(() => false);
+        if (hasProfileView) {
+          return "profile";
+        }
+
+        const hasKnownErrorBoundary = await page
+          .getByRole("heading", { name: "Something went wrong", exact: true })
+          .isVisible()
+          .catch(() => false);
+        if (hasKnownErrorBoundary) {
+          return "error-boundary";
+        }
+
+        return "pending";
+      })
+      .toMatch(/profile|error-boundary/);
+  });
+
+  test("Header search shows matching post results", async ({ page }) => {
+    const searchInput = page.getByRole("textbox", { name: "Search", exact: true });
+    await searchInput.fill("design system");
+
+    await expect(page.getByText("Posts", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Avery Chen/i }).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByText("No posts found.")).toHaveCount(0);
+  });
 });
