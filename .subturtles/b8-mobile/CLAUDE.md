@@ -1,5 +1,5 @@
 ## Current Task
-Run build verification: `cd linkedin-demo && npm run build`.
+All backlog items are complete; append loop control stop marker.
 
 ## End Goal with Specs
 - All views render correctly on mobile (320px–600px width)
@@ -21,8 +21,8 @@ Run build verification: `cd linkedin-demo && npm run build`.
 - [x] Mobile-fix network in `linkedin-demo/src/components/network/Style.js` + `Network.js`: Grid of user cards should go to single column on xs. Cards should have full width. Search/filter input should be full width.
 - [x] Mobile-fix notifications in `linkedin-demo/src/components/notifications/Style.js` + `Notifications.js`: List items should have adequate padding and tap targets. Mark-all-read button should be visible.
 - [x] Push: `cd linkedin-demo && npx convex dev --once`
-- [ ] Build: `cd linkedin-demo && npm run build` <- current
-- [ ] Commit: "Mobile responsiveness: bottom nav, layout fixes for all views"
+- [x] Build: `cd linkedin-demo && npm run build`
+- [x] Commit: "Mobile responsiveness: bottom nav, layout fixes for all views"
 
 ## Notes
 - All paths from repo root: `/Users/Richard.Mladek/Documents/projects/agentic/`
@@ -41,3 +41,6 @@ Run build verification: `cd linkedin-demo && npm run build`.
   - `linkedin-demo/src/components/messaging/Style.js` (messaging mobile)
   - `linkedin-demo/src/components/network/Style.js` (network mobile)
   - `linkedin-demo/src/components/notifications/Style.js` (notifications mobile)
+
+## Loop Control
+STOP
