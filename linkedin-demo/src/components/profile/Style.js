@@ -28,7 +28,7 @@ export default makeStyles((theme) => ({
   coverArea: {
     width: "100%",
     height: 100,
-    background: "linear-gradient(135deg, #0a66c2 0%, #004182 100%)",
+    background: "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)",
     position: "relative",
     marginBottom: 52,
     [theme.breakpoints.down("xs")]: {

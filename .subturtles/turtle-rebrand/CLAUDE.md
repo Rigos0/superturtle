@@ -1,5 +1,5 @@
 ## Current Task
-Update profile Style.js at `linkedin-demo/src/components/profile/Style.js`: change any blue references to green.
+Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In".
 
 ## End Goal with Specs
 - App name: "Turtle In" everywhere (header, title, manifest, tests, banner)
@@ -14,8 +14,8 @@ Update profile Style.js at `linkedin-demo/src/components/profile/Style.js`: chan
 - [x] Update Colors.js at `linkedin-demo/src/assets/Colors.js`: change LinkedInBlue from "#0073b1" to "#2e7d32" (Material green 800), LinkedInLightBlue from "#70b5f9" to "#66bb6a" (Material green 400), LinkedInBgColor stays "#f3f2ef"
 - [x] Update header brand in `linkedin-demo/src/components/header/Header.js`: change text from "Bíbr In" to "Turtle In", change color from "#0a66c2" to "#2e7d32"
 - [x] Update profile page in `linkedin-demo/src/components/profile/Profile.js`: change all "#0a66c2" to "#2e7d32", change cover gradient from blues to greens (e.g. "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)")
-- [ ] Update profile Style.js at `linkedin-demo/src/components/profile/Style.js`: change any blue references to green <- current
-- [ ] Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In"
+- [x] Update profile Style.js at `linkedin-demo/src/components/profile/Style.js`: change any blue references to green
+- [ ] Update `linkedin-demo/public/index.html`: change title and banner text from "Bíbr In" to "Turtle In" <- current
 - [ ] Update `linkedin-demo/public/manifest.json`: change short_name and name to "Turtle In"
 - [ ] Update `linkedin-demo/src/App.test.js`: change any "Bíbr In" references to "Turtle In"
 - [ ] Replace mock user data in `linkedin-demo/src/mock/user.js`: change displayName to "Alex Turner", remove tadeas-bibr.jpg import (use "https://i.pravatar.cc/200?img=68" instead), title to "🐢 Full-Stack Developer | Building things that matter", headline to "Turning ideas into products", location to "San Francisco, CA", about to "Passionate developer with a love for clean code and great UX. Previously built products at startups and scale-ups.", experience to ["🚀 Senior Developer — TechStartup (Building the future)", "💡 Product Engineer — ScaleUp Inc (Shipping fast)", "🎓 CS Graduate — State University"], connections 500, followers 750
