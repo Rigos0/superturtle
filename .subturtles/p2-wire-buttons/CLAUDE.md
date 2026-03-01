@@ -1,5 +1,5 @@
 ## Current Task
-Push Convex functions once to cloud: `cd linkedin-demo && npx convex dev --once`.
+All backlog items are complete.
 
 ## End Goal with Specs
 - Profile "Message" button creates/opens a conversation with that user and navigates to Messaging
@@ -16,9 +16,9 @@ Push Convex functions once to cloud: `cd linkedin-demo && npx convex dev --once`
 - [x] Add `onViewPost` handler in `linkedin-demo/src/App.js`: Create `const onViewPost = (postId) => { setActiveTab("home"); setView("feed"); setTimeout(() => { const el = document.getElementById("post-" + postId); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }, 200); }`. Pass to Notifications component.
 - [x] Wire Network "Connect" button in `linkedin-demo/src/components/network/Network.js`: Currently at line 102-109 the button has `onClick={(event) => event.stopPropagation()}`. Add local state tracking which user IDs have been "connected" (`const [pendingIds, setPendingIds] = useState(new Set())`). On click, add user ID to pendingIds set. Button text: `pendingIds.has(user._id) ? "Pending" : "Connect"`. Pending style: `opacity: 0.6`.
 - [x] Pass new props through App.js: Notifications needs `onViewPost`, `onNavigateMessaging`. Profile needs `onNavigateMessaging`. Verify these are threaded through correctly.
-- [ ] Push: `cd linkedin-demo && npx convex dev --once` <- current
+- [x] Push: `cd linkedin-demo && npx convex dev --once`
 - [x] Build: `cd linkedin-demo && npm run build`
-- [ ] Commit: "Wire dead buttons: profile message, notification links, connect feedback"
+- [x] Commit: "Wire dead buttons: profile message, notification links, connect feedback"
 
 ## Notes
 - Repo root: `/Users/Richard.Mladek/Documents/projects/agentic/`
@@ -32,3 +32,6 @@ Push Convex functions once to cloud: `cd linkedin-demo && npx convex dev --once`
 - Profile receives props: `userId`, `onBack`, `onViewProfile` — needs new: `onNavigateMessaging`
 - Notifications receives no navigation props currently — needs: `onViewPost`, `onNavigateMessaging`
 - Green colors: primary #2e7d32
+
+## Loop Control
+STOP
