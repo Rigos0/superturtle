@@ -10,6 +10,9 @@ export default makeStyles((theme) => ({
       boxShadow: "none",
     },
     minHeight: 420,
+    backgroundColor: theme.palette.background.paper,
+    color: theme.palette.text.primary,
+    border: `1px solid ${theme.palette.divider}`,
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
@@ -35,7 +38,7 @@ export default makeStyles((theme) => ({
 
   subtitle: {
     margin: 0,
-    color: "#5f6368",
+    color: theme.palette.text.secondary,
     fontSize: 14,
   },
 
@@ -79,11 +82,11 @@ export default makeStyles((theme) => ({
   },
 
   googleBtn: {
-    backgroundColor: "#ffffff",
-    color: "#202124",
-    borderColor: "#dadce0",
+    backgroundColor: theme.palette.type === "dark" ? theme.palette.background.default : "#ffffff",
+    color: theme.palette.text.primary,
+    borderColor: theme.palette.divider,
     "&:hover": {
-      backgroundColor: "#f7f8f8",
+      backgroundColor: theme.palette.action.hover,
     },
   },
 

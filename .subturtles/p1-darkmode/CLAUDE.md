@@ -1,5 +1,5 @@
 ## Current Task
-Fix login card dark mode in `linkedin-demo/src/components/login/loginCard/LoginCard.js` and its Style.js: Ensure login card background adapts. Check text colors.
+Push Convex functions: `cd linkedin-demo && npx convex dev --once`
 
 ## End Goal with Specs
 - Toggle dark mode via Theme button in header
@@ -16,8 +16,8 @@ Fix login card dark mode in `linkedin-demo/src/components/login/loginCard/LoginC
 - [x] Fix network cards dark mode in `linkedin-demo/src/components/network/Style.js`: Replace card `backgroundColor: "#fff"` with `theme.palette.background.paper`. Replace search field `backgroundColor: "#fff"` with `theme.palette.background.paper`.
 - [x] Fix post edit textarea dark mode in `linkedin-demo/src/components/posts/post/Style.js`: In `editTextarea` class, add dark mode: `backgroundColor: theme.palette.background.paper`, `color: theme.palette.text.primary`, `border: "1px solid " + theme.palette.divider`. In `cancelButton`, adapt border color. In `comment__form`, check input colors (line 261-262 already has dark mode — verify it works).
 - [x] Fix search dropdown dark mode in `linkedin-demo/src/components/header/Style.js`: The `searchDropdown` class (line 89) has no background color set — needs `backgroundColor: theme.palette.background.paper`. Verify `searchResultItem` hover colors use theme.
-- [ ] Fix login card dark mode in `linkedin-demo/src/components/login/loginCard/LoginCard.js` and its Style.js: Ensure login card background adapts. Check text colors. <- current
-- [ ] Push: `cd linkedin-demo && npx convex dev --once`
+- [x] Fix login card dark mode in `linkedin-demo/src/components/login/loginCard/LoginCard.js` and its Style.js: Ensure login card background adapts. Check text colors.
+- [ ] Push: `cd linkedin-demo && npx convex dev --once` <- current
 - [ ] Build: `cd linkedin-demo && npm run build`
 - [ ] Commit: "Fix dark mode: theme-aware colors across all components"
 
