@@ -1,5 +1,5 @@
 ## Current Task
-Mobile-fix notifications in `linkedin-demo/src/components/notifications/Style.js` + `Notifications.js`: List items should have adequate padding and tap targets. Mark-all-read button should be visible.
+Push Convex functions: `cd linkedin-demo && npx convex dev --once`.
 
 ## End Goal with Specs
 - All views render correctly on mobile (320px–600px width)
@@ -19,8 +19,8 @@ Mobile-fix notifications in `linkedin-demo/src/components/notifications/Style.js
 - [x] Mobile-fix profile in `linkedin-demo/src/components/profile/Style.js` + `Profile.js`: Ensure the profile header, tabs, and post list don't overflow. Profile cover image should be responsive. Back button should be visible and tappable.
 - [x] Mobile-fix messaging in `linkedin-demo/src/components/messaging/Style.js`: At xs breakpoint, set `root` height to `calc(100vh - 110px)` to account for bottom nav. Ensure input bar doesn't get hidden behind bottom nav. Thread header back button needs adequate tap target.
 - [x] Mobile-fix network in `linkedin-demo/src/components/network/Style.js` + `Network.js`: Grid of user cards should go to single column on xs. Cards should have full width. Search/filter input should be full width.
-- [ ] Mobile-fix notifications in `linkedin-demo/src/components/notifications/Style.js` + `Notifications.js`: List items should have adequate padding and tap targets. Mark-all-read button should be visible. <- current
-- [ ] Push: `cd linkedin-demo && npx convex dev --once`
+- [x] Mobile-fix notifications in `linkedin-demo/src/components/notifications/Style.js` + `Notifications.js`: List items should have adequate padding and tap targets. Mark-all-read button should be visible.
+- [ ] Push: `cd linkedin-demo && npx convex dev --once` <- current
 - [ ] Build: `cd linkedin-demo && npm run build`
 - [ ] Commit: "Mobile responsiveness: bottom nav, layout fixes for all views"
 

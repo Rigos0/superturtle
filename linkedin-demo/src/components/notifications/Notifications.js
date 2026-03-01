@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Avatar, Button, CircularProgress, Paper, Typography } from "@material-ui/core";
+import { useTheme } from "@material-ui/core/styles";
+import useMediaQuery from "@material-ui/core/useMediaQuery";
 import ReactTimeago from "react-timeago";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
@@ -36,6 +38,8 @@ const getNotificationMessage = (notification) => {
 
 const Notifications = () => {
   const classes = Style();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("xs"));
   const user = useConvexUser();
   const markAsRead = useMutation(api.notifications.markAsRead);
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
@@ -103,7 +107,8 @@ const Notifications = () => {
         </Typography>
         <Button
           variant="outlined"
-          size="small"
+          size={isMobile ? "medium" : "small"}
+          fullWidth={isMobile}
           onClick={handleMarkAllAsRead}
           disabled={unreadCount === 0}
           className={classes.markAllButton}
