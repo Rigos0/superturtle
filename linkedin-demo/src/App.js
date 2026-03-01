@@ -3,6 +3,7 @@ import { useConvexAuth, useMutation } from "convex/react";
 import { useSelector } from "react-redux";
 import { Grid, Hidden, Paper, Typography } from "@material-ui/core";
 import { ThemeProvider, createMuiTheme } from "@material-ui/core";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Header from "./components/header/Header";
 import Form from "./components/form/Form";
 import Login from "./components/login/Login";
@@ -117,36 +118,38 @@ const App = () => {
             </Grid>
           </Hidden>
           <Grid item className={classes.body__feed} xs={12} sm={8} md={5}>
-            {view === "profile" ? (
-              <Profile
-                userId={profileUserId}
-                onBack={() => setView("feed")}
-              />
-            ) : activeTab === "messaging" ? (
-              <Messaging />
-            ) : activeTab === "network" ? (
-              <Network onViewProfile={onViewProfile} />
-            ) : activeTab === "notifications" ? (
-              <Notifications />
-            ) : activeTab === "home" ? (
-              <>
-                {/* Feed */}
-                <Grid item className={classes.feed__form}>
-                  <Form />
-                </Grid>
-                <Grid item className={classes.feed__posts}>
-                  <Posts
-                    onNavigateProfile={onNavigateProfile}
-                    onViewProfile={onViewProfile}
-                  />
-                </Grid>
-              </>
-            ) : (
-              <Paper elevation={1} style={{ width: "100%", padding: 24 }}>
-                <Typography variant="h6">{activeTabLabel}</Typography>
-                <Typography color="textSecondary">Coming soon.</Typography>
-              </Paper>
-            )}
+            <ErrorBoundary>
+              {view === "profile" ? (
+                <Profile
+                  userId={profileUserId}
+                  onBack={() => setView("feed")}
+                />
+              ) : activeTab === "messaging" ? (
+                <Messaging />
+              ) : activeTab === "network" ? (
+                <Network onViewProfile={onViewProfile} />
+              ) : activeTab === "notifications" ? (
+                <Notifications />
+              ) : activeTab === "home" ? (
+                <>
+                  {/* Feed */}
+                  <Grid item className={classes.feed__form}>
+                    <Form />
+                  </Grid>
+                  <Grid item className={classes.feed__posts}>
+                    <Posts
+                      onNavigateProfile={onNavigateProfile}
+                      onViewProfile={onViewProfile}
+                    />
+                  </Grid>
+                </>
+              ) : (
+                <Paper elevation={1} style={{ width: "100%", padding: 24 }}>
+                  <Typography variant="h6">{activeTabLabel}</Typography>
+                  <Typography color="textSecondary">Coming soon.</Typography>
+                </Paper>
+              )}
+            </ErrorBoundary>
           </Grid>
           <Hidden smDown>
             <Grid item className={classes.body__widgets} md={3}>

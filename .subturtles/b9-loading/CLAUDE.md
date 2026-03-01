@@ -1,5 +1,5 @@
 ## Current Task
-Create Error Boundary: `linkedin-demo/src/components/ErrorBoundary.js`. Class component with `componentDidCatch`. Renders fallback: centered Paper with "Something went wrong" text + green Retry button (onClick resets state). Wrap the main content area in App.js with `<ErrorBoundary>`.
+Push: `cd linkedin-demo && npx convex dev --once`
 
 ## End Goal with Specs
 - Feed shows skeleton post cards while loading (pulsing grey rectangles mimicking post layout)
@@ -21,8 +21,8 @@ Create Error Boundary: `linkedin-demo/src/components/ErrorBoundary.js`. Class co
 - [x] Wire skeletons into Messaging: In `linkedin-demo/src/components/messaging/Messaging.js`, if conversations query is `undefined`, show 4 skeleton rows (circle + two text lines each).
 - [x] Wire skeletons into Network: In `linkedin-demo/src/components/network/Network.js`, if users query is `undefined`, show 6x UserCardSkeleton.
 - [x] Wire skeletons into Notifications: In `linkedin-demo/src/components/notifications/Notifications.js`, if notifications query is `undefined`, show 5x NotificationSkeleton.
-- [ ] Create Error Boundary: `linkedin-demo/src/components/ErrorBoundary.js`. Class component with `componentDidCatch`. Renders fallback: centered Paper with "Something went wrong" text + green Retry button (onClick resets state). Wrap the main content area in App.js with `<ErrorBoundary>`. <- current
-- [ ] Push: `cd linkedin-demo && npx convex dev --once`
+- [x] Create Error Boundary: `linkedin-demo/src/components/ErrorBoundary.js`. Class component with `componentDidCatch`. Renders fallback: centered Paper with "Something went wrong" text + green Retry button (onClick resets state). Wrap the main content area in App.js with `<ErrorBoundary>`.
+- [ ] Push: `cd linkedin-demo && npx convex dev --once` <- current
 - [ ] Build: `cd linkedin-demo && npm run build`
 - [ ] Commit: "Add skeleton loaders and error boundary for polished loading states"
 
