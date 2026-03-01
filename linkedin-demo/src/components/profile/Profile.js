@@ -63,6 +63,7 @@ const Profile = ({ onBack, onNavigateMessaging = () => {}, userId = null }) => {
 
   const [activeTab, setActiveTab] = useState(0);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
+  const [connectPending, setConnectPending] = useState(false);
 
   const userAvatar = resolveProfilePhoto(
     resolvedUser?.photoURL ?? resolvedUser?.image ?? DEFAULT_PROFILE.photoURL,
@@ -168,18 +169,23 @@ const Profile = ({ onBack, onNavigateMessaging = () => {}, userId = null }) => {
 
             <div className={classes.actionRow}>
               <Button
-                variant="contained"
+                variant={connectPending ? "outlined" : "contained"}
                 size="small"
+                onClick={() => setConnectPending(true)}
+                disabled={connectPending}
                 style={{
-                  backgroundColor: "#2e7d32",
-                  color: "#fff",
+                  backgroundColor: connectPending ? "transparent" : "#2e7d32",
+                  borderColor: connectPending ? "#9e9e9e" : "transparent",
+                  color: connectPending ? "#757575" : "#fff",
                   textTransform: "none",
                   borderRadius: 16,
                   fontWeight: 600,
                   padding: "4px 16px",
+                  opacity: connectPending ? 0.6 : 1,
+                  cursor: connectPending ? "default" : "pointer",
                 }}
               >
-                Connect
+                {connectPending ? "Pending" : "Connect"}
               </Button>
               <Button
                 variant="outlined"
