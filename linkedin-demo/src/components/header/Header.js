@@ -52,7 +52,7 @@ const Header = ({ activeTab, setActiveTab }) => {
               letterSpacing: "-0.02em",
             }}
           >
-            LinkedOut
+            Bíbr In
           </span>
           <div className={classes.search}>
             <SearchIcon />

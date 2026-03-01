@@ -25,7 +25,7 @@ const renderApp = () => {
 test("renders the feed shell without login or Firebase auth UI", async () => {
   const store = renderApp();
 
-  expect(screen.getByText("LinkedOut")).not.toBeNull();
+  expect(screen.getByText("Bíbr In")).not.toBeNull();
   expect(screen.getByPlaceholderText("Start a post")).not.toBeNull();
   expect(screen.queryByText("Log In")).toBeNull();
   expect(screen.queryByText("contact author")).toBeNull();
