@@ -68,7 +68,9 @@ export default makeStyles((theme) => ({
   editTextarea: {
     width: "100%",
     padding: 8,
-    border: "1px solid #ddd",
+    border: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.background.paper,
+    color: theme.palette.text.primary,
     borderRadius: 4,
     resize: "vertical",
     fontFamily: "inherit",
@@ -94,7 +96,8 @@ export default makeStyles((theme) => ({
   },
   cancelButton: {
     backgroundColor: "transparent",
-    border: "1px solid #999",
+    color: theme.palette.text.primary,
+    border: `1px solid ${theme.palette.divider}`,
     padding: "6px 16px",
     borderRadius: 4,
     cursor: "pointer",
