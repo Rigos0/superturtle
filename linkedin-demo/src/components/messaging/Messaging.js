@@ -9,187 +9,11 @@ import {
   TextField,
   Typography,
 } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
 import ArrowBackIcon from "@material-ui/icons/ArrowBack";
 import SendIcon from "@material-ui/icons/Send";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
-
-const useStyles = makeStyles((theme) => ({
-  root: {
-    width: "100%",
-    height: "calc(100vh - 170px)",
-    minHeight: 460,
-    display: "flex",
-    flexDirection: "column",
-    borderRadius: 8,
-    overflow: "hidden",
-    [theme.breakpoints.down("xs")]: {
-      borderRadius: 0,
-      height: "calc(100vh - 120px)",
-    },
-  },
-  listView: {
-    width: "100%",
-    height: "100%",
-    overflowY: "auto",
-  },
-  listHeader: {
-    padding: "16px 18px 8px",
-    borderBottom: "1px solid #eceff1",
-    position: "sticky",
-    top: 0,
-    backgroundColor: "#fff",
-    zIndex: 1,
-  },
-  conversationItem: {
-    width: "100%",
-    border: 0,
-    background: "transparent",
-    textAlign: "left",
-    padding: "12px 16px",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    borderBottom: "1px solid #f1f3f4",
-    transition: "background-color 0.2s ease",
-    "&:hover": {
-      backgroundColor: "#f4f8f4",
-    },
-  },
-  conversationMain: {
-    flex: 1,
-    minWidth: 0,
-  },
-  conversationTopRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  conversationName: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#1d2226",
-    margin: 0,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  conversationTime: {
-    color: "#6b7280",
-    fontSize: 11,
-    whiteSpace: "nowrap",
-  },
-  conversationPreview: {
-    marginTop: 2,
-    color: "#5f6368",
-    fontSize: 13,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  emptyState: {
-    flex: 1,
-    minHeight: 220,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#5f6368",
-    padding: 20,
-    textAlign: "center",
-  },
-  loadingState: {
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  threadHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 12px",
-    borderBottom: "1px solid #eceff1",
-    backgroundColor: "#fff",
-  },
-  threadTitle: {
-    fontWeight: 600,
-    fontSize: 15,
-    color: "#1d2226",
-  },
-  messageList: {
-    flex: 1,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    padding: "14px 12px",
-    backgroundColor: "#fafafa",
-  },
-  messageRow: {
-    display: "flex",
-    width: "100%",
-  },
-  ownRow: {
-    justifyContent: "flex-end",
-  },
-  otherRow: {
-    justifyContent: "flex-start",
-  },
-  bubble: {
-    maxWidth: "78%",
-    padding: "8px 12px",
-    borderRadius: 14,
-    boxShadow: "0 1px 1px rgba(0, 0, 0, 0.08)",
-  },
-  ownBubble: {
-    backgroundColor: "#2e7d32",
-    color: "#fff",
-    borderBottomRightRadius: 6,
-  },
-  otherBubble: {
-    backgroundColor: "#e0e0e0",
-    color: "#1d2226",
-    borderBottomLeftRadius: 6,
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 1.35,
-    wordBreak: "break-word",
-  },
-  messageMeta: {
-    marginTop: 4,
-    fontSize: 11,
-    opacity: 0.85,
-  },
-  inputBar: {
-    borderTop: "1px solid #eceff1",
-    padding: "10px 12px",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#fff",
-  },
-  inputField: {
-    flex: 1,
-  },
-  sendButton: {
-    minWidth: 90,
-    backgroundColor: "#2e7d32",
-    color: "#fff",
-    textTransform: "none",
-    "&:hover": {
-      backgroundColor: "#1b5e20",
-    },
-    "&.Mui-disabled": {
-      color: "rgba(255,255,255,0.8)",
-      backgroundColor: "#9e9e9e",
-    },
-  },
-}));
+import useStyles from "./Style";
 
 const DEFAULT_PHOTO = "https://i.pravatar.cc/100?img=68";
 
@@ -370,6 +194,7 @@ const Messaging = () => {
     <Paper className={classes.root} elevation={1}>
       <div className={classes.threadHeader}>
         <IconButton
+          className={classes.backButton}
           size="small"
           onClick={() => {
             setSelectedConversationId(null);
