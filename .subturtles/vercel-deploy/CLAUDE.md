@@ -1,5 +1,5 @@
 ## Current Task
-Deploy the app to production on Vercel.
+Verify the deployment URL loads and returns HTTP 200.
 
 ## End Goal with Specs
 - App deployed to Vercel with a public URL
@@ -10,8 +10,8 @@ Deploy the app to production on Vercel.
 ## Backlog
 - [x] Link the project to Vercel: run `cd linkedin-demo && vercel link` — if it prompts interactively, try `vercel --yes` or `vercel deploy --yes` instead which auto-creates the project
 - [x] Set environment variable on Vercel: `vercel env add REACT_APP_CONVEX_URL production` with value `https://tough-mosquito-145.convex.cloud` — if interactive prompts fail, use `echo "https://tough-mosquito-145.convex.cloud" | vercel env add REACT_APP_CONVEX_URL production`
-- [ ] Deploy to production: `vercel deploy --prod --yes` from the `linkedin-demo/` directory. The build command is `npm run build` and the output directory is `build` <- current
-- [ ] Verify the deployment URL loads and returns HTTP 200
+- [x] Deploy to production: `vercel deploy --prod --yes` from the `linkedin-demo/` directory. The build command is `npm run build` and the output directory is `build`
+- [ ] Verify the deployment URL loads and returns HTTP 200 <- current
 - [ ] Commit any Vercel config files (`.vercel/project.json` etc) with message "Add Vercel deployment config for Bíbr In"
 
 ## Notes
