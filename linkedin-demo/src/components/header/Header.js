@@ -46,10 +46,12 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile }) => {
           <span
             style={{
               color: "#0a66c2",
-              fontSize: 32,
+              fontSize: 24,
               lineHeight: 1,
-              fontWeight: 800,
+              fontWeight: 700,
               letterSpacing: "-0.02em",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
             Bíbr In

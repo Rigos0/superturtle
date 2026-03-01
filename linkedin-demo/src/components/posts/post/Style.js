@@ -24,7 +24,6 @@ export default makeStyles((theme) => ({
     justifyContent: "space-between",
     padding: 10,
     "& > .MuiAvatar-root": {
-      cursor: "pointer",
     },
     "& > .MuiSvgIcon-root": {
       color: "grey",
@@ -46,7 +45,6 @@ export default makeStyles((theme) => ({
       fontSize: 15,
       fontWeight: 500,
       marginBottom: 3,
-      cursor: "pointer",
     },
     "& > p": {
       color: "grey",
