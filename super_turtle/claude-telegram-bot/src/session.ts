@@ -807,6 +807,8 @@ export class ClaudeSession {
     if (responseText) {
       this.pushRecentMessage("assistant", responseText);
     }
+    // Persist the rolling buffer after each assistant response so /resume previews are fresh.
+    this.saveSession();
     return responseText || "No response from Claude.";
   }
 

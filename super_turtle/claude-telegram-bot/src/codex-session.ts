@@ -1175,14 +1175,13 @@ ${messageToSend}`;
       this.lastError = null;
       this.lastErrorTime = null;
 
-      // Save session for resumption later
-      const title = userMessage.length > 50 ? userMessage.slice(0, 47) + "..." : userMessage;
-      this.saveSession(title);
-
       this.lastAssistantMessage = combinedResponse || null;
       if (combinedResponse) {
         this.pushRecentMessage("assistant", combinedResponse);
       }
+      // Save session for resumption later (after updating rolling buffer).
+      const title = userMessage.length > 50 ? userMessage.slice(0, 47) + "..." : userMessage;
+      this.saveSession(title);
       return combinedResponse || "No response from Codex.";
     } catch (error) {
       const errorMessage = getErrorMessage(error);
