@@ -8,14 +8,23 @@ import MoreHorizOutlinedIcon from "@material-ui/icons/MoreHorizOutlined";
 import ThumbUpAltIcon from "@material-ui/icons/ThumbUpAlt";
 import ThumbUpAltOutlinedIcon from "@material-ui/icons/ThumbUpAltOutlined";
 import FiberManualRecordRoundedIcon from "@material-ui/icons/FiberManualRecordRounded";
-import SendIcon from "@material-ui/icons/Send";
 import CommentOutlinedIcon from "@material-ui/icons/CommentOutlined";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import ReactPlayer from "react-player";
 import ReactTimeago from "react-timeago";
 import * as images from "../../../assets/images/images";
 import { api } from "../../../convex/_generated/api";
+import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
 import Style from "./Style";
+
+const resolvePhoto = (photoURL) => {
+  if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
+    return DEFAULT_PHOTO;
+  }
+
+  return photoURL;
+};
 
 const Post = forwardRef(
   (
@@ -39,6 +48,7 @@ const Post = forwardRef(
     const toggleLike = useMutation(api.likes.toggleLike);
     const addComment = useMutation(api.comments.addComment);
     const deletePost = useMutation(api.posts.deletePost);
+    const deleteComment = useMutation(api.comments.deleteComment);
     const updatePost = useMutation(api.posts.updatePost);
 
     const [showComments, setShowComments] = React.useState(false);
@@ -46,6 +56,7 @@ const Post = forwardRef(
     const [menuAnchorEl, setMenuAnchorEl] = React.useState(null);
     const [isEditing, setIsEditing] = React.useState(false);
     const [editText, setEditText] = React.useState(description ?? "");
+    const [optimisticLike, setOptimisticLike] = React.useState(null);
 
     const liked = useQuery(
       api.likes.getLikeStatus,
@@ -56,7 +67,15 @@ const Post = forwardRef(
       showComments ? { postId } : "skip"
     );
 
-    const isLiked = liked ?? false;
+    const serverLiked = liked ?? false;
+    const isLiked = optimisticLike !== null ? optimisticLike : serverLiked;
+
+    // Clear optimistic state once server catches up
+    React.useEffect(() => {
+      if (liked !== undefined) {
+        setOptimisticLike(null);
+      }
+    }, [liked]);
     const commentsList = comments ?? [];
     const isOwnPost = Boolean(authorId && user?._id && authorId === user._id);
     const isMenuOpen = Boolean(menuAnchorEl);
@@ -83,9 +102,14 @@ const Post = forwardRef(
         return;
       }
 
+      // Optimistic: toggle immediately in UI
+      setOptimisticLike(!isLiked);
+
       try {
         await toggleLike({ userId: user._id, postId });
       } catch (error) {
+        // Revert on failure
+        setOptimisticLike(null);
         console.error("Failed to toggle like:", error);
       }
     };
@@ -193,7 +217,7 @@ const Post = forwardRef(
       <Paper ref={ref} className={classes.post} id={`post-${postId}`}>
         <div className={classes.post__header}>
           <Avatar
-            src={profile}
+            src={resolvePhoto(profile)}
             onClick={canNavigateProfile ? handleProfileClick : undefined}
             style={canNavigateProfile ? { cursor: "pointer" } : undefined}
           />
@@ -205,7 +229,7 @@ const Post = forwardRef(
               {capitalize(username)}
             </h4>
             <p>
-              <ReactTimeago date={new Date(timestamp?.toDate()).toUTCString()} units="minute" />
+              <ReactTimeago date={new Date(timestamp).toUTCString()} units="minute" />
             </p>
           </div>
           <MoreHorizOutlinedIcon
@@ -281,10 +305,6 @@ const Post = forwardRef(
               <CommentOutlinedIcon style={showComments ? { color: "#2e7d32" } : undefined} />
               <h4 style={showComments ? { color: "#2e7d32" } : undefined}>Comment</h4>
             </div>
-            <div className={classes.action__icons}>
-              <SendIcon style={{ transform: "rotate(-45deg)" }} />
-              <h4>Send</h4>
-            </div>
           </div>
 
           {showComments && (
@@ -294,7 +314,7 @@ const Post = forwardRef(
                   <div key={comment._id} className={classes.comment__item}>
                     <Avatar
                       className={classes.comment__avatar}
-                      src={comment.author?.photoURL}
+                      src={resolvePhoto(comment.author?.photoURL)}
                       alt={comment.author?.displayName ?? "Comment author"}
                     />
                     <div className={classes.comment__content}>
@@ -303,6 +323,13 @@ const Post = forwardRef(
                         <span>
                           <ReactTimeago date={new Date(comment.createdAt).toUTCString()} units="minute" />
                         </span>
+                        {user?._id && comment.authorId === user._id && (
+                          <DeleteOutlineIcon
+                            className={classes.comment__delete}
+                            onClick={() => deleteComment({ commentId: comment._id, userId: user._id })}
+                            titleAccess="Delete comment"
+                          />
+                        )}
                       </div>
                       <p>{comment.body}</p>
                     </div>

@@ -4,10 +4,9 @@ import FlipMove from "react-flip-move";
 import Post from "./post/Post";
 import Animation from "../animations/Animation";
 import Loading from "../../assets/images/loading-dots.json";
+import { DEFAULT_PHOTO } from "../../constants";
 import useConvexPosts from "../../hooks/useConvexPosts";
 import PostSkeleton from "../skeletons/PostSkeleton";
-
-const DEFAULT_PROFILE_PHOTO = "https://i.pravatar.cc/200?img=68";
 
 const Posts = ({ onNavigateProfile }) => {
   const classes = Style();
@@ -15,8 +14,8 @@ const Posts = ({ onNavigateProfile }) => {
   const isLoading = posts === undefined;
 
   const getProfilePhoto = (photoURL) => {
-    if (typeof photoURL === "string" && photoURL.startsWith("/")) {
-      return DEFAULT_PROFILE_PHOTO;
+    if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
+      return DEFAULT_PHOTO;
     }
     return photoURL;
   };
@@ -42,7 +41,7 @@ const Posts = ({ onNavigateProfile }) => {
               commentsCount={post.commentsCount}
               profile={getProfilePhoto(post.authorPhotoURL ?? post.author?.photoURL)}
               username={post.authorName ?? post.author?.displayName}
-              timestamp={{ toDate: () => new Date(post.createdAt) }}
+              timestamp={post.createdAt}
               description={post.description}
               fileType={post.fileType}
               fileData={post.fileData}

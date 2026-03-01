@@ -13,10 +13,9 @@ import Skeleton from "@material-ui/lab/Skeleton";
 import ArrowBackIcon from "@material-ui/icons/ArrowBack";
 import SendIcon from "@material-ui/icons/Send";
 import { api } from "../../convex/_generated/api";
+import { DEFAULT_PHOTO } from "../../constants";
 import useConvexUser from "../../hooks/useConvexUser";
 import useStyles from "./Style";
-
-const DEFAULT_PHOTO = "https://i.pravatar.cc/100?img=68";
 
 const truncatePreview = (value = "", maxLength = 50) => {
   if (value.length <= maxLength) {

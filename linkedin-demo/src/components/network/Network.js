@@ -2,10 +2,9 @@ import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { Avatar, Button, Paper, TextField, Typography } from "@material-ui/core";
 import { api } from "../../convex/_generated/api";
+import { DEFAULT_PHOTO } from "../../constants";
 import UserCardSkeleton from "../skeletons/UserCardSkeleton";
 import Style from "./Style";
-
-const DEFAULT_PHOTO = "https://i.pravatar.cc/200?img=68";
 
 const resolvePhoto = (photoURL) => {
   if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {

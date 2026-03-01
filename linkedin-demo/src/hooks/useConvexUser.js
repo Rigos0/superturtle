@@ -1,5 +1,6 @@
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { DEFAULT_PHOTO } from "../constants";
 
 const useConvexUser = () => {
   const { isAuthenticated } = useConvexAuth();
@@ -10,7 +11,7 @@ const useConvexUser = () => {
     return {
       ...currentUser,
       displayName: currentUser.displayName ?? currentUser.name ?? "Guest User",
-      photoURL: currentUser.photoURL ?? currentUser.image ?? "",
+      photoURL: currentUser.photoURL ?? currentUser.image ?? DEFAULT_PHOTO,
     };
   }
 

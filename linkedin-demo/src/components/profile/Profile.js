@@ -13,6 +13,7 @@ import Skeleton from "@material-ui/lab/Skeleton";
 import ArrowBackIcon from "@material-ui/icons/ArrowBack";
 import LocationOnIcon from "@material-ui/icons/LocationOn";
 import { api } from "../../convex/_generated/api";
+import { DEFAULT_PHOTO } from "../../constants";
 import useConvexUser from "../../hooks/useConvexUser";
 import Post from "../posts/post/Post";
 import PostSkeleton from "../skeletons/PostSkeleton";
@@ -20,7 +21,7 @@ import Style from "./Style";
 
 const DEFAULT_PROFILE = {
   displayName: "Alex Turner",
-  photoURL: "https://i.pravatar.cc/200?img=68",
+  photoURL: DEFAULT_PHOTO,
   title: "Turtle In builder",
   location: "San Francisco, CA",
   about:
@@ -34,15 +35,13 @@ const DEFAULT_PROFILE = {
   followers: 750,
 };
 
-const DEFAULT_PROFILE_PHOTO = DEFAULT_PROFILE.photoURL;
-
 const resolveProfilePhoto = (photoURL) => {
   if (typeof photoURL !== "string" || photoURL.length === 0) {
-    return DEFAULT_PROFILE_PHOTO;
+    return DEFAULT_PHOTO;
   }
 
   if (photoURL.startsWith("/")) {
-    return DEFAULT_PROFILE_PHOTO;
+    return DEFAULT_PHOTO;
   }
 
   return photoURL;

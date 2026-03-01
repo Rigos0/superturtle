@@ -5,11 +5,10 @@ import { useTheme } from "@material-ui/core/styles";
 import useMediaQuery from "@material-ui/core/useMediaQuery";
 import ReactTimeago from "react-timeago";
 import { api } from "../../convex/_generated/api";
+import { DEFAULT_PHOTO } from "../../constants";
 import useConvexUser from "../../hooks/useConvexUser";
 import NotificationSkeleton from "../skeletons/NotificationSkeleton";
 import Style from "./Style";
-
-const DEFAULT_PHOTO = "https://i.pravatar.cc/200?img=68";
 
 const resolvePhoto = (photoURL) => {
   if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
