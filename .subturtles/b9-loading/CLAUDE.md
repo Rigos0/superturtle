@@ -1,5 +1,5 @@
 ## Current Task
-Push: `cd linkedin-demo && npx convex dev --once`
+All backlog items complete.
 
 ## End Goal with Specs
 - Feed shows skeleton post cards while loading (pulsing grey rectangles mimicking post layout)
@@ -22,9 +22,9 @@ Push: `cd linkedin-demo && npx convex dev --once`
 - [x] Wire skeletons into Network: In `linkedin-demo/src/components/network/Network.js`, if users query is `undefined`, show 6x UserCardSkeleton.
 - [x] Wire skeletons into Notifications: In `linkedin-demo/src/components/notifications/Notifications.js`, if notifications query is `undefined`, show 5x NotificationSkeleton.
 - [x] Create Error Boundary: `linkedin-demo/src/components/ErrorBoundary.js`. Class component with `componentDidCatch`. Renders fallback: centered Paper with "Something went wrong" text + green Retry button (onClick resets state). Wrap the main content area in App.js with `<ErrorBoundary>`.
-- [ ] Push: `cd linkedin-demo && npx convex dev --once` <- current
-- [ ] Build: `cd linkedin-demo && npm run build`
-- [ ] Commit: "Add skeleton loaders and error boundary for polished loading states"
+- [x] Push: `cd linkedin-demo && npx convex dev --once`
+- [x] Build: `cd linkedin-demo && npm run build`
+- [x] Commit: "Add skeleton loaders and error boundary for polished loading states"
 
 ## Notes
 - All paths from repo root: `/Users/Richard.Mladek/Documents/projects/agentic/`
@@ -41,3 +41,6 @@ Push: `cd linkedin-demo && npx convex dev --once`
 - App.js at `linkedin-demo/src/App.js` — wrap content with ErrorBoundary
 - Green colors: primary #2e7d32, light #66bb6a
 - Create new directory: `linkedin-demo/src/components/skeletons/`
+
+## Loop Control
+STOP
