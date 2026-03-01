@@ -37,7 +37,7 @@ const getNotificationMessage = (notification) => {
   return `${displayName} sent you a notification`;
 };
 
-const Notifications = () => {
+const Notifications = ({ onViewPost, onViewProfile, onNavigateMessaging }) => {
   const classes = Style();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("xs"));
@@ -59,14 +59,34 @@ const Notifications = () => {
   }, [notifications]);
 
   const handleItemClick = async (notification) => {
-    if (!notification || notification.read) {
+    if (!notification) {
       return;
     }
 
-    try {
-      await markAsRead({ notificationId: notification._id });
-    } catch (error) {
-      console.error("Failed to mark notification as read:", error);
+    if (!notification.read) {
+      try {
+        await markAsRead({ notificationId: notification._id });
+      } catch (error) {
+        console.error("Failed to mark notification as read:", error);
+      }
+    }
+
+    if ((notification.type === "like" || notification.type === "comment") && notification.postId) {
+      if (typeof onViewPost === "function") {
+        onViewPost(notification.postId);
+      }
+      return;
+    }
+
+    if (notification.type === "message") {
+      if (typeof onNavigateMessaging === "function") {
+        onNavigateMessaging();
+      }
+      return;
+    }
+
+    if (typeof onViewProfile === "function" && notification.fromUser?._id) {
+      onViewProfile(notification.fromUser._id);
     }
   };
 

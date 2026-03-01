@@ -79,6 +79,22 @@ const App = () => {
     setView("feed");
   };
 
+  const onViewPost = (postId) => {
+    if (!postId) {
+      return;
+    }
+
+    setActiveTab("home");
+    setView("feed");
+
+    window.setTimeout(() => {
+      const postElement = document.getElementById(`post-${postId}`);
+      if (postElement) {
+        postElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 200);
+  };
+
   if (isLoading) {
     return null;
   }
@@ -140,7 +156,11 @@ const App = () => {
               ) : activeTab === "network" ? (
                 <Network onViewProfile={onViewProfile} />
               ) : activeTab === "notifications" ? (
-                <Notifications />
+                <Notifications
+                  onViewPost={onViewPost}
+                  onViewProfile={onViewProfile}
+                  onNavigateMessaging={onNavigateMessaging}
+                />
               ) : activeTab === "home" ? (
                 <>
                   {/* Feed */}
