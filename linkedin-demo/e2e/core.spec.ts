@@ -4,7 +4,9 @@ import { loginAsGuest } from "./helpers";
 const FEED_RECOVERY_ATTEMPTS = 4;
 
 async function clickGuestIfPresent(page: Page) {
-  const guestButton = page.getByRole("button", { name: /Continue as Guest/i });
+  const guestButton = page.getByRole("button", {
+    name: /Continue as (Guest|Turtle)/i,
+  });
   if (await guestButton.isVisible().catch(() => false)) {
     await guestButton.click();
   }
@@ -146,8 +148,11 @@ async function deletePostIfPresent(page: Page, description: string) {
 test("Guest login", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /Continue as Guest/i })).toBeVisible();
-  await page.getByRole("button", { name: /Continue as Guest/i }).click();
+  const guestLoginButton = page.getByRole("button", {
+    name: /Continue as (Guest|Turtle)/i,
+  });
+  await expect(guestLoginButton).toBeVisible();
+  await guestLoginButton.click();
 
   await expect(page.getByPlaceholder("Start a post")).toBeVisible();
   await expect(page.getByRole("button", { name: "Post" })).toBeVisible();
