@@ -22,10 +22,10 @@ export default makeStyles((theme) => ({
   },
   listHeader: {
     padding: "16px 18px 8px",
-    borderBottom: "1px solid #eceff1",
+    borderBottom: `1px solid ${theme.palette.divider}`,
     position: "sticky",
     top: 0,
-    backgroundColor: "#fff",
+    backgroundColor: theme.palette.background.paper,
     zIndex: 1,
   },
   conversationItem: {
@@ -38,10 +38,10 @@ export default makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     gap: 12,
-    borderBottom: "1px solid #f1f3f4",
+    borderBottom: `1px solid ${theme.palette.divider}`,
     transition: "background-color 0.2s ease",
     "&:hover": {
-      backgroundColor: "#f4f8f4",
+      backgroundColor: theme.palette.action.hover,
     },
   },
   conversationMain: {
@@ -57,20 +57,20 @@ export default makeStyles((theme) => ({
   conversationName: {
     fontSize: 14,
     fontWeight: 600,
-    color: "#1d2226",
+    color: theme.palette.text.primary,
     margin: 0,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
   conversationTime: {
-    color: "#6b7280",
+    color: theme.palette.text.secondary,
     fontSize: 11,
     whiteSpace: "nowrap",
   },
   conversationPreview: {
     marginTop: 2,
-    color: "#5f6368",
+    color: theme.palette.text.secondary,
     fontSize: 13,
     whiteSpace: "nowrap",
     overflow: "hidden",
@@ -82,7 +82,7 @@ export default makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#5f6368",
+    color: theme.palette.text.secondary,
     padding: 20,
     textAlign: "center",
   },
@@ -98,8 +98,8 @@ export default makeStyles((theme) => ({
     alignItems: "center",
     gap: 8,
     padding: "8px 12px",
-    borderBottom: "1px solid #eceff1",
-    backgroundColor: "#fff",
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.background.paper,
   },
   backButton: {
     color: "#2e7d32",
@@ -114,7 +114,7 @@ export default makeStyles((theme) => ({
   threadTitle: {
     fontWeight: 600,
     fontSize: 15,
-    color: "#1d2226",
+    color: theme.palette.text.primary,
   },
   messageList: {
     flex: 1,
@@ -123,7 +123,7 @@ export default makeStyles((theme) => ({
     flexDirection: "column",
     gap: 10,
     padding: "14px 12px",
-    backgroundColor: "#fafafa",
+    backgroundColor: theme.palette.background.default,
   },
   messageRow: {
     display: "flex",
@@ -148,7 +148,7 @@ export default makeStyles((theme) => ({
   },
   otherBubble: {
     backgroundColor: "#e0e0e0",
-    color: "#1d2226",
+    color: theme.palette.text.primary,
     borderBottomLeftRadius: 6,
   },
   messageText: {
@@ -162,12 +162,12 @@ export default makeStyles((theme) => ({
     opacity: 0.85,
   },
   inputBar: {
-    borderTop: "1px solid #eceff1",
+    borderTop: `1px solid ${theme.palette.divider}`,
     padding: "10px 12px",
     display: "flex",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#fff",
+    backgroundColor: theme.palette.background.paper,
     position: "sticky",
     bottom: 0,
     zIndex: 2,
