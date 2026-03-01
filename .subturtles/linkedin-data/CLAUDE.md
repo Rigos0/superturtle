@@ -1,5 +1,5 @@
 ## Current Task
-Replace `LinkedInJobAdd` in `linkedin-demo/src/assets/images/images.js` with a local or placeholder URL (non-Firebase).
+All backlog items are complete.
 
 ## End Goal with Specs
 - No Firebase imports in `Posts.js` or `Form.js`.
@@ -13,8 +13,11 @@ Replace `LinkedInJobAdd` in `linkedin-demo/src/assets/images/images.js` with a l
 - [x] Create `linkedin-demo/src/mock/posts.js` with 8-10 posts using mixed content (text-only, image URL, video placeholder text) and multiple mock users
 - [x] Update `linkedin-demo/src/components/posts/Posts.js` to import `mockPosts` and render them (no Firebase)
 - [x] Update `linkedin-demo/src/components/form/Form.js` to remove Firebase/storage usage and show a demo-only alert on submit
-- [ ] Replace `LinkedInJobAdd` in `linkedin-demo/src/assets/images/images.js` with a local or placeholder URL (non-Firebase) <- current
+- [x] Replace `LinkedInJobAdd` in `linkedin-demo/src/assets/images/images.js` with a local or placeholder URL (non-Firebase)
 
 ## Notes
 - Do not edit `App.js` or Header components.
 - Use ASCII text in mock content except the user's name (keep diacritics for Tadeáš Bíbr).
+
+## Loop Control
+STOP
