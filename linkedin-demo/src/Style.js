@@ -32,13 +32,17 @@ export default makeStyles((theme) => ({
 
   body__feed: {
     minWidth: 500,
+    maxWidth: 600,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     padding: "0 25px",
     paddingBottom: 25,
-    [theme.breakpoints.down("xs")]: {
+    [theme.breakpoints.down("sm")]: {
       minWidth: 0,
+      maxWidth: "100%",
+    },
+    [theme.breakpoints.down("xs")]: {
       padding: "0 8px",
     },
   },
