@@ -1,5 +1,5 @@
 ## Current Task
-Write network tests (tests 3-5).
+Write messaging + notifications tests (tests 6-8).
 
 ## End Goal with Specs
 Playwright e2e tests at `linkedin-demo/e2e/social.spec.ts` covering all social features against the live app. Tests must pass reliably in headless Chromium.
@@ -54,8 +54,8 @@ The sibling SubTurtle `e2e-core` is creating the Playwright config and helpers. 
 ## Backlog
 - [x] Check/create shared Playwright infrastructure (config + helpers)
 - [x] Write profile tests (tests 1-2)
-- [ ] Write network tests (tests 3-5) <- current
-- [ ] Write messaging + notifications tests (tests 6-8)
+- [x] Write network tests (tests 3-5)
+- [ ] Write messaging + notifications tests (tests 6-8) <- current
 - [ ] Write search tests (tests 9-10)
 - [ ] Write dark mode + mobile tests (tests 11-12)
 - [ ] Run full suite, fix failures, commit
