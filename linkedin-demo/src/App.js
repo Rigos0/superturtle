@@ -51,7 +51,6 @@ const App = () => {
     post: "Post",
     messaging: "Messaging",
     notifications: "Notifications",
-    jobs: "Jobs",
   }[activeTab] || "This section";
 
   const onNavigateProfile = (userId) => {

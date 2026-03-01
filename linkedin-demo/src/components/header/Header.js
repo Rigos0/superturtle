@@ -14,7 +14,6 @@ import {
 import SearchIcon from "@material-ui/icons/Search";
 import HomeIcon from "@material-ui/icons/Home";
 import GroupIcon from "@material-ui/icons/Group";
-import WorkIcon from "@material-ui/icons/Work";
 import TelegramIcon from "@material-ui/icons/Telegram";
 import NotificationsIcon from "@material-ui/icons/Notifications";
 import Brightness4Icon from "@material-ui/icons/Brightness4";
@@ -127,7 +126,6 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
   const items = [
     { Icon: <HomeIcon />, title: "Home", arrow: false, onClick: () => setActiveTab("home") },
     { Icon: <GroupIcon />, title: "My Network", arrow: false, onClick: () => setActiveTab("network") },
-    { Icon: <WorkIcon />, title: "Jobs", arrow: false, onClick: () => setActiveTab("jobs") },
     { Icon: <TelegramIcon />, title: "Messaging", arrow: false, onClick: () => setActiveTab("messaging") },
     {
       Icon: (
