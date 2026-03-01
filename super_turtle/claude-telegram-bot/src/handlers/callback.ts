@@ -78,20 +78,20 @@ function formatSessionPreview(preview?: string): string | null {
 function formatRecentMessages(messages?: import("../types").RecentMessage[]): string | null {
   if (!messages || messages.length === 0) return null;
 
-  // Show last 6 messages max (3 exchanges) to keep Telegram message manageable
-  const recent = messages.slice(-6);
-  const lines: string[] = [];
+  // Show last 5 user messages to give context for what this session was about
+  const userMessages = messages.filter((m) => m.role === "user").slice(-5);
+  if (userMessages.length === 0) return null;
 
-  for (const msg of recent) {
-    const roleLabel = msg.role === "user" ? "👤 You" : "🤖 Assistant";
+  const lines: string[] = [];
+  for (const msg of userMessages) {
     // Truncate long messages for display
-    const displayText = msg.text.length > 300
-      ? msg.text.slice(0, 297) + "..."
+    const displayText = msg.text.length > 200
+      ? msg.text.slice(0, 197) + "..."
       : msg.text;
-    lines.push(`${roleLabel}: ${displayText}`);
+    lines.push(`👤 ${displayText}`);
   }
 
-  return lines.join("\n\n");
+  return lines.join("\n");
 }
 
 /**

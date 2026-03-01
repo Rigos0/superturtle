@@ -458,8 +458,8 @@ export async function handleResume(ctx: Context): Promise<void> {
   ): string => {
     const date = new Date(savedAt);
     const dateStr = Number.isNaN(date.getTime())
-      ? "--/-- --:--"
-      : `${date.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
+      ? "-.- --:--"
+      : `${date.getDate()}.${date.getMonth() + 1} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
     const rawTitle = title.trim() || "Untitled";
     const base = `${driverEmoji} ${dateStr} ${rawTitle}`;
     if (base.length <= BUTTON_LABEL_MAX_LENGTH) return base;
