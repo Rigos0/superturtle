@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { Grid, Hidden } from "@material-ui/core";
+import { Grid, Hidden, Paper, Typography } from "@material-ui/core";
 import { ThemeProvider, createMuiTheme } from "@material-ui/core";
 import Header from "./components/header/Header";
 import Form from "./components/form/Form";
@@ -16,6 +16,7 @@ const App = () => {
   const classes = Styles();
   const dispatch = useDispatch();
   const mode = useSelector((state) => state.util);
+  const [activeTab, setActiveTab] = useState("home");
 
   const muiTheme = createMuiTheme({
     palette: {
@@ -26,6 +27,14 @@ const App = () => {
   useEffect(() => {
     dispatch(LoginAction(mockUser));
   }, [dispatch]);
+
+  const activeTabLabel = {
+    home: "Home",
+    network: "My Network",
+    post: "Post",
+    notifications: "Notifications",
+    jobs: "Jobs",
+  }[activeTab] || "This section";
 
   return (
     <ThemeProvider theme={muiTheme}>
@@ -43,7 +52,7 @@ const App = () => {
           }}
         >
           {/* Header */}
-          <Header />
+          <Header activeTab={activeTab} setActiveTab={setActiveTab} />
         </Grid>
         <Grid item container className={classes.app__body}>
           <Hidden smDown>
@@ -53,13 +62,22 @@ const App = () => {
             </Grid>
           </Hidden>
           <Grid item className={classes.body__feed} xs={12} sm={8} md={5}>
-            {/* Feed */}
-            <Grid item className={classes.feed__form}>
-              <Form />
-            </Grid>
-            <Grid item className={classes.feed__posts}>
-              <Posts />
-            </Grid>
+            {activeTab === "home" ? (
+              <>
+                {/* Feed */}
+                <Grid item className={classes.feed__form}>
+                  <Form />
+                </Grid>
+                <Grid item className={classes.feed__posts}>
+                  <Posts />
+                </Grid>
+              </>
+            ) : (
+              <Paper elevation={1} style={{ width: "100%", padding: 24 }}>
+                <Typography variant="h6">{activeTabLabel}</Typography>
+                <Typography color="textSecondary">Coming soon.</Typography>
+              </Paper>
+            )}
           </Grid>
           <Hidden smDown>
             <Grid item className={classes.body__widgets} md={3}>
