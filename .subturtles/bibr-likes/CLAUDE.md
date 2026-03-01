@@ -1,5 +1,5 @@
 ## Current Task
-Create `linkedin-demo/src/convex/comments.ts`: export `addComment` mutation (args: postId, authorId, body). Inserts into comments table with createdAt = Date.now(), increments `commentsCount` on the post. Export `listComments` query (args: postId) that returns all comments for a post sorted by createdAt asc, with author info joined from users table.
+Update `listPosts` in `linkedin-demo/src/convex/posts.ts`: for each post, also query the likes table to get the actual count (or keep using the denormalized likesCount field — either way ensure consistency).
 
 ## End Goal with Specs
 - `likes` table with userId + postId (enforce uniqueness in mutation)
@@ -12,8 +12,8 @@ Create `linkedin-demo/src/convex/comments.ts`: export `addComment` mutation (arg
 ## Backlog
 - [x] Update schema at `linkedin-demo/src/convex/schema.ts`: add `likes` table with fields { userId: v.id("users"), postId: v.id("posts") } and `comments` table with fields { postId: v.id("posts"), authorId: v.id("users"), body: v.string(), createdAt: v.number() }
 - [x] Create `linkedin-demo/src/convex/likes.ts`: export `toggleLike` mutation (args: userId, postId). Check if a like exists for this user+post pair using `ctx.db.query("likes").filter(...)`. If exists, delete it and decrement `likesCount` on the post. If not, insert and increment `likesCount`. Also export `getLikeStatus` query (args: userId, postId) that returns boolean.
-- [ ] Create `linkedin-demo/src/convex/comments.ts`: export `addComment` mutation (args: postId, authorId, body). Inserts into comments table with createdAt = Date.now(), increments `commentsCount` on the post. Export `listComments` query (args: postId) that returns all comments for a post sorted by createdAt asc, with author info joined from users table. <- current
-- [ ] Update `listPosts` in `linkedin-demo/src/convex/posts.ts`: for each post, also query the likes table to get the actual count (or keep using the denormalized likesCount field — either way ensure consistency)
+- [x] Create `linkedin-demo/src/convex/comments.ts`: export `addComment` mutation (args: postId, authorId, body). Inserts into comments table with createdAt = Date.now(), increments `commentsCount` on the post. Export `listComments` query (args: postId) that returns all comments for a post sorted by createdAt asc, with author info joined from users table.
+- [ ] Update `listPosts` in `linkedin-demo/src/convex/posts.ts`: for each post, also query the likes table to get the actual count (or keep using the denormalized likesCount field — either way ensure consistency) <- current
 - [ ] Run `cd linkedin-demo && npx convex dev --once` to push all new functions
 - [ ] Run `cd linkedin-demo && npm run build` to verify no import errors
 - [ ] Commit with message "Add likes and comments tables with mutations and queries"
