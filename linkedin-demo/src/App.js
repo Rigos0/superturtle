@@ -58,11 +58,6 @@ const App = () => {
     setView("profile");
   };
 
-  const onViewProfile = (userId) => {
-    setProfileUserId(userId);
-    setView("profile");
-  };
-
   const handleSetActiveTab = (tab) => {
     setActiveTab(tab);
     setView("feed");
@@ -153,11 +148,11 @@ const App = () => {
               ) : activeTab === "messaging" ? (
                 <Messaging />
               ) : activeTab === "network" ? (
-                <Network onViewProfile={onViewProfile} />
+                <Network onNavigateProfile={onNavigateProfile} />
               ) : activeTab === "notifications" ? (
                 <Notifications
                   onViewPost={onViewPost}
-                  onViewProfile={onViewProfile}
+                  onNavigateProfile={onNavigateProfile}
                   onNavigateMessaging={onNavigateMessaging}
                 />
               ) : activeTab === "home" ? (
@@ -167,10 +162,7 @@ const App = () => {
                     <Form />
                   </Grid>
                   <Grid item className={classes.feed__posts}>
-                    <Posts
-                      onNavigateProfile={onNavigateProfile}
-                      onViewProfile={onViewProfile}
-                    />
+                    <Posts onNavigateProfile={onNavigateProfile} />
                   </Grid>
                 </>
               ) : (

@@ -37,7 +37,7 @@ const getNotificationMessage = (notification) => {
   return `${displayName} sent you a notification`;
 };
 
-const Notifications = ({ onViewPost, onViewProfile, onNavigateMessaging }) => {
+const Notifications = ({ onViewPost, onNavigateProfile, onNavigateMessaging }) => {
   const classes = Style();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("xs"));
@@ -85,8 +85,8 @@ const Notifications = ({ onViewPost, onViewProfile, onNavigateMessaging }) => {
       return;
     }
 
-    if (typeof onViewProfile === "function" && notification.fromUser?._id) {
-      onViewProfile(notification.fromUser._id);
+    if (typeof onNavigateProfile === "function" && notification.fromUser?._id) {
+      onNavigateProfile(notification.fromUser._id);
     }
   };
 

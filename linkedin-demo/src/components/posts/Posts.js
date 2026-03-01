@@ -9,7 +9,7 @@ import PostSkeleton from "../skeletons/PostSkeleton";
 
 const DEFAULT_PROFILE_PHOTO = "https://i.pravatar.cc/200?img=68";
 
-const Posts = ({ onNavigateProfile, onViewProfile }) => {
+const Posts = ({ onNavigateProfile }) => {
   const classes = Style();
   const posts = useConvexPosts();
   const isLoading = posts === undefined;
@@ -47,7 +47,6 @@ const Posts = ({ onNavigateProfile, onViewProfile }) => {
               fileType={post.fileType}
               fileData={post.fileData}
               onNavigateProfile={onNavigateProfile}
-              onViewProfile={onViewProfile}
             />
           ))}
         </FlipMove>

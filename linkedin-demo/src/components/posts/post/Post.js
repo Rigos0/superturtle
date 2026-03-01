@@ -32,7 +32,6 @@ const Post = forwardRef(
       fileType,
       fileData,
       onNavigateProfile,
-      onViewProfile,
     },
     ref
   ) => {
@@ -62,9 +61,7 @@ const Post = forwardRef(
     const commentsList = comments ?? [];
     const isOwnPost = Boolean(authorId && user?._id && authorId === user._id);
     const isMenuOpen = Boolean(menuAnchorEl);
-    const canNavigateProfile =
-      (typeof onViewProfile === "function" && Boolean(authorId)) ||
-      typeof onNavigateProfile === "function";
+    const canNavigateProfile = typeof onNavigateProfile === "function";
 
     React.useEffect(() => {
       if (!isEditing) {
@@ -171,11 +168,6 @@ const Post = forwardRef(
     };
 
     const handleProfileClick = () => {
-      if (typeof onViewProfile === "function" && authorId) {
-        onViewProfile(authorId);
-        return;
-      }
-
       if (typeof onNavigateProfile === "function") {
         onNavigateProfile(authorId);
       }

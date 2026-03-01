@@ -15,7 +15,7 @@ const resolvePhoto = (photoURL) => {
   return photoURL;
 };
 
-const Network = ({ onViewProfile }) => {
+const Network = ({ onNavigateProfile }) => {
   const classes = Style();
   const users = useQuery(api.users.listAllUsers);
   const [searchTerm, setSearchTerm] = useState("");
@@ -83,11 +83,11 @@ const Network = ({ onViewProfile }) => {
               className={classes.card}
               role="button"
               tabIndex={0}
-              onClick={() => onViewProfile(user._id)}
+              onClick={() => onNavigateProfile(user._id)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  onViewProfile(user._id);
+                  onNavigateProfile(user._id);
                 }
               }}
             >
