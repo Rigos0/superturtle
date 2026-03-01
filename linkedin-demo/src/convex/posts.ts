@@ -10,9 +10,14 @@ export const listPosts = query({
     return await Promise.all(
       sortedPosts.map(async (post) => {
         const author = await ctx.db.get(post.authorId);
+        const likes = await ctx.db
+          .query("likes")
+          .filter((q) => q.eq(q.field("postId"), post._id))
+          .collect();
 
         return {
           ...post,
+          likesCount: likes.length,
           author: author
             ? {
                 displayName: author.displayName,
