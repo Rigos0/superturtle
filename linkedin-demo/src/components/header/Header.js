@@ -19,7 +19,6 @@ import NotificationsIcon from "@material-ui/icons/Notifications";
 import Brightness4Icon from "@material-ui/icons/Brightness4";
 import BrightnessHighIcon from "@material-ui/icons/BrightnessHigh";
 import PersonIcon from "@material-ui/icons/Person";
-import AppsIcon from "@material-ui/icons/Apps";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
 import MenuItem from "./menuItem/MenuItem";
@@ -143,7 +142,6 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
       onClick: () => setActiveTab("notifications"),
     },
     { Icon: <Avatar src={photoURL} />, title: "Me", arrow: true, onClick: () => onNavigateProfile(user?._id ?? null) },
-    { Icon: <AppsIcon />, title: "Apps", arrow: true },
   ];
 
   const navigateToHome = () => {
