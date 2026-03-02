@@ -4,6 +4,22 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 const MAX_POST_IMAGES = 4;
+const HASHTAG_REGEX = /(^|[^a-zA-Z0-9_])#([a-zA-Z0-9_]+)/g;
+
+const extractHashtags = (description: string) => {
+  const uniqueTags = new Set<string>();
+  const matches = description.matchAll(HASHTAG_REGEX);
+
+  for (const match of matches) {
+    const rawTag = match[2]?.trim().toLowerCase();
+    if (!rawTag) {
+      continue;
+    }
+    uniqueTags.add(rawTag);
+  }
+
+  return Array.from(uniqueTags);
+};
 
 const normalizeImageStorageIds = (storageIds?: Id<"_storage">[]) => {
   if (!Array.isArray(storageIds)) {
@@ -108,12 +124,17 @@ export const listPosts = query({
           .query("comments")
           .filter((q) => q.eq(q.field("postId"), post._id))
           .collect();
+        const reposts = await ctx.db
+          .query("reposts")
+          .withIndex("byOriginalPost", (q) => q.eq("originalPostId", post._id))
+          .collect();
 
         return {
           ...post,
           fileData: resolvedFileData,
           likesCount: likes.length,
           commentsCount: comments.length,
+          repostCount: reposts.length,
           imageUrls,
           author: author
             ? {
@@ -154,12 +175,17 @@ export const listPostsByUser = query({
           .query("comments")
           .filter((q) => q.eq(q.field("postId"), post._id))
           .collect();
+        const reposts = await ctx.db
+          .query("reposts")
+          .withIndex("byOriginalPost", (q) => q.eq("originalPostId", post._id))
+          .collect();
 
         return {
           ...post,
           fileData: resolvedFileData,
           likesCount: likes.length,
           commentsCount: comments.length,
+          repostCount: reposts.length,
           imageUrls,
           author: author
             ? {
@@ -234,8 +260,7 @@ export const createPost = mutation({
   handler: async (ctx, args) => {
     const imageStorageIds = normalizeImageStorageIds(args.imageStorageIds);
     const hasStorageImages = imageStorageIds.length > 0;
-
-    return await ctx.db.insert("posts", {
+    const postId = await ctx.db.insert("posts", {
       authorId: args.authorId,
       description: args.description,
       visibility: args.visibility ?? "public",
@@ -246,6 +271,20 @@ export const createPost = mutation({
       ...(!hasStorageImages && args.fileType ? { fileType: args.fileType } : {}),
       ...(!hasStorageImages && args.fileData ? { fileData: args.fileData } : {}),
     });
+
+    const hashtags = extractHashtags(args.description);
+    if (hashtags.length > 0) {
+      await Promise.all(
+        hashtags.map((tag) =>
+          ctx.db.insert("hashtags", {
+            tag,
+            postId,
+          }),
+        ),
+      );
+    }
+
+    return postId;
   },
 });
 
