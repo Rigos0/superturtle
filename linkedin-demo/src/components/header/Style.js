@@ -184,6 +184,40 @@ export default makeStyles((theme) => ({
       display: "none",
     },
   },
+  signInButton: {
+    marginLeft: 10,
+    textTransform: "none",
+    backgroundColor: "#2e7d32",
+    color: "#fff",
+    fontWeight: 600,
+    borderRadius: 999,
+    minWidth: 100,
+    boxShadow: "none",
+    "&:hover": {
+      backgroundColor: "#1b5e20",
+      boxShadow: "none",
+    },
+    [theme.breakpoints.down("xs")]: {
+      display: "none",
+    },
+  },
+  mobileSignInButton: {
+    display: "none",
+    [theme.breakpoints.down("xs")]: {
+      display: "inline-flex",
+      marginLeft: 10,
+      textTransform: "none",
+      backgroundColor: "#2e7d32",
+      color: "#fff",
+      fontWeight: 600,
+      borderRadius: 999,
+      minWidth: 80,
+      padding: "4px 12px",
+      "&:hover": {
+        backgroundColor: "#1b5e20",
+      },
+    },
+  },
   header__bottom__nav: {
     display: "none",
     borderRadius: 0,

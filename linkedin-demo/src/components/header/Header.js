@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { ChangeTheme } from "../../store/actions/util";
 import {
   Paper,
@@ -24,11 +24,18 @@ import useConvexUser from "../../hooks/useConvexUser";
 import MenuItem from "./menuItem/MenuItem";
 import Style from "./Style";
 
-const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) => {
+const Header = ({
+  activeTab,
+  setActiveTab,
+  onNavigateProfile,
+  onNavigateHome,
+  onSignInClick,
+}) => {
   const classes = Style();
   const dispatch = useDispatch();
   const mode = useSelector((state) => state.util);
   const authActions = useAuthActions();
+  const { isAuthenticated } = useConvexAuth();
   const signOut = authActions?.signOut ?? (() => Promise.resolve());
   const user = useConvexUser();
   const photoURL = user?.photoURL;
@@ -37,7 +44,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const unreadCount = useQuery(
     api.notifications.getUnreadCount,
-    user?._id ? { userId: user._id } : "skip"
+    isAuthenticated && user?._id ? { userId: user._id } : "skip"
   );
   const users = useQuery(
     api.users.searchUsers,
@@ -127,7 +134,7 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
     { Icon: <GroupIcon />, title: "My Network", arrow: false, onClick: () => setActiveTab("network") },
     { Icon: <TelegramIcon />, title: "Messaging", arrow: false, onClick: () => setActiveTab("messaging") },
     {
-      Icon: (
+      Icon: isAuthenticated ? (
         <Badge
           color="primary"
           badgeContent={unreadCount ?? 0}
@@ -136,12 +143,26 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
         >
           <NotificationsIcon />
         </Badge>
+      ) : (
+        <NotificationsIcon />
       ),
       title: "Notifications",
       arrow: false,
       onClick: () => setActiveTab("notifications"),
     },
-    { Icon: <Avatar src={photoURL} />, title: "Me", arrow: true, onClick: () => onNavigateProfile(user?._id ?? null) },
+    isAuthenticated
+      ? {
+          Icon: <Avatar src={photoURL} />,
+          title: "Me",
+          arrow: true,
+          onClick: () => onNavigateProfile(user?._id ?? null),
+        }
+      : {
+          Icon: <PersonIcon />,
+          title: "Sign In",
+          arrow: false,
+          onClick: () => onSignInClick?.(),
+        },
   ];
 
   const navigateToHome = () => {
@@ -175,7 +196,13 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
     {
       key: "profile",
       icon: PersonIcon,
-      onClick: () => onNavigateProfile(user?._id ?? null),
+      onClick: () => {
+        if (isAuthenticated) {
+          onNavigateProfile(user?._id ?? null);
+          return;
+        }
+        onSignInClick?.();
+      },
       isActive: false,
     },
   ];
@@ -293,11 +320,17 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
               )}
             </div>
           </ClickAwayListener>
-          <Avatar
-            src={photoURL}
-            onClick={() => onNavigateProfile(user?._id ?? null)}
-            style={{ cursor: "pointer" }}
-          />
+          {isAuthenticated ? (
+            <Avatar
+              src={photoURL}
+              onClick={() => onNavigateProfile(user?._id ?? null)}
+              style={{ cursor: "pointer" }}
+            />
+          ) : (
+            <Button className={classes.mobileSignInButton} onClick={() => onSignInClick?.()}>
+              Sign In
+            </Button>
+          )}
         </div>
         <div className={classes.header__nav}>
           {items.map(({ Icon, title, arrow, onClick }, i) => (
@@ -310,9 +343,19 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
             onClick={() => dispatch(ChangeTheme())}
           />
         </div>
-        <Button className={classes.signOutButton} onClick={() => signOut()} variant="outlined">
-          Sign Out
-        </Button>
+        {isAuthenticated ? (
+          <Button className={classes.signOutButton} onClick={() => signOut()} variant="outlined">
+            Sign Out
+          </Button>
+        ) : (
+          <Button
+            className={classes.signInButton}
+            onClick={() => onSignInClick?.()}
+            variant="contained"
+          >
+            Sign In
+          </Button>
+        )}
         <Paper className={classes.header__bottom__nav}>
           {tabItems.map(({ key, icon: Icon, onClick, isActive }) => (
             <Icon
