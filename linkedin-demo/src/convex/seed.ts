@@ -11,6 +11,7 @@ export const seedData = mutation({
 
     const alexId: Id<"users"> = await ctx.db.insert("users", {
       displayName: "Alex Turner",
+      username: "alex-turner",
       photoURL: "https://i.pravatar.cc/200?img=68",
       title: "🐢 Full-Stack Developer | Building things that matter",
       headline: "Turning ideas into products",
@@ -29,6 +30,7 @@ export const seedData = mutation({
 
     const averyId: Id<"users"> = await ctx.db.insert("users", {
       displayName: "Avery Chen",
+      username: "avery-chen",
       photoURL: "https://i.pravatar.cc/200?img=12",
       title: "Design Systems Lead @ Figma's Fever Dream",
       headline: "",
@@ -42,6 +44,7 @@ export const seedData = mutation({
 
     const devinId: Id<"users"> = await ctx.db.insert("users", {
       displayName: "Devin Carter",
+      username: "devin-carter",
       photoURL: "https://i.pravatar.cc/200?img=33",
       title: "Frontend Engineer | div Alignment Specialist",
       headline: "",
@@ -55,6 +58,7 @@ export const seedData = mutation({
 
     const sofiaId: Id<"users"> = await ctx.db.insert("users", {
       displayName: "Sofia Morales",
+      username: "sofia-morales",
       photoURL: "https://i.pravatar.cc/200?img=44",
       title: "Product Marketing | Making Decks Nobody Reads",
       headline: "",

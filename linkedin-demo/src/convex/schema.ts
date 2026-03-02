@@ -13,6 +13,7 @@ export default defineSchema({
     isAnonymous: v.optional(v.boolean()),
     // App-specific fields (optional so auth can create minimal user records)
     displayName: v.optional(v.string()),
+    username: v.optional(v.string()),
     photoURL: v.optional(v.string()),
     title: v.optional(v.string()),
     headline: v.optional(v.string()),
@@ -22,7 +23,9 @@ export default defineSchema({
     connections: v.optional(v.number()),
     followers: v.optional(v.number()),
     isFeatured: v.optional(v.boolean()),
-  }).index("email", ["email"]),
+  })
+    .index("email", ["email"])
+    .index("username", ["username"]),
   posts: defineTable({
     authorId: v.id("users"),
     description: v.string(),
