@@ -1,5 +1,5 @@
 ## Current Task
-Review comment delete icon usage in `linkedin-demo/src/components/posts/post/PostComments.js` and keep `DeleteOutlineIcon` if already correct.
+Update bottom nav (mobile) icons in `linkedin-demo/src/components/header/Header.js` `tabItems` to use outlined variants for inactive state and filled variants for active state.
 
 ## End Goal with Specs
 Modern, professional icons that match LinkedIn's visual language. Replace generic icons with more appropriate MUI icon variants. Improve post action bar, header nav, and sidebar icons.
@@ -32,9 +32,9 @@ Modern, professional icons that match LinkedIn's visual language. Replace generi
   - `FiberManualRecordIcon` (dot) — is fine for bullet points
   - `ErrorOutlineSharpIcon` → `InfoOutlinedIcon` (less alarming for info display)
   - `ExpandMoreIcon` is fine — keep
-- [ ] **Comment delete icon** in `linkedin-demo/src/components/posts/post/PostComments.js`: <- current
+- [x] **Comment delete icon** in `linkedin-demo/src/components/posts/post/PostComments.js`:
   - `DeleteOutlineIcon` is fine — keep
-- [ ] **Bottom nav (mobile)** in Header.js `tabItems` array:
+- [ ] **Bottom nav (mobile)** in Header.js `tabItems` array: <- current
   - Same icon updates as header nav — apply outlined variants
   - Active state should use filled variant, inactive should use outlined
 - [ ] Test build: `cd linkedin-demo && npm run build`
