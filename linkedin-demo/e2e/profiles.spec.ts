@@ -156,4 +156,37 @@ test.describe("Profiles e2e", () => {
     expect(await skillTags.count()).toBeGreaterThan(0);
     await expect(skillTags.first()).toHaveText(/\S+/);
   });
+
+  test("Profile education section renders school and degree entries on About tab when available", async ({
+    page,
+  }) => {
+    try {
+      await openProfileFromFirstPost(page);
+    } catch {
+      test.skip(true, "Feed/profile navigation data is unavailable on the live deployment.");
+    }
+
+    await page.getByRole("tab", { name: "About", exact: true }).click();
+
+    const educationHeading = page.getByRole("heading", { name: "Education", exact: true });
+    await expect(educationHeading).toBeVisible();
+
+    const emptyEducationState = page.getByText("No education added yet.", { exact: true });
+    test.skip(
+      await emptyEducationState.isVisible().catch(() => false),
+      "Profile has no education entries in the current live dataset.",
+    );
+
+    const educationCards = educationHeading.locator(
+      "xpath=ancestor::div[1]/following-sibling::div[.//h6]",
+    );
+    await expect(educationCards.first()).toBeVisible();
+
+    const firstEducationCard = educationCards.first();
+    const schoolEntry = firstEducationCard.getByRole("heading").first();
+    const degreeEntry = firstEducationCard.locator("p").first();
+
+    await expect(schoolEntry).toHaveText(/\S+/);
+    await expect(degreeEntry).toHaveText(/\S+/);
+  });
 });
