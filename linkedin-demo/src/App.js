@@ -5,7 +5,6 @@ import { Grid, Hidden, Modal, Typography } from "@material-ui/core";
 import { ThemeProvider, createMuiTheme } from "@material-ui/core";
 import { BrowserRouter, useMatch, useNavigate } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
-import LoadingGate from "./components/LoadingGate";
 import Header from "./components/header/Header";
 import Form from "./components/form/Form";
 import LoginCard from "./components/login/loginCard/LoginCard";
@@ -14,13 +13,11 @@ import Network from "./components/network/Network";
 import Notifications from "./components/notifications/Notifications";
 import Onboarding from "./components/onboarding/Onboarding";
 import Posts from "./components/posts/Posts";
-import Post from "./components/posts/post/Post";
+import HashtagFeed from "./components/hashtag/HashtagFeed";
 import Profile from "./components/profile/Profile";
 import Sidebar from "./components/sidebar/Sidebar";
 import Widgets from "./components/widgets/Widgets";
-import { DEFAULT_PHOTO } from "./constants";
 import { api } from "./convex/_generated/api";
-import useConvexUser from "./hooks/useConvexUser";
 import Styles from "./Style";
 import { LinkedInBgColor, darkPrimary } from "./assets/Colors";
 
@@ -36,80 +33,6 @@ const decodeRouteParam = (value = "") => {
   } catch {
     return value;
   }
-};
-
-const resolvePhoto = (photoURL) => {
-  if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
-    return DEFAULT_PHOTO;
-  }
-
-  return photoURL;
-};
-
-const HashtagFeedRoute = ({ tag, onNavigateProfile }) => {
-  const normalizedTag = useMemo(() => normalizeHashtag(tag ?? ""), [tag]);
-  const posts = useQuery(
-    api.hashtags.getPostsByHashtag,
-    normalizedTag ? { tag: normalizedTag } : "skip",
-  );
-  const user = useConvexUser();
-  const isLoading = posts === undefined;
-  const postIds = useMemo(() => (posts ?? []).map((post) => post._id), [posts]);
-  const userReactions = useQuery(
-    api.likes.getUserReactionsByPostIds,
-    user?._id && postIds.length > 0 ? { userId: user._id, postIds } : "skip",
-  );
-  const reactionCounts = useQuery(
-    api.likes.getReactionCountsByPostIds,
-    postIds.length > 0 ? { postIds } : "skip",
-  );
-
-  if (!normalizedTag) {
-    return (
-      <Typography variant="body2" color="textSecondary">
-        Invalid hashtag.
-      </Typography>
-    );
-  }
-
-  return (
-    <div style={{ width: "100%" }}>
-      <Typography
-        variant="h6"
-        style={{ fontWeight: 700, padding: "4px 0 12px", color: "#2e7d32" }}
-      >
-        #{normalizedTag}
-      </Typography>
-      <LoadingGate isLoading={isLoading}>
-        {posts?.length === 0 ? (
-          <Typography variant="body2" color="textSecondary">
-            No posts found for #{normalizedTag}.
-          </Typography>
-        ) : (
-          posts?.map((post) => (
-            <Post
-              key={post._id}
-              postId={post._id}
-              authorId={post.authorId}
-              authorUsername={post.author?.username ?? null}
-              likesCount={post.likesCount}
-              commentsCount={post.commentsCount}
-              currentReaction={userReactions?.[post._id] ?? undefined}
-              reactionCounts={reactionCounts?.[post._id]}
-              profile={resolvePhoto(post.authorPhotoURL ?? post.author?.photoURL)}
-              username={post.authorName ?? post.author?.displayName}
-              timestamp={post.createdAt}
-              description={post.description}
-              fileType={post.fileType}
-              fileData={post.fileData}
-              imageUrls={post.imageUrls}
-              onNavigateProfile={onNavigateProfile}
-            />
-          ))
-        )}
-      </LoadingGate>
-    </div>
-  );
 };
 
 const AppShell = () => {
@@ -363,7 +286,7 @@ const AppShell = () => {
                 />
               )}
               {shouldShowHashtagView && (
-                <HashtagFeedRoute
+                <HashtagFeed
                   tag={routeHashtag}
                   onNavigateProfile={onNavigateProfile}
                 />
