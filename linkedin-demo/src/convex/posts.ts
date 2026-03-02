@@ -186,6 +186,7 @@ export const createPost = mutation({
   args: {
     authorId: v.id("users"),
     description: v.string(),
+    visibility: v.optional(v.union(v.literal("public"), v.literal("connections"))),
     fileType: v.optional(v.string()),
     fileData: v.optional(v.string()),
     imageStorageIds: v.optional(v.array(v.id("_storage"))),
@@ -197,6 +198,7 @@ export const createPost = mutation({
     return await ctx.db.insert("posts", {
       authorId: args.authorId,
       description: args.description,
+      visibility: args.visibility ?? "public",
       createdAt: Date.now(),
       likesCount: 0,
       commentsCount: 0,

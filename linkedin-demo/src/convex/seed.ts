@@ -140,6 +140,7 @@ export const seedData = mutation({
       await ctx.db.insert("posts", {
         authorId: post.authorId,
         description: post.description,
+        visibility: "public",
         createdAt: createdAtFromMinutesAgo(post.minutesAgo),
         likesCount: 0,
         commentsCount: 0,

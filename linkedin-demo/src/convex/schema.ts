@@ -57,6 +57,7 @@ export default defineSchema({
   posts: defineTable({
     authorId: v.id("users"),
     description: v.string(),
+    visibility: v.union(v.literal("public"), v.literal("connections")),
     fileType: v.optional(v.string()),
     fileData: v.optional(v.string()),
     imageStorageIds: v.optional(v.array(v.id("_storage"))),
