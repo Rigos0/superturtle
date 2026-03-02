@@ -19,17 +19,10 @@ import Post from "../posts/post/Post";
 import Style from "./Style";
 
 const DEFAULT_PROFILE = {
-  displayName: "Alex Turner",
+  displayName: "User",
   photoURL: DEFAULT_PHOTO,
-  title: "TurtleIn builder",
-  location: "San Francisco, CA",
-  about:
-    "Passionate developer with a love for clean code and great UX. Previously built products at startups and scale-ups.",
-  experience: [
-    "Senior Developer - TechStartup",
-    "Product Engineer - ScaleUp Inc",
-    "CS Graduate - State University",
-  ],
+  title: "",
+  location: "",
 };
 
 const resolveProfilePhoto = (photoURL) => {
@@ -42,6 +35,15 @@ const resolveProfilePhoto = (photoURL) => {
   }
 
   return photoURL;
+};
+
+const resolveProfileText = (value, fallback = "") => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : fallback;
 };
 
 const Profile = ({
@@ -103,11 +105,10 @@ const Profile = ({
     resolvedUser?.photoURL ?? resolvedUser?.image ?? DEFAULT_PROFILE.photoURL,
   );
   const userName =
-    resolvedUser?.displayName ??
-    resolvedUser?.name ??
-    DEFAULT_PROFILE.displayName;
-  const userTitle = resolvedUser?.title ?? DEFAULT_PROFILE.title;
-  const location = resolvedUser?.location ?? DEFAULT_PROFILE.location;
+    resolveProfileText(resolvedUser?.displayName) ||
+    resolveProfileText(resolvedUser?.name, DEFAULT_PROFILE.displayName);
+  const userTitle = resolveProfileText(resolvedUser?.title, DEFAULT_PROFILE.title);
+  const location = resolveProfileText(resolvedUser?.location, DEFAULT_PROFILE.location);
   const connections = connectionCount ?? 0;
   const about =
     typeof resolvedUser?.about === "string" && resolvedUser.about.trim().length > 0
