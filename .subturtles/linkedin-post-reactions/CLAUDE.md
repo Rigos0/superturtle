@@ -1,5 +1,5 @@
 ## Current Task
-Add reactions mutations: `setReaction`, `removeReaction`.
+Update post UI to show reaction picker and current user reaction.
 
 ## End Goal with Specs
 - Reactions: Like, Love, Celebrate, Insightful, Funny.
@@ -8,6 +8,6 @@ Add reactions mutations: `setReaction`, `removeReaction`.
 
 ## Backlog
 - [x] Add reactions table/schema in Convex.
-- [ ] Add mutations: `setReaction`, `removeReaction`. <- current
-- [ ] Update post UI to show picker and current user reaction.
+- [x] Add mutations: `setReaction`, `removeReaction`.
+- [ ] Update post UI to show picker and current user reaction. <- current
 - [ ] Commit: `add post reactions`
