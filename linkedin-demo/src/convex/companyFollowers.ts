@@ -30,11 +30,28 @@ export const followCompany = mutation({
       return existingFollow._id;
     }
 
-    return await ctx.db.insert("companyFollowers", {
+    const followId = await ctx.db.insert("companyFollowers", {
       userId,
       companyId: args.companyId,
       createdAt: Date.now(),
     });
+
+    const adminIdsToNotify = company.admins.filter((adminId) => adminId !== userId);
+
+    await Promise.all(
+      adminIdsToNotify.map((adminId) =>
+        ctx.db.insert("notifications", {
+          userId: adminId,
+          type: "company_follow",
+          fromUserId: userId,
+          companyId: args.companyId,
+          read: false,
+          createdAt: Date.now(),
+        }),
+      ),
+    );
+
+    return followId;
   },
 });
 

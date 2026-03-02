@@ -199,6 +199,7 @@ export default defineSchema({
     type: v.string(),
     fromUserId: v.id("users"),
     postId: v.optional(v.id("posts")),
+    companyId: v.optional(v.id("companies")),
     conversationId: v.optional(v.id("conversations")),
     read: v.boolean(),
     createdAt: v.number(),
