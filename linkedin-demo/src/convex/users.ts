@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import type { Doc, Id } from "./_generated/dataModel";
 
 const USERNAME_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -15,10 +16,75 @@ const slugifyUsername = (value: string) => {
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
+const resolveUserPhotoURL = async (
+  ctx: { storage: { getUrl: (storageId: Id<"_storage">) => Promise<string | null> } },
+  user: Doc<"users">,
+) => {
+  if (user.photoStorageId) {
+    const storagePhotoURL = await ctx.storage.getUrl(user.photoStorageId);
+    if (storagePhotoURL) {
+      return storagePhotoURL;
+    }
+  }
+
+  return user.photoURL ?? user.image ?? "";
+};
+
+const resolveUserCoverURL = async (
+  ctx: { storage: { getUrl: (storageId: Id<"_storage">) => Promise<string | null> } },
+  user: Doc<"users">,
+) => {
+  if (!user.coverStorageId) {
+    return "";
+  }
+
+  const storageCoverURL = await ctx.storage.getUrl(user.coverStorageId);
+  return storageCoverURL ?? "";
+};
+
+const normalizeOptionalField = (value?: string) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : undefined;
+};
+
+const normalizeRequiredField = (value: string, fieldName: string) => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    throw new Error(`${fieldName} is required`);
+  }
+  return trimmedValue;
+};
+
+const normalizeExperienceInput = (args: {
+  title: string;
+  company: string;
+  startDate: string;
+  endDate?: string;
+  description?: string;
+}) => ({
+  title: normalizeRequiredField(args.title, "Title"),
+  company: normalizeRequiredField(args.company, "Company"),
+  startDate: normalizeRequiredField(args.startDate, "Start date"),
+  endDate: normalizeOptionalField(args.endDate),
+  description: normalizeOptionalField(args.description),
+});
+
 export const getUser = query({
   args: { id: v.id("users") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const user = await ctx.db.get(args.id);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      ...user,
+      photoURL: await resolveUserPhotoURL(ctx, user),
+      coverURL: await resolveUserCoverURL(ctx, user),
+    };
   },
 });
 
@@ -26,7 +92,17 @@ export const getFeaturedUser = query({
   args: {},
   handler: async (ctx) => {
     const users = await ctx.db.query("users").collect();
-    return users.find((user) => user.isFeatured) ?? null;
+    const featuredUser = users.find((user) => user.isFeatured);
+
+    if (!featuredUser) {
+      return null;
+    }
+
+    return {
+      ...featuredUser,
+      photoURL: await resolveUserPhotoURL(ctx, featuredUser),
+      coverURL: await resolveUserCoverURL(ctx, featuredUser),
+    };
   },
 });
 
@@ -37,7 +113,17 @@ export const getCurrentUser = query({
     if (!userId) {
       return null;
     }
-    return await ctx.db.get(userId);
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      ...user,
+      photoURL: await resolveUserPhotoURL(ctx, user),
+      coverURL: await resolveUserCoverURL(ctx, user),
+    };
   },
 });
 
@@ -51,10 +137,20 @@ export const getUserByUsername = query({
       return null;
     }
 
-    return await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("username", (q) => q.eq("username", normalizedUsername))
       .unique();
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      ...user,
+      photoURL: await resolveUserPhotoURL(ctx, user),
+      coverURL: await resolveUserCoverURL(ctx, user),
+    };
   },
 });
 
@@ -115,21 +211,268 @@ export const ensureUsername = mutation({
   },
 });
 
+export const updateCurrentUserProfile = mutation({
+  args: {
+    displayName: v.optional(v.string()),
+    title: v.optional(v.string()),
+    headline: v.optional(v.string()),
+    location: v.optional(v.string()),
+    about: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const patch: {
+      displayName?: string;
+      title?: string;
+      headline?: string;
+      location?: string;
+      about?: string;
+    } = {};
+
+    if (args.displayName !== undefined) {
+      patch.displayName = args.displayName.trim();
+    }
+    if (args.title !== undefined) {
+      patch.title = args.title.trim();
+    }
+    if (args.headline !== undefined) {
+      patch.headline = args.headline.trim();
+    }
+    if (args.location !== undefined) {
+      patch.location = args.location.trim();
+    }
+    if (args.about !== undefined) {
+      patch.about = args.about.trim();
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return user;
+    }
+
+    await ctx.db.patch(userId, patch);
+    return await ctx.db.get(userId);
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const saveProfilePhoto = mutation({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.photoStorageId && user.photoStorageId !== args.storageId) {
+      await ctx.storage.delete(user.photoStorageId);
+    }
+
+    const resolvedPhotoURL = await ctx.storage.getUrl(args.storageId);
+    const patch: { photoStorageId: Id<"_storage">; photoURL?: string } = {
+      photoStorageId: args.storageId,
+    };
+
+    if (resolvedPhotoURL) {
+      patch.photoURL = resolvedPhotoURL;
+    }
+
+    await ctx.db.patch(userId, patch);
+
+    return {
+      photoStorageId: args.storageId,
+      photoURL: resolvedPhotoURL ?? user.photoURL ?? user.image ?? "",
+    };
+  },
+});
+
+export const generateCoverUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const saveCoverPhoto = mutation({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.coverStorageId && user.coverStorageId !== args.storageId) {
+      await ctx.storage.delete(user.coverStorageId);
+    }
+
+    const resolvedCoverURL = await ctx.storage.getUrl(args.storageId);
+
+    await ctx.db.patch(userId, {
+      coverStorageId: args.storageId,
+    });
+
+    return {
+      coverStorageId: args.storageId,
+      coverURL: resolvedCoverURL ?? "",
+    };
+  },
+});
+
 export const listAllUsers = query({
   args: {},
   handler: async (ctx) => {
     const users = await ctx.db.query("users").collect();
 
-    return [...users]
-      .sort((a, b) => (a.displayName ?? a.name ?? "").localeCompare(b.displayName ?? b.name ?? ""))
-      .map((user) => ({
-        _id: user._id,
-        displayName: user.displayName ?? user.name ?? "Guest User",
-        photoURL: user.photoURL ?? user.image ?? "",
-        title: user.title ?? "",
-        location: user.location ?? "",
-        connections: user.connections ?? 0,
-      }));
+    return await Promise.all(
+      [...users]
+        .sort((a, b) => (a.displayName ?? a.name ?? "").localeCompare(b.displayName ?? b.name ?? ""))
+        .map(async (user) => ({
+          _id: user._id,
+          displayName: user.displayName ?? user.name ?? "Guest User",
+          photoURL: await resolveUserPhotoURL(ctx, user),
+          title: user.title ?? "",
+          location: user.location ?? "",
+          connections: user.connections ?? 0,
+        })),
+    );
+  },
+});
+
+export const addExperience = mutation({
+  args: {
+    title: v.string(),
+    company: v.string(),
+    startDate: v.string(),
+    endDate: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const normalizedInput = normalizeExperienceInput(args);
+    const nextEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      ...normalizedInput,
+    };
+
+    await ctx.db.patch(userId, {
+      experienceEntries: [...(user.experienceEntries ?? []), nextEntry],
+    });
+
+    return nextEntry;
+  },
+});
+
+export const updateExperience = mutation({
+  args: {
+    entryId: v.string(),
+    title: v.string(),
+    company: v.string(),
+    startDate: v.string(),
+    endDate: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const entries = user.experienceEntries ?? [];
+    const existingEntry = entries.find((entry) => entry.id === args.entryId);
+
+    if (!existingEntry) {
+      throw new Error("Experience entry not found");
+    }
+
+    const normalizedInput = normalizeExperienceInput(args);
+    const nextEntries = entries.map((entry) =>
+      entry.id === args.entryId
+        ? {
+            id: entry.id,
+            ...normalizedInput,
+          }
+        : entry,
+    );
+
+    await ctx.db.patch(userId, { experienceEntries: nextEntries });
+  },
+});
+
+export const removeExperience = mutation({
+  args: {
+    entryId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const currentEntries = user.experienceEntries ?? [];
+    const nextEntries = currentEntries.filter((entry) => entry.id !== args.entryId);
+
+    if (nextEntries.length === currentEntries.length) {
+      throw new Error("Experience entry not found");
+    }
+
+    await ctx.db.patch(userId, { experienceEntries: nextEntries });
   },
 });
 
@@ -145,17 +488,19 @@ export const searchUsers = query({
 
     const users = await ctx.db.query("users").collect();
 
-    return [...users]
-      .filter((user) =>
-        (user.displayName ?? user.name ?? "").toLowerCase().includes(normalizedQuery),
-      )
-      .sort((a, b) => (a.displayName ?? a.name ?? "").localeCompare(b.displayName ?? b.name ?? ""))
-      .slice(0, 10)
-      .map((user) => ({
-        _id: user._id,
-        displayName: user.displayName ?? user.name ?? "Guest User",
-        photoURL: user.photoURL ?? user.image ?? "",
-        title: user.title ?? "",
-      }));
+    return await Promise.all(
+      [...users]
+        .filter((user) =>
+          (user.displayName ?? user.name ?? "").toLowerCase().includes(normalizedQuery),
+        )
+        .sort((a, b) => (a.displayName ?? a.name ?? "").localeCompare(b.displayName ?? b.name ?? ""))
+        .slice(0, 10)
+        .map(async (user) => ({
+          _id: user._id,
+          displayName: user.displayName ?? user.name ?? "Guest User",
+          photoURL: await resolveUserPhotoURL(ctx, user),
+          title: user.title ?? "",
+        })),
+    );
   },
 });

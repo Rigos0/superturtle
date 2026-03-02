@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   Avatar,
@@ -8,6 +8,11 @@ import {
   Divider,
   Tabs,
   Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from "@material-ui/core";
 import ArrowBackIcon from "@material-ui/icons/ArrowBack";
 import LocationOnIcon from "@material-ui/icons/LocationOn";
@@ -22,8 +27,11 @@ const DEFAULT_PROFILE = {
   displayName: "User",
   photoURL: DEFAULT_PHOTO,
   title: "",
+  headline: "",
   location: "",
+  about: "",
 };
+const MAX_PROFILE_PHOTO_SIZE_BYTES = 5 * 1024 * 1024;
 
 const resolveProfilePhoto = (photoURL) => {
   if (typeof photoURL !== "string" || photoURL.length === 0) {
@@ -46,6 +54,39 @@ const resolveProfileText = (value, fallback = "") => {
   return trimmedValue.length > 0 ? trimmedValue : fallback;
 };
 
+const buildProfileFormData = (user) => ({
+  displayName:
+    resolveProfileText(user?.displayName) ||
+    resolveProfileText(user?.name, DEFAULT_PROFILE.displayName),
+  title: resolveProfileText(user?.title, DEFAULT_PROFILE.title),
+  headline: resolveProfileText(user?.headline, DEFAULT_PROFILE.headline),
+  location: resolveProfileText(user?.location, DEFAULT_PROFILE.location),
+  about: resolveProfileText(user?.about, DEFAULT_PROFILE.about),
+});
+
+const buildExperienceFormData = (entry = null) => ({
+  title: resolveProfileText(entry?.title),
+  company: resolveProfileText(entry?.company),
+  startDate: resolveProfileText(entry?.startDate),
+  endDate: resolveProfileText(entry?.endDate),
+  description: resolveProfileText(entry?.description),
+});
+
+const formatExperienceDateRange = (startDate, endDate) => {
+  const hasStartDate = typeof startDate === "string" && startDate.trim().length > 0;
+  const hasEndDate = typeof endDate === "string" && endDate.trim().length > 0;
+
+  if (hasStartDate && hasEndDate) {
+    return `${startDate} - ${endDate}`;
+  }
+
+  if (hasStartDate) {
+    return `${startDate} - Present`;
+  }
+
+  return "";
+};
+
 const Profile = ({
   onBack,
   onNavigateMessaging = () => {},
@@ -59,6 +100,12 @@ const Profile = ({
   const acceptConnection = useMutation(api.connections.acceptConnection);
   const rejectConnection = useMutation(api.connections.rejectConnection);
   const removeConnection = useMutation(api.connections.removeConnection);
+  const updateCurrentUserProfile = useMutation(api.users.updateCurrentUserProfile);
+  const addExperience = useMutation(api.users.addExperience);
+  const updateExperience = useMutation(api.users.updateExperience);
+  const removeExperience = useMutation(api.users.removeExperience);
+  const generateProfilePhotoUploadUrl = useMutation(api.users.generateUploadUrl);
+  const saveProfilePhoto = useMutation(api.users.saveProfilePhoto);
   const profileUser = useQuery(api.users.getUser, userId ? { id: userId } : "skip");
   const resolvedUser = profileUser ?? (!userId ? authUser : null);
   const resolvedUserId = userId ?? authUser?._id ?? null;
@@ -100,6 +147,16 @@ const Profile = ({
   const [activeTab, setActiveTab] = useState(0);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [isConnectionActionPending, setIsConnectionActionPending] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isProfileSavePending, setIsProfileSavePending] = useState(false);
+  const [profileFormData, setProfileFormData] = useState(() => buildProfileFormData(null));
+  const [isExperienceDialogOpen, setIsExperienceDialogOpen] = useState(false);
+  const [editingExperienceId, setEditingExperienceId] = useState(null);
+  const [experienceFormData, setExperienceFormData] = useState(() => buildExperienceFormData());
+  const [isExperienceSavePending, setIsExperienceSavePending] = useState(false);
+  const [isPhotoUploadPending, setIsPhotoUploadPending] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState("");
+  const profilePhotoInputRef = useRef(null);
 
   const userAvatar = resolveProfilePhoto(
     resolvedUser?.photoURL ?? resolvedUser?.image ?? DEFAULT_PROFILE.photoURL,
@@ -108,16 +165,22 @@ const Profile = ({
     resolveProfileText(resolvedUser?.displayName) ||
     resolveProfileText(resolvedUser?.name, DEFAULT_PROFILE.displayName);
   const userTitle = resolveProfileText(resolvedUser?.title, DEFAULT_PROFILE.title);
+  const userHeadline = resolveProfileText(resolvedUser?.headline, DEFAULT_PROFILE.headline);
   const location = resolveProfileText(resolvedUser?.location, DEFAULT_PROFILE.location);
   const connections = connectionCount ?? 0;
   const about =
     typeof resolvedUser?.about === "string" && resolvedUser.about.trim().length > 0
       ? resolvedUser.about
       : "No about information yet.";
-  const experience =
-    Array.isArray(resolvedUser?.experience) && resolvedUser.experience.length > 0
+  const experienceEntries = Array.isArray(resolvedUser?.experienceEntries)
+    ? resolvedUser.experienceEntries
+    : [];
+  const legacyExperience =
+    experienceEntries.length === 0 &&
+    Array.isArray(resolvedUser?.experience) &&
+    resolvedUser.experience.length > 0
       ? resolvedUser.experience
-      : ["No experience added yet."];
+      : [];
   const isOwnProfile =
     Boolean(authUser?._id) &&
     Boolean(resolvedUserId) &&
@@ -139,6 +202,10 @@ const Profile = ({
 
   React.useEffect(() => {
     setShowConnections(false);
+    setIsEditDialogOpen(false);
+    setIsExperienceDialogOpen(false);
+    setEditingExperienceId(null);
+    setExperienceFormData(buildExperienceFormData());
   }, [resolvedUserId]);
 
   const handleMessageClick = async () => {
@@ -255,6 +322,109 @@ const Profile = ({
     onViewProfile(targetUserId);
   };
 
+  const handleOpenEditDialog = () => {
+    if (!isOwnProfile) {
+      return;
+    }
+
+    setProfileFormData(buildProfileFormData(resolvedUser));
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    if (isProfileSavePending) {
+      return;
+    }
+    setIsEditDialogOpen(false);
+  };
+
+  const handleEditFieldChange = (fieldName) => (event) => {
+    const nextValue = event.target.value;
+    setProfileFormData((previousData) => ({
+      ...previousData,
+      [fieldName]: nextValue,
+    }));
+  };
+
+  const handleSaveProfile = async () => {
+    if (!isOwnProfile || isProfileSavePending) {
+      return;
+    }
+
+    setIsProfileSavePending(true);
+
+    try {
+      await updateCurrentUserProfile({
+        displayName: profileFormData.displayName,
+        title: profileFormData.title,
+        headline: profileFormData.headline,
+        location: profileFormData.location,
+        about: profileFormData.about,
+      });
+      setIsEditDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+    } finally {
+      setIsProfileSavePending(false);
+    }
+  };
+
+  const handleSelectProfilePhoto = () => {
+    if (!isOwnProfile || isPhotoUploadPending) {
+      return;
+    }
+    profilePhotoInputRef.current?.click();
+  };
+
+  const handleProfilePhotoChange = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!selectedFile || !isOwnProfile || isPhotoUploadPending) {
+      return;
+    }
+
+    if (!selectedFile.type.startsWith("image/")) {
+      setPhotoUploadError("Please choose an image file.");
+      return;
+    }
+
+    if (selectedFile.size > MAX_PROFILE_PHOTO_SIZE_BYTES) {
+      setPhotoUploadError("Photo must be 5MB or smaller.");
+      return;
+    }
+
+    setPhotoUploadError("");
+    setIsPhotoUploadPending(true);
+
+    try {
+      const uploadUrl = await generateProfilePhotoUploadUrl({});
+      const uploadResult = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": selectedFile.type || "application/octet-stream",
+        },
+        body: selectedFile,
+      });
+
+      if (!uploadResult.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const { storageId } = await uploadResult.json();
+      if (!storageId) {
+        throw new Error("Missing storage ID");
+      }
+
+      await saveProfilePhoto({ storageId });
+    } catch (error) {
+      console.error("Failed to upload profile photo:", error);
+      setPhotoUploadError("Profile photo upload failed. Please try again.");
+    } finally {
+      setIsPhotoUploadPending(false);
+    }
+  };
+
   return (
     <div className={classes.profile}>
       <Paper elevation={1} className={classes.card}>
@@ -273,6 +443,26 @@ const Profile = ({
           <>
             <div className={classes.coverArea}>
               <Avatar src={userAvatar} className={classes.avatar} />
+              {isOwnProfile && (
+                <>
+                  <input
+                    ref={profilePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePhotoChange}
+                    className={classes.hiddenInput}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleSelectProfilePhoto}
+                    disabled={isPhotoUploadPending}
+                    className={classes.photoUploadButton}
+                  >
+                    {isPhotoUploadPending ? "Uploading..." : "Update photo"}
+                  </Button>
+                </>
+              )}
             </div>
 
             <Typography variant="h6" className={classes.name}>
@@ -281,6 +471,16 @@ const Profile = ({
             <Typography variant="body2" className={classes.title}>
               {userTitle}
             </Typography>
+            {userHeadline && (
+              <Typography variant="body2" className={classes.title}>
+                {userHeadline}
+              </Typography>
+            )}
+            {photoUploadError && isOwnProfile && (
+              <Typography variant="body2" className={classes.photoUploadError}>
+                {photoUploadError}
+              </Typography>
+            )}
 
             <div className={classes.metaRow}>
               {location && (
@@ -306,6 +506,26 @@ const Profile = ({
                 {connections} connections
               </Typography>
             </div>
+
+            {isOwnProfile && (
+              <div className={classes.actionRow}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleOpenEditDialog}
+                  style={{
+                    textTransform: "none",
+                    borderRadius: 16,
+                    borderColor: "#2e7d32",
+                    color: "#2e7d32",
+                    fontWeight: 600,
+                    padding: "4px 16px",
+                  }}
+                >
+                  Edit profile
+                </Button>
+              </div>
+            )}
 
             {canShowProfileActions && (
               <div className={classes.actionRow}>
@@ -557,6 +777,73 @@ const Profile = ({
                 ))}
               </div>
             )}
+
+            <Dialog
+              open={isEditDialogOpen}
+              onClose={handleCloseEditDialog}
+              fullWidth
+              maxWidth="sm"
+              aria-labelledby="edit-profile-dialog-title"
+            >
+              <DialogTitle id="edit-profile-dialog-title">Edit profile</DialogTitle>
+              <DialogContent dividers>
+                <TextField
+                  label="Display name"
+                  value={profileFormData.displayName}
+                  onChange={handleEditFieldChange("displayName")}
+                  variant="outlined"
+                  margin="dense"
+                  fullWidth
+                />
+                <TextField
+                  label="Title"
+                  value={profileFormData.title}
+                  onChange={handleEditFieldChange("title")}
+                  variant="outlined"
+                  margin="dense"
+                  fullWidth
+                />
+                <TextField
+                  label="Headline"
+                  value={profileFormData.headline}
+                  onChange={handleEditFieldChange("headline")}
+                  variant="outlined"
+                  margin="dense"
+                  fullWidth
+                />
+                <TextField
+                  label="Location"
+                  value={profileFormData.location}
+                  onChange={handleEditFieldChange("location")}
+                  variant="outlined"
+                  margin="dense"
+                  fullWidth
+                />
+                <TextField
+                  label="About"
+                  value={profileFormData.about}
+                  onChange={handleEditFieldChange("about")}
+                  variant="outlined"
+                  margin="dense"
+                  fullWidth
+                  multiline
+                  rows={4}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={handleCloseEditDialog} disabled={isProfileSavePending}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveProfile}
+                  variant="contained"
+                  color="primary"
+                  disabled={isProfileSavePending}
+                >
+                  Save
+                </Button>
+              </DialogActions>
+            </Dialog>
           </>
         </LoadingGate>
       </Paper>
