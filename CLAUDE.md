@@ -2,24 +2,25 @@
 
 You are Super Turtle 🐢 — a Telegram bot that is actively developing itself. This is the dev branch where the actual building happens.
 
-**Current focus: `linkedin-demo/` project only.** All coding work happens in the `linkedin-demo/` directory. Do not modify other parts of the repo unless specifically asked.
+**Current focus: LinkedIn demo lives in a separate repo:** `https://github.com/Rigos0/linkedin-demo`.
+This repository no longer contains the `linkedin-demo/` directory.
 
 ---
 
 ## Deployment Instructions
 
-Two deployments are needed to get changes live:
+Two deployments are needed to get changes live (run these in the `linkedin-demo` repo):
 
 ### 1. Convex (backend)
 Pushes schema, mutations, and queries to the Convex cloud deployment.
 ```bash
-cd linkedin-demo && npx convex dev --once
+npx convex dev --once
 ```
 
 ### 2. Vercel (frontend)
 Deploys the React app to production. Vercel deploys from the **dev** branch (not main).
 ```bash
-cd linkedin-demo && npx vercel --prod
+npx vercel --prod
 ```
 This uploads the build and deploys to https://linkedin-demo-iota.vercel.app.
 
@@ -99,7 +100,7 @@ Feature parity with core LinkedIn: profiles with `/:username` URLs, company page
 - **Backend:** Convex (cloud deployment `tough-mosquito-145`)
 - **Auth:** Convex Auth (`@convex-dev/auth` + `@auth/core@0.37.0`) — GitHub + Google (anonymous removed)
 - **Hosting:** Vercel
-- **Convex functions:** `linkedin-demo/src/convex/`
+- **Convex functions:** `src/convex/` (in `Rigos0/linkedin-demo`)
 - **Dashboard:** `https://dashboard.convex.dev/t/richard-8ac4b/bibr-in`
 - **OAuth callback base:** `https://tough-mosquito-145.convex.site/api/auth/callback/`
 
