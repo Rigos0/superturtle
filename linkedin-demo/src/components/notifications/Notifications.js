@@ -5,18 +5,10 @@ import { useTheme } from "@material-ui/core/styles";
 import useMediaQuery from "@material-ui/core/useMediaQuery";
 import ReactTimeago from "react-timeago";
 import { api } from "../../convex/_generated/api";
-import { DEFAULT_PHOTO } from "../../constants";
 import useConvexUser from "../../hooks/useConvexUser";
+import { resolvePhoto } from "../../utils/photo";
 import LoadingGate from "../LoadingGate";
 import Style from "./Style";
-
-const resolvePhoto = (photoURL) => {
-  if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
-    return DEFAULT_PHOTO;
-  }
-
-  return photoURL;
-};
 
 const getNotificationMessage = (notification) => {
   const displayName = notification.fromUser?.displayName ?? "Someone";
@@ -145,13 +137,14 @@ const Notifications = ({ onViewPost, onNavigateProfile, onNavigateMessaging }) =
         ) : (
           <div className={classes.list}>
             {notifications?.map((notification) => (
-              <button
+              <Button
                 type="button"
                 key={notification._id}
                 className={`${classes.item} ${
                   notification.read ? classes.readItem : classes.unreadItem
                 }`}
                 onClick={() => handleItemClick(notification)}
+                disableRipple
               >
                 <Avatar
                   src={resolvePhoto(notification.fromUser?.photoURL)}
@@ -167,7 +160,7 @@ const Notifications = ({ onViewPost, onNavigateProfile, onNavigateMessaging }) =
                     />
                   </Typography>
                 </div>
-              </button>
+              </Button>
             ))}
           </div>
         )}
