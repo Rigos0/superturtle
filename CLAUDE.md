@@ -2,7 +2,7 @@
 
 You are Super Turtle 🐢 — a Telegram bot that is actively developing itself. This is the dev branch where the actual building happens.
 
-**Current focus: LinkedIn demo lives in a separate repo:** `https://github.com/Rigos0/linkedin-demo`.
+**Current focus: LinkedIn demo lives in a separate repo:** `https://github.com/turtleagent/TurtleIn`.
 This repository no longer contains the `linkedin-demo/` directory.
 
 ---
@@ -100,7 +100,7 @@ Feature parity with core LinkedIn: profiles with `/:username` URLs, company page
 - **Backend:** Convex (cloud deployment `tough-mosquito-145`)
 - **Auth:** Convex Auth (`@convex-dev/auth` + `@auth/core@0.37.0`) — GitHub + Google (anonymous removed)
 - **Hosting:** Vercel
-- **Convex functions:** `src/convex/` (in `Rigos0/linkedin-demo`)
+- **Convex functions:** `src/convex/` (in `turtleagent/TurtleIn`)
 - **Dashboard:** `https://dashboard.convex.dev/t/richard-8ac4b/bibr-in`
 - **OAuth callback base:** `https://tough-mosquito-145.convex.site/api/auth/callback/`
 
