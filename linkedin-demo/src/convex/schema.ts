@@ -54,6 +54,21 @@ export default defineSchema({
   })
     .index("email", ["email"])
     .index("username", ["username"]),
+  companies: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    logoStorageId: v.optional(v.id("_storage")),
+    coverStorageId: v.optional(v.id("_storage")),
+    description: v.string(),
+    website: v.optional(v.string()),
+    industry: v.string(),
+    size: v.string(),
+    founded: v.optional(v.string()),
+    locations: v.optional(v.array(v.string())),
+    createdBy: v.id("users"),
+    admins: v.array(v.id("users")),
+    createdAt: v.number(),
+  }).index("slug", ["slug"]),
   posts: defineTable({
     authorId: v.id("users"),
     description: v.string(),
@@ -171,6 +186,14 @@ export default defineSchema({
     .index("byFollower", ["followerId"])
     .index("byFollowed", ["followedId"])
     .index("byFollowerAndFollowed", ["followerId", "followedId"]),
+  companyFollowers: defineTable({
+    followerId: v.id("users"),
+    companyId: v.id("companies"),
+    createdAt: v.number(),
+  })
+    .index("byFollower", ["followerId"])
+    .index("byCompany", ["companyId"])
+    .index("byFollowerAndCompany", ["followerId", "companyId"]),
   notifications: defineTable({
     userId: v.id("users"),
     type: v.string(),
