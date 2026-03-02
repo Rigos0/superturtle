@@ -1,5 +1,5 @@
 ## Current Task
-Finish the remaining Profile connections UX (connections list panel + remove on connected hover), then continue with Network and Sidebar wiring.
+Update Network connections UX: self-filtered list, real status-aware action buttons, pending incoming requests, and real connection counts.
 
 ## End Goal with Specs
 - Connect button on Profile and Network calls `sendConnectionRequest` mutation
@@ -13,7 +13,7 @@ Finish the remaining Profile connections UX (connections list panel + remove on 
 - `npm run build` passes
 
 ## Backlog
-- [ ] Update `linkedin-demo/src/components/profile/Profile.js`: <- current
+- [x] Update `linkedin-demo/src/components/profile/Profile.js`:
   - Import `useQuery, useMutation` from `convex/react`, `api` from convex
   - Query `api.connections.getConnectionStatus({ userId1: authUser._id, userId2: profileUserId })` to get button state
   - Query `api.connections.getConnectionCount({ userId: profileUserId })` for real count
@@ -23,8 +23,7 @@ Finish the remaining Profile connections UX (connections list panel + remove on 
   - Hide Connect button entirely when `authUser._id === profileUserId` (own profile)
   - Make "X connections" text clickable — onClick sets a `showConnections` state to true
   - When `showConnections` is true, render a connections list panel (query `api.connections.listConnections({ userId: profileUserId })`). Each item: Avatar + displayName + title, clickable to navigate to that user's profile via `onViewProfile(user._id)`.
-  - Progress (this commit): wired real status/count queries, real send/accept/reject actions, own-profile action hiding, and clickable connections count callback.
-- [ ] Update `linkedin-demo/src/components/network/Network.js`:
+- [ ] Update `linkedin-demo/src/components/network/Network.js`: <- current
   - Filter out current user from the users list: `filteredUsers = users.filter(u => u._id !== user?._id)`
   - For each user card, query `api.connections.getConnectionStatus` to show correct button state
   - Wire Connect button to `sendConnectionRequest` mutation

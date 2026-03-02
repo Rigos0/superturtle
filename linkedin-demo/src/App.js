@@ -172,6 +172,7 @@ const App = () => {
                   userId={profileUserId}
                   onBack={() => setView("feed")}
                   onNavigateMessaging={onNavigateMessaging}
+                  onViewProfile={onNavigateProfile}
                 />
               )}
 

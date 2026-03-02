@@ -47,7 +47,7 @@ const resolveProfilePhoto = (photoURL) => {
 const Profile = ({
   onBack,
   onNavigateMessaging = () => {},
-  onViewConnections = () => {},
+  onViewProfile = () => {},
   userId = null,
 }) => {
   const classes = Style();
@@ -56,9 +56,12 @@ const Profile = ({
   const sendConnectionRequest = useMutation(api.connections.sendConnectionRequest);
   const acceptConnection = useMutation(api.connections.acceptConnection);
   const rejectConnection = useMutation(api.connections.rejectConnection);
+  const removeConnection = useMutation(api.connections.removeConnection);
   const profileUser = useQuery(api.users.getUser, userId ? { id: userId } : "skip");
   const resolvedUser = profileUser ?? (!userId ? authUser : null);
   const resolvedUserId = userId ?? authUser?._id ?? null;
+  const [showConnections, setShowConnections] = useState(false);
+  const [isConnectedActionHovered, setIsConnectedActionHovered] = useState(false);
   const connectionStatus = useQuery(
     api.connections.getConnectionStatus,
     authUser?._id && resolvedUserId
@@ -68,6 +71,10 @@ const Profile = ({
   const connectionCount = useQuery(
     api.connections.getConnectionCount,
     resolvedUserId ? { userId: resolvedUserId } : "skip",
+  );
+  const profileConnections = useQuery(
+    api.connections.listConnections,
+    showConnections && resolvedUserId ? { userId: resolvedUserId } : "skip",
   );
   const posts = useQuery(
     api.posts.listPostsByUser,
@@ -120,6 +127,18 @@ const Profile = ({
     Boolean(authUser?._id) &&
     Boolean(resolvedUserId) &&
     connectionStatus === undefined;
+  const connectionsList = React.useMemo(() => profileConnections ?? [], [profileConnections]);
+  const isConnectionsListLoading = showConnections && profileConnections === undefined;
+
+  React.useEffect(() => {
+    if (connectionState !== "accepted") {
+      setIsConnectedActionHovered(false);
+    }
+  }, [connectionState]);
+
+  React.useEffect(() => {
+    setShowConnections(false);
+  }, [resolvedUserId]);
 
   const handleMessageClick = async () => {
     if (!authUser?._id || !resolvedUserId || isStartingConversation) {
@@ -192,12 +211,47 @@ const Profile = ({
     }
   };
 
+  const handleRemoveConnection = async () => {
+    if (!connectionStatus?.connectionId || isConnectionActionPending) {
+      return;
+    }
+
+    if (!isConnectedActionHovered) {
+      setIsConnectedActionHovered(true);
+      return;
+    }
+
+    setIsConnectionActionPending(true);
+
+    try {
+      await removeConnection({ connectionId: connectionStatus.connectionId });
+      setIsConnectedActionHovered(false);
+    } catch (error) {
+      console.error("Failed to remove connection:", error);
+    } finally {
+      setIsConnectionActionPending(false);
+    }
+  };
+
   const handleViewConnections = () => {
     if (!resolvedUserId) {
       return;
     }
 
-    onViewConnections(resolvedUserId);
+    setShowConnections(true);
+  };
+
+  const handleCloseConnections = () => {
+    setShowConnections(false);
+  };
+
+  const handleViewConnectionProfile = (targetUserId) => {
+    if (!targetUserId) {
+      return;
+    }
+
+    setShowConnections(false);
+    onViewProfile(targetUserId);
   };
 
   return (
@@ -334,17 +388,22 @@ const Profile = ({
                   <Button
                     variant="outlined"
                     size="small"
-                    disabled
+                    onClick={handleRemoveConnection}
+                    onMouseEnter={() => setIsConnectedActionHovered(true)}
+                    onMouseLeave={() => setIsConnectedActionHovered(false)}
+                    onFocus={() => setIsConnectedActionHovered(true)}
+                    onBlur={() => setIsConnectedActionHovered(false)}
+                    disabled={isConnectionActionPending}
                     style={{
                       textTransform: "none",
                       borderRadius: 16,
-                      borderColor: "#2e7d32",
-                      color: "#2e7d32",
+                      borderColor: isConnectedActionHovered ? "#c62828" : "#2e7d32",
+                      color: isConnectedActionHovered ? "#c62828" : "#2e7d32",
                       fontWeight: 600,
                       padding: "4px 16px",
                     }}
                   >
-                    Connected ✓
+                    {isConnectedActionHovered ? "Remove" : "Connected ✓"}
                   </Button>
                 )}
                 <Button
@@ -363,6 +422,63 @@ const Profile = ({
                 >
                   Message
                 </Button>
+              </div>
+            )}
+
+            {showConnections && (
+              <div className={classes.connectionsPanel}>
+                <div className={classes.connectionsPanelHeader}>
+                  <Typography variant="subtitle2" className={classes.connectionsPanelTitle}>
+                    {connections} connections
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="text"
+                    className={classes.closeConnectionsButton}
+                    onClick={handleCloseConnections}
+                  >
+                    Close
+                  </Button>
+                </div>
+                <LoadingGate isLoading={isConnectionsListLoading}>
+                  {connectionsList.length === 0 ? (
+                    <Typography variant="body2" color="textSecondary">
+                      No connections to show yet.
+                    </Typography>
+                  ) : (
+                    <div className={classes.connectionsList}>
+                      {connectionsList.map((connection) => (
+                        <div
+                          key={connection.connectionId}
+                          role="button"
+                          tabIndex={0}
+                          className={classes.connectionCard}
+                          onClick={() => handleViewConnectionProfile(connection.user._id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              handleViewConnectionProfile(connection.user._id);
+                            }
+                          }}
+                        >
+                          <Avatar
+                            src={resolveProfilePhoto(connection.user.photoURL)}
+                            alt={connection.user.displayName}
+                            className={classes.connectionAvatar}
+                          />
+                          <div className={classes.connectionCardInfo}>
+                            <Typography className={classes.connectionCardName}>
+                              {connection.user.displayName}
+                            </Typography>
+                            <Typography className={classes.connectionCardTitle}>
+                              {connection.user.title || "No title listed"}
+                            </Typography>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </LoadingGate>
               </div>
             )}
             <Divider style={{ margin: "16px 0 0" }} />

@@ -122,6 +122,67 @@ export default makeStyles((theme) => ({
     flexWrap: "wrap",
     minWidth: 0,
   },
+  connectionsPanel: {
+    width: "100%",
+    marginTop: 12,
+    padding: theme.spacing(0, 2),
+    boxSizing: "border-box",
+  },
+  connectionsPanelHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  connectionsPanelTitle: {
+    fontWeight: 700,
+  },
+  closeConnectionsButton: {
+    textTransform: "none",
+    color: "#2e7d32",
+    minHeight: 36,
+    borderRadius: 18,
+    fontWeight: 600,
+  },
+  connectionsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1),
+  },
+  connectionCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.25),
+    border: "1px solid rgba(46, 125, 50, 0.25)",
+    borderRadius: 10,
+    padding: theme.spacing(1),
+    cursor: "pointer",
+    transition: "background-color 0.2s ease, border-color 0.2s ease",
+    "&:hover, &:focus": {
+      outline: "none",
+      backgroundColor: "rgba(46, 125, 50, 0.06)",
+      borderColor: "rgba(46, 125, 50, 0.45)",
+    },
+  },
+  connectionAvatar: {
+    width: 40,
+    height: 40,
+  },
+  connectionCardInfo: {
+    minWidth: 0,
+  },
+  connectionCardName: {
+    fontWeight: 600,
+    fontSize: "0.9rem",
+    lineHeight: 1.3,
+    wordBreak: "break-word",
+  },
+  connectionCardTitle: {
+    color: theme.palette.text.secondary,
+    fontSize: "0.8rem",
+    lineHeight: 1.4,
+    wordBreak: "break-word",
+  },
   tabs: {
     width: "100%",
     minWidth: 0,
