@@ -22,7 +22,7 @@ export default defineSchema({
     connections: v.optional(v.number()),
     followers: v.optional(v.number()),
     isFeatured: v.optional(v.boolean()),
-  }),
+  }).index("email", ["email"]),
   posts: defineTable({
     authorId: v.id("users"),
     description: v.string(),

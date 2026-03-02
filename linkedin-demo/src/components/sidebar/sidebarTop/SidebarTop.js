@@ -19,7 +19,7 @@ const SidebarTop = () => {
       ></div>
       <Avatar src={user?.photoURL} />
       <h4>{user?.displayName ?? "Guest User"}</h4>
-      <p className={classes.subtitle}>{user?.title ?? "Turtle In member"}</p>
+      <p className={classes.subtitle}>{user?.title ?? "TurtleIn member"}</p>
       <div className={classes.stats}>
         <Divider />
         <div className={classes.stat}>

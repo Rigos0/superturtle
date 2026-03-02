@@ -250,6 +250,17 @@ export default makeStyles((theme) => ({
       color: "grey",
     },
   },
+  comment__delete: {
+    fontSize: 16,
+    color: theme.palette.text.secondary,
+    cursor: "pointer",
+    marginLeft: "auto",
+    opacity: 0.6,
+    "&:hover": {
+      opacity: 1,
+      color: "#d32f2f",
+    },
+  },
   comment__form: {
     width: "100%",
     display: "flex",

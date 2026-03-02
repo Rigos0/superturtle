@@ -1,13 +1,11 @@
 import React, { useState } from "react";
 import { useMutation } from "convex/react";
 import { Chip, Paper } from "@material-ui/core";
-import { useTheme } from "@material-ui/core";
 import VideocamRoundedIcon from "@material-ui/icons/VideocamRounded";
 import YouTubeIcon from "@material-ui/icons/YouTube";
-import CalendarViewDayIcon from "@material-ui/icons/CalendarViewDay";
 import PhotoSizeSelectActualIcon from "@material-ui/icons/PhotoSizeSelectActual";
 import CreateIcon from "@material-ui/icons/Create";
-import { LinkedInBlue, LinkedInLightBlue } from "../../assets/Colors";
+// Colors import removed — using green branding directly
 import Styles from "./Style";
 import swal from "@sweetalert/with-react";
 import InsertLinkIcon from "@material-ui/icons/InsertLink";
@@ -18,7 +16,6 @@ import useConvexUser from "../../hooks/useConvexUser";
 
 const Form = () => {
   const classes = Styles();
-  const theme = useTheme();
   const createPost = useMutation(api.posts.createPost);
   const featuredUser = useConvexUser();
 
@@ -196,7 +193,7 @@ const Form = () => {
           className={classes.media__options}
         >
           <PhotoSizeSelectActualIcon
-            style={{ color: theme.palette.type === "dark" ? LinkedInLightBlue : LinkedInBlue }}
+            style={{ color: "#2e7d32" }}
           />
           <h4>Photo</h4>
         </label>
@@ -211,10 +208,6 @@ const Form = () => {
         <div className={classes.media__options} onClick={toggleURL_Tab}>
           <InsertLinkIcon style={{ color: "#e88ee4", fontSize: 30 }} />
           <h4>URL</h4>
-        </div>
-        <div className={classes.media__options}>
-          <CalendarViewDayIcon style={{ color: "#f5987e" }} />
-          <h4>Write article</h4>
         </div>
       </div>
     </Paper>

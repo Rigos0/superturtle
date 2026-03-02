@@ -30,6 +30,8 @@ Thumbs.db
 # Temp / integration artifacts
 .tmp/
 docs/.vitepress/cache/
+linkedin-demo/test-results/
+debug_redirect.txt
 
 # SubTurtle workspaces (runtime state, not committed)
 .subturtles/

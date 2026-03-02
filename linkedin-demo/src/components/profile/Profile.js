@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   Avatar,
@@ -21,7 +21,7 @@ import Style from "./Style";
 const DEFAULT_PROFILE = {
   displayName: "Alex Turner",
   photoURL: DEFAULT_PHOTO,
-  title: "Turtle In builder",
+  title: "TurtleIn builder",
   location: "San Francisco, CA",
   about:
     "Passionate developer with a love for clean code and great UX. Previously built products at startups and scale-ups.",
@@ -58,6 +58,19 @@ const Profile = ({ onBack, onNavigateMessaging = () => {}, userId = null }) => {
     resolvedUserId ? { authorId: resolvedUserId } : "skip",
   );
   const isUserLoading = userId ? profileUser === undefined : resolvedUser === null;
+  const userPosts = React.useMemo(() => posts ?? [], [posts]);
+
+  const profilePostIds = React.useMemo(
+    () => userPosts.map((post) => post._id),
+    [userPosts],
+  );
+
+  const profileLikeStatuses = useQuery(
+    api.likes.getLikeStatuses,
+    authUser?._id && profilePostIds.length > 0
+      ? { userId: authUser._id, postIds: profilePostIds }
+      : "skip",
+  );
 
   const [activeTab, setActiveTab] = useState(0);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
@@ -82,7 +95,6 @@ const Profile = ({ onBack, onNavigateMessaging = () => {}, userId = null }) => {
     Array.isArray(resolvedUser?.experience) && resolvedUser.experience.length > 0
       ? resolvedUser.experience
       : ["No experience added yet."];
-  const userPosts = posts ?? [];
 
   const handleMessageClick = async () => {
     if (!authUser?._id || !resolvedUserId || isStartingConversation) {
@@ -210,9 +222,10 @@ const Profile = ({ onBack, onNavigateMessaging = () => {}, userId = null }) => {
                           authorId={post.authorId}
                           likesCount={post.likesCount}
                           commentsCount={post.commentsCount}
+                          liked={profileLikeStatuses?.[post._id] ?? undefined}
                           profile={resolveProfilePhoto(post.author?.photoURL ?? userAvatar)}
                           username={post.author?.displayName ?? userName}
-                          timestamp={{ toDate: () => new Date(post.createdAt) }}
+                          timestamp={post.createdAt}
                           description={post.description}
                           fileType={post.fileType}
                           fileData={post.fileData}

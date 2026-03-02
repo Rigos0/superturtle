@@ -15,7 +15,7 @@ const Widgets = () => {
     <div className={classes.widgets}>
       <Paper className={classes.widgets__top}>
         <div className={classes.heading}>
-          <h4>Turtle In News</h4>
+          <h4>TurtleIn News</h4>
           <ErrorOutlineSharpIcon />
         </div>
         {top_1.map((title, i) => (
@@ -51,7 +51,7 @@ const Widgets = () => {
       </Paper>
       <div className={classes.widgets__bottom}>
         <Paper className={classes.addBanner}>
-          <h4>🐢 Turtle In Premium</h4>
+          <h4>🐢 TurtleIn Premium</h4>
           <p>Unlock priority visibility and premium networking insights.</p>
         </Paper>
       </div>
@@ -60,7 +60,7 @@ const Widgets = () => {
 };
 
 const top_1 = [
-  "Turtle In reaches 1000 users",
+  "TurtleIn reaches 1000 users",
   "React 19 brings new hooks",
   "Convex raises Series B",
   "Remote work is here to stay",

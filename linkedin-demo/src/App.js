@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { useSelector } from "react-redux";
-import { Grid, Hidden, Paper, Typography } from "@material-ui/core";
+import { Grid, Hidden, Typography } from "@material-ui/core";
 import { ThemeProvider, createMuiTheme } from "@material-ui/core";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Header from "./components/header/Header";
@@ -26,32 +26,28 @@ const App = () => {
   const [profileUserId, setProfileUserId] = useState(null);
   const { isAuthenticated, isLoading } = useConvexAuth();
   const seedData = useMutation(api.seed.seedData);
+  const seededRef = useRef(false);
 
-  const muiTheme = createMuiTheme({
-    palette: {
-      type: mode ? "dark" : "light",
-    },
-  });
+  const muiTheme = useMemo(
+    () =>
+      createMuiTheme({
+        palette: {
+          type: mode ? "dark" : "light",
+        },
+      }),
+    [mode],
+  );
 
   useEffect(() => {
-    const runSeed = async () => {
-      try {
-        await seedData({});
-      } catch (error) {
-        console.error("Failed to seed Convex data:", error);
-      }
-    };
+    if (seededRef.current) {
+      return;
+    }
+    seededRef.current = true;
 
-    runSeed();
+    seedData({}).catch((error) => {
+      console.error("Failed to seed Convex data:", error);
+    });
   }, [seedData]);
-
-  const activeTabLabel = {
-    home: "Home",
-    network: "My Network",
-    post: "Post",
-    messaging: "Messaging",
-    notifications: "Notifications",
-  }[activeTab] || "This section";
 
   const onNavigateProfile = (userId) => {
     setProfileUserId(userId ?? null);
@@ -90,7 +86,30 @@ const App = () => {
   };
 
   if (isLoading) {
-    return null;
+    return (
+      <ThemeProvider theme={muiTheme}>
+        <Grid
+          container
+          className={`${classes.app} fade-in`}
+          style={{
+            backgroundColor: mode ? darkPrimary : LinkedInBgColor,
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "100vh",
+          }}
+        >
+          <div className="fade-in" style={{ textAlign: "center" }}>
+            <img src="/turtle-mascot.png" alt="TurtleIn" style={{ height: 64 }} />
+            <Typography
+              variant="h6"
+              style={{ color: "#2e7d32", fontWeight: 700, marginTop: 8 }}
+            >
+              TurtleIn
+            </Typography>
+          </div>
+        </Grid>
+      </ThemeProvider>
+    );
   }
 
   if (!isAuthenticated) {
@@ -98,7 +117,7 @@ const App = () => {
       <ThemeProvider theme={muiTheme}>
         <Grid
           container
-          className={classes.app}
+          className={`${classes.app} fade-in`}
           style={{ backgroundColor: mode ? darkPrimary : LinkedInBgColor }}
         >
           <Login />
@@ -107,11 +126,17 @@ const App = () => {
     );
   }
 
+  // Helper: style for show/hide tabs without unmounting (keeps Convex subscriptions alive)
+  const showWhen = (condition) => ({
+    display: condition ? undefined : "none",
+    width: "100%",
+  });
+
   return (
     <ThemeProvider theme={muiTheme}>
       <Grid
         container
-        className={classes.app}
+        className={`${classes.app} fade-in`}
         style={{ backgroundColor: mode ? darkPrimary : LinkedInBgColor }}
       >
         <Grid
@@ -122,7 +147,6 @@ const App = () => {
             boxShadow: mode && "0px 5px 10px -10px rgba(0,0,0,0.75)",
           }}
         >
-          {/* Header */}
           <Header
             activeTab={activeTab}
             setActiveTab={handleSetActiveTab}
@@ -133,49 +157,50 @@ const App = () => {
         <Grid item container className={classes.app__body}>
           <Hidden smDown>
             <Grid item className={classes.body__sidebar} md={2}>
-              {/* Sidebar */}
               <Sidebar />
             </Grid>
           </Hidden>
           <Grid item className={classes.body__feed} xs={12} sm={8} md={5}>
             <ErrorBoundary>
-              {view === "profile" ? (
+              {/* Profile overlay — conditionally rendered (unique per user) */}
+              {view === "profile" && (
                 <Profile
                   userId={profileUserId}
                   onBack={() => setView("feed")}
                   onNavigateMessaging={onNavigateMessaging}
                 />
-              ) : activeTab === "messaging" ? (
-                <Messaging />
-              ) : activeTab === "network" ? (
+              )}
+
+              {/* Keep-alive tabs — always mounted, shown/hidden via display.
+                  This prevents Convex query re-fetching and skeleton flashes. */}
+              <div style={showWhen(view !== "profile" && activeTab === "home")}>
+                <Grid item className={classes.feed__form}>
+                  <Form />
+                </Grid>
+                <Grid item className={classes.feed__posts}>
+                  <Posts onNavigateProfile={onNavigateProfile} />
+                </Grid>
+              </div>
+
+              <div style={showWhen(view !== "profile" && activeTab === "network")}>
                 <Network onNavigateProfile={onNavigateProfile} />
-              ) : activeTab === "notifications" ? (
+              </div>
+
+              <div style={showWhen(view !== "profile" && activeTab === "messaging")}>
+                <Messaging />
+              </div>
+
+              <div style={showWhen(view !== "profile" && activeTab === "notifications")}>
                 <Notifications
                   onViewPost={onViewPost}
                   onNavigateProfile={onNavigateProfile}
                   onNavigateMessaging={onNavigateMessaging}
                 />
-              ) : activeTab === "home" ? (
-                <>
-                  {/* Feed */}
-                  <Grid item className={classes.feed__form}>
-                    <Form />
-                  </Grid>
-                  <Grid item className={classes.feed__posts}>
-                    <Posts onNavigateProfile={onNavigateProfile} />
-                  </Grid>
-                </>
-              ) : (
-                <Paper elevation={1} style={{ width: "100%", padding: 24 }}>
-                  <Typography variant="h6">{activeTabLabel}</Typography>
-                  <Typography color="textSecondary">Coming soon.</Typography>
-                </Paper>
-              )}
+              </div>
             </ErrorBoundary>
           </Grid>
           <Hidden smDown>
             <Grid item className={classes.body__widgets} md={3}>
-              {/* Widgets */}
               <Widgets />
             </Grid>
           </Hidden>

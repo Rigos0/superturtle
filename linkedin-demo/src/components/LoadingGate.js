@@ -1,18 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import CircularProgress from "@material-ui/core/CircularProgress";
 
-const loadingContainerStyle = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  minHeight: "100vh",
-};
-
 const spinnerStyle = {
   color: "#2e7d32",
 };
 
-const LoadingGate = ({ isLoading, children, minDuration = 2000 }) => {
+const LoadingGate = ({ isLoading, children, minDuration = 200, fullScreen = false }) => {
   const [showContent, setShowContent] = useState(false);
   const loadingStartRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -62,8 +55,16 @@ const LoadingGate = ({ isLoading, children, minDuration = 2000 }) => {
     return children || null;
   }
 
+  const containerStyle = {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: fullScreen ? "100vh" : 200,
+    width: "100%",
+  };
+
   return (
-    <div style={loadingContainerStyle}>
+    <div style={containerStyle}>
       <CircularProgress style={spinnerStyle} />
     </div>
   );

@@ -12,7 +12,7 @@ import CommentOutlinedIcon from "@material-ui/icons/CommentOutlined";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import ReactPlayer from "react-player";
 import ReactTimeago from "react-timeago";
-import * as images from "../../../assets/images/images";
+// Reaction images removed — only thumbs-up like is supported
 import { api } from "../../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
@@ -33,6 +33,7 @@ const Post = forwardRef(
       authorId,
       likesCount = 0,
       commentsCount = 0,
+      liked,
       profile,
       username,
       timestamp,
@@ -58,10 +59,6 @@ const Post = forwardRef(
     const [editText, setEditText] = React.useState(description ?? "");
     const [optimisticLike, setOptimisticLike] = React.useState(null);
 
-    const liked = useQuery(
-      api.likes.getLikeStatus,
-      user?._id ? { userId: user._id, postId } : "skip"
-    );
     const comments = useQuery(
       api.comments.listComments,
       showComments ? { postId } : "skip"
@@ -196,19 +193,35 @@ const Post = forwardRef(
       }
     };
 
+    // Optimistic like count: instant +1/-1 while server catches up
+    const optimisticLikeCount =
+      optimisticLike !== null
+        ? optimisticLike
+          ? likesCount + (serverLiked ? 0 : 1)
+          : Math.max(0, likesCount - (serverLiked ? 1 : 0))
+        : likesCount;
+
+    const hasStats = optimisticLikeCount > 0 || commentsCount > 0;
+
     const Reactions = () => {
+      if (!hasStats) return null;
+
       return (
         <div className={classes.footer__stats}>
-          <div>
-            <img src={images.LinkedInLike} alt="linked-in-reaction-1" />
-            <img src={images.LinkedInLove} alt="linked-in-reaction-2" />
-            <img src={images.LinkedInApplaud} alt="linked-in-reaction-3" />
-          </div>
-          <h4>{likesCount}</h4>
-          <FiberManualRecordRoundedIcon
-            style={{ fontSize: 8, color: "grey", paddingLeft: "3px" }}
-          />
-          <h4>{commentsCount} comments</h4>
+          {optimisticLikeCount > 0 && (
+            <>
+              <ThumbUpAltIcon style={{ fontSize: 14, color: "#2e7d32" }} />
+              <h4>{optimisticLikeCount}</h4>
+            </>
+          )}
+          {optimisticLikeCount > 0 && commentsCount > 0 && (
+            <FiberManualRecordRoundedIcon
+              style={{ fontSize: 6, color: "grey", margin: "0 4px" }}
+            />
+          )}
+          {commentsCount > 0 && (
+            <h4>{commentsCount} {commentsCount === 1 ? "comment" : "comments"}</h4>
+          )}
         </div>
       );
     };
@@ -232,19 +245,20 @@ const Post = forwardRef(
               <ReactTimeago date={new Date(timestamp).toUTCString()} units="minute" />
             </p>
           </div>
-          <MoreHorizOutlinedIcon
-            onClick={handleMenuOpen}
-            style={!isOwnPost ? { opacity: 0.55, cursor: "default" } : undefined}
-          />
-          <Menu
-            anchorEl={menuAnchorEl}
-            keepMounted
-            open={isMenuOpen}
-            onClose={handleMenuClose}
-          >
-            {isOwnPost && <MenuItem onClick={handleEditClick}>Edit</MenuItem>}
-            {isOwnPost && <MenuItem onClick={handleDeleteClick}>Delete</MenuItem>}
-          </Menu>
+          {isOwnPost && (
+            <>
+              <MoreHorizOutlinedIcon onClick={handleMenuOpen} />
+              <Menu
+                anchorEl={menuAnchorEl}
+                keepMounted
+                open={isMenuOpen}
+                onClose={handleMenuClose}
+              >
+                <MenuItem onClick={handleEditClick}>Edit</MenuItem>
+                <MenuItem onClick={handleDeleteClick}>Delete</MenuItem>
+              </Menu>
+            </>
+          )}
         </div>
         <div className={classes.post__body}>
           <div className={classes.body__description}>

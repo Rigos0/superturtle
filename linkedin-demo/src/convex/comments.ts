@@ -34,6 +34,31 @@ export const addComment = mutation({
   },
 });
 
+export const deleteComment = mutation({
+  args: {
+    commentId: v.id("comments"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment) {
+      throw new Error("Comment not found");
+    }
+    if (comment.authorId !== args.userId) {
+      throw new Error("Not authorized to delete this comment");
+    }
+
+    const post = await ctx.db.get(comment.postId);
+    if (post) {
+      await ctx.db.patch(comment.postId, {
+        commentsCount: Math.max(0, (post.commentsCount ?? 0) - 1),
+      });
+    }
+
+    await ctx.db.delete(args.commentId);
+  },
+});
+
 export const listComments = query({
   args: {
     postId: v.id("posts"),

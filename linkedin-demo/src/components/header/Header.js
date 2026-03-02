@@ -186,16 +186,23 @@ const Header = ({ activeTab, setActiveTab, onNavigateProfile, onNavigateHome }) 
         <div className={classes.header__logo}>
           <span
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+            onClick={navigateToHome}
+          >
+            <img src="/turtle-mascot.png" alt="TurtleIn" style={{ height: 28 }} />
+            <span style={{
               color: "#2e7d32",
-              fontSize: 24,
+              fontSize: 22,
               lineHeight: 1,
               fontWeight: 700,
               letterSpacing: "-0.02em",
               whiteSpace: "nowrap",
-              flexShrink: 0,
-            }}
-          >
-            Turtle In
+            }}>TurtleIn</span>
           </span>
           <ClickAwayListener onClickAway={closeSearch}>
             <div className={classes.search__wrapper}>
