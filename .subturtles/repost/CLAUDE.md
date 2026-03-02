@@ -1,5 +1,5 @@
 ## Current Task
-Add "Repost" button to post footer in `linkedin-demo/src/components/posts/post/Post.js` (next to Like and Comment).
+Repost dialog — small modal with optional commentary text field + "Repost" button.
 
 ## End Goal with Specs
 Items 21-22 from Phase 2: Users can repost to their feed with optional commentary. Original post shows repost count.
@@ -7,8 +7,8 @@ Items 21-22 from Phase 2: Users can repost to their feed with optional commentar
 ## Backlog
 - [x] Add `reposts` table to Convex schema: `linkedin-demo/src/convex/schema.ts` — fields: userId, originalPostId, commentary (optional string), createdAt
 - [x] Create `linkedin-demo/src/convex/reposts.ts` — mutations: repostPost(postId, commentary?), removeRepost(repostId); queries: getRepostCount(postId), getUserRepost(postId)
-- [ ] Add "Repost" button to post footer in `linkedin-demo/src/components/posts/post/Post.js` (next to Like and Comment) <- current
-- [ ] Repost dialog — small modal with optional commentary text field + "Repost" button
+- [x] Add "Repost" button to post footer in `linkedin-demo/src/components/posts/post/Post.js` (next to Like and Comment)
+- [ ] Repost dialog — small modal with optional commentary text field + "Repost" button <- current
 - [ ] Show repost count on original post (next to reactions and comments count)
 - [ ] Reposted posts appear in feed with "X reposted" header and original post embedded
 - [ ] Run `cd linkedin-demo && npx convex dev --once` to push schema

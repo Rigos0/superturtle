@@ -13,6 +13,7 @@ import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
 import SentimentVerySatisfiedIcon from "@material-ui/icons/SentimentVerySatisfied";
 import FiberManualRecordRoundedIcon from "@material-ui/icons/FiberManualRecordRounded";
 import CommentOutlinedIcon from "@material-ui/icons/CommentOutlined";
+import RepeatIcon from "@material-ui/icons/Repeat";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import ReactPlayer from "react-player";
 import ReactTimeago from "react-timeago";
@@ -306,6 +307,12 @@ const Post = forwardRef(
         setCommentText("");
       } catch (error) {
         console.error("Failed to add comment:", error);
+      }
+    };
+
+    const handleRepostClick = () => {
+      if (!canInteract) {
+        return;
       }
     };
 
@@ -644,6 +651,14 @@ const Post = forwardRef(
             >
               <CommentOutlinedIcon style={showComments ? { color: "#2e7d32" } : undefined} />
               <h4 style={showComments ? { color: "#2e7d32" } : undefined}>Comment</h4>
+            </div>
+            <div
+              className={classes.action__icons}
+              onClick={handleRepostClick}
+              style={!canInteract ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+            >
+              <RepeatIcon />
+              <h4>Repost</h4>
             </div>
           </div>
 
