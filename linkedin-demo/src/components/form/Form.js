@@ -14,29 +14,34 @@ import { imageUploadHandler } from "./form.utils";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
 
+const MAX_POST_IMAGES = 4;
+
 const Form = () => {
   const classes = Styles();
   const createPost = useMutation(api.posts.createPost);
+  const generateImageUploadUrl = useMutation(api.posts.generateImageUploadUrl);
   const { isAuthenticated } = useConvexAuth();
   const user = useConvexUser();
 
   const [uploadData, setUploadData] = useState({
     description: "",
-    file: {
-      type: "",
-      name: "",
-      data: "",
-    },
+    files: [],
   });
 
   const [openURL, setOpenURL] = useState(false);
   const [URL, setURL] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmitButton = async (e) => {
     e.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
+
     const description = uploadData.description.trim();
 
-    if (!description && !uploadData.file.data && !URL) {
+    if (!description && uploadData.files.length === 0 && !URL) {
       swal("Empty Post", "Please enter something","warning");
       return;
     }
@@ -66,16 +71,58 @@ const Form = () => {
       }
     }
 
-    const fileType = URL ? "image" : uploadData.file.type || undefined;
-    const fileData = URL || uploadData.file.data || undefined;
-
     try {
-      await createPost({
+      setIsSubmitting(true);
+
+      const payload = {
         authorId: user._id,
         description,
-        ...(fileType ? { fileType } : {}),
-        ...(fileData ? { fileData } : {}),
-      });
+      };
+
+      const selectedFiles = uploadData.files;
+      const selectedImageFiles = selectedFiles.filter(
+        (file) => file.type === "image" && Boolean(file.blob),
+      );
+
+      if (selectedImageFiles.length > 0 && !URL) {
+        const uploadedStorageIds = await Promise.all(
+          selectedImageFiles.map(async (file) => {
+            const uploadUrl = await generateImageUploadUrl({});
+            const uploadResponse = await fetch(uploadUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": file.blob.type || "application/octet-stream",
+              },
+              body: file.blob,
+            });
+
+            if (!uploadResponse.ok) {
+              throw new Error("Image upload failed");
+            }
+
+            const uploadResult = await uploadResponse.json();
+            if (!uploadResult.storageId) {
+              throw new Error("Missing uploaded image storage ID");
+            }
+
+            return uploadResult.storageId;
+          }),
+        );
+
+        payload.imageStorageIds = uploadedStorageIds;
+      } else {
+        const selectedFile = selectedFiles[0];
+        const fileType = URL ? "image" : selectedFile?.type || undefined;
+        const fileData = URL || selectedFile?.data || undefined;
+        if (fileType) {
+          payload.fileType = fileType;
+        }
+        if (fileData) {
+          payload.fileData = fileData;
+        }
+      }
+
+      await createPost(payload);
       resetState();
       swal({
         icon: "success",
@@ -86,24 +133,29 @@ const Form = () => {
     } catch (error) {
       console.error("Failed to create post:", error);
       swal("Post Failed", "Unable to publish your post right now.", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const resetState = () => {
     setUploadData({
       description: "",
-      file: {
-        type: "",
-        name: "",
-        data: "",
-      },
+      files: [],
     });
     setOpenURL(false);
     setURL("");
   };
 
+  const handleRemoveFile = (indexToRemove) => {
+    setUploadData((previousValue) => ({
+      ...previousValue,
+      files: previousValue.files.filter((_, fileIndex) => fileIndex !== indexToRemove),
+    }));
+  };
+
   const toggleURL_Tab = () => {
-    if (uploadData.file.data !== "") {
+    if (uploadData.files.length > 0) {
       setOpenURL(false);
     } else if (URL === "") {
       setOpenURL(!openURL);
@@ -139,9 +191,11 @@ const Form = () => {
             type="file"
             accept="image/*"
             hidden
+            multiple
             onChange={(e) => {
-              imageUploadHandler(e, "image", uploadData, setUploadData);
+              imageUploadHandler(e, "image", setUploadData, { maxImageCount: MAX_POST_IMAGES });
               setOpenURL(false);
+              setURL("");
             }}
           />
           <input
@@ -150,28 +204,31 @@ const Form = () => {
             accept="video/*"
             hidden
             onChange={(e) => {
-              imageUploadHandler(e, "video", uploadData, setUploadData);
+              imageUploadHandler(e, "video", setUploadData);
               setOpenURL(false);
             }}
           />
-          <button type="submit">Post</button>
+          <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Posting..." : "Post"}</button>
         </form>
       </div>
-      {!openURL && uploadData.file.name && (
+      {!openURL && uploadData.files.length > 0 && (
         <div className={classes.selectedFile}>
-          <Chip
-            color="primary"
-            size="small"
-            onDelete={resetState}
-            icon={
-              uploadData.file.type === "image" ? (
-                <PhotoSizeSelectActualIcon />
-              ) : (
-                <VideocamRoundedIcon />
-              )
-            }
-            label={uploadData.file.name}
-          />
+          {uploadData.files.map((file, fileIndex) => (
+            <Chip
+              key={`${file.name}-${fileIndex}`}
+              color="primary"
+              size="small"
+              onDelete={() => handleRemoveFile(fileIndex)}
+              icon={
+                file.type === "image" ? (
+                  <PhotoSizeSelectActualIcon />
+                ) : (
+                  <VideocamRoundedIcon />
+                )
+              }
+              label={file.name}
+            />
+          ))}
         </div>
       )}
       {openURL && (

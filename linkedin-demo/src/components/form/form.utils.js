@@ -23,79 +23,133 @@ const fileNameCompressor = (fileName) => {
   return outputFileName;
 };
 
-export const imageUploadHandler = async (e, type, uploadData, setUploadData) => {
-  const inputFile = e.target.files[0];
-  const _inputFile = inputFile.type.split("/");
-  const inputFileType = _inputFile[0];
-  const inputFileExec = _inputFile[1];
-  const inputFileName = fileNameCompressor(inputFile.name);
-
-  const fileSize = inputFile.size / (1024 * 1024);
-
-  switch (type) {
-    case "video":
-      if (!ACCEPTED_VIDEO_FORMATS.some((format) => format.includes(inputFileExec))) {
-        swal("Invalid Video Format",`Please select video format of ${ACCEPTED_VIDEO_FORMATS.map(format=> format+' ')}`,"warning");
-        e.target.value = "";
+const readFileAsDataURL = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = (event) => {
+      const result = event?.target?.result;
+      if (typeof result === "string") {
+        resolve(result);
         return;
       }
+
+      reject(new Error("Unable to read file"));
+    };
+    reader.onerror = () => reject(new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+
+const compressImageFile = async (inputFile) => {
+  const compressionOptions = {
+    maxSizeMB: 1,
+    maxWidthOrHeight: 1920,
+    useWebWorker: true,
+  };
+
+  return await imageCompression(inputFile, compressionOptions);
+};
+
+export const imageUploadHandler = async (
+  e,
+  type,
+  setUploadData,
+  options = {},
+) => {
+  const inputFiles = Array.from(e.target.files ?? []);
+  const maxImageCount = options.maxImageCount ?? 4;
+
+  if (inputFiles.length === 0) {
+    return;
+  }
+
+  try {
+    if (type === "video") {
+      const inputFile = inputFiles[0];
+      const [inputFileType = "", inputFileExt = ""] = inputFile.type.split("/");
+      const inputFileName = fileNameCompressor(inputFile.name);
+      const fileSize = inputFile.size / (1024 * 1024);
+
+      if (inputFileType !== "video" || !ACCEPTED_VIDEO_FORMATS.includes(inputFileExt)) {
+        swal("Invalid Video Format",`Please select video format of ${ACCEPTED_VIDEO_FORMATS.map(format=> format+' ')}`,"warning");
+        return;
+      }
+
       if (fileSize > MAX_VIDEO_UPLOAD_SIZE) {
         swal("Video Too Large", `Please select a video less than ${MAX_VIDEO_UPLOAD_SIZE}MB file size`,"warning");
-        e.target.value = "";
         return;
       }
-      break;
-    case "image":
-      if (!ACCEPTED_IMAGE_FORMATS.some((format) => format.includes(inputFileExec))) {
+
+      const fileData = await readFileAsDataURL(inputFile);
+      setUploadData((previousValue) => ({
+        ...previousValue,
+        files: [
+          {
+            type: "video",
+            name: inputFileName,
+            data: fileData,
+            blob: null,
+          },
+        ],
+      }));
+      return;
+    }
+
+    if (type !== "image") {
+      swal("Invalid File Format", "warning");
+      return;
+    }
+
+    const normalizedImageFiles = [];
+
+    for (const inputFile of inputFiles) {
+      const [inputFileType = "", inputFileExt = ""] = inputFile.type.split("/");
+      const inputFileName = fileNameCompressor(inputFile.name);
+      const fileSize = inputFile.size / (1024 * 1024);
+
+      if (inputFileType !== "image" || !ACCEPTED_IMAGE_FORMATS.includes(inputFileExt)) {
         swal("Invalid Image Format",`Please select an image format of ${ACCEPTED_IMAGE_FORMATS.map(format=> format+' ')}`,"warning");
-        e.target.value = "";
-        return;
+        continue;
       }
+
       if (fileSize > MAX_IMAGE_UPLOAD_SIZE) {
         swal("Image Too Large", `Please select an image less than ${MAX_IMAGE_UPLOAD_SIZE}MB file size`,"warning");
-        e.target.value = "";
-        return;
+        continue;
       }
-      break;
-    default:
-      swal("Invalid File Format", "warning");
-      e.target.value = "";
-      return;
-  }
 
-  let compressedInputFile = inputFile;
-  if (inputFileType === "image") {
-    //compression algorithm
-    const compressionOptions = {
-      maxSizeMB: 1,
-      maxWidthOrHeight: 1920,
-      useWebWorker: true,
-    };
+      let compressedInputFile;
+      try {
+        compressedInputFile = await compressImageFile(inputFile);
+      } catch (error) {
+        console.error("Failed to compress image:", error);
+        continue;
+      }
 
-    try {
-      compressedInputFile = await imageCompression(inputFile, compressionOptions);
-    } catch (error) {
-      alert(error);
-    }
-  }
-
-  let inputFileDataBase64;
-  const file = new FileReader();
-  if (compressedInputFile) {
-    file.onloadend = (fileLoadedEvent) => {
-      inputFileDataBase64 = fileLoadedEvent.target.result;
-      setUploadData({
-        ...uploadData,
-        file: {
-          type: inputFileType,
-          name: inputFileName,
-          data: inputFileDataBase64,
-        },
+      const fileData = await readFileAsDataURL(compressedInputFile);
+      normalizedImageFiles.push({
+        type: "image",
+        name: inputFileName,
+        data: fileData,
+        blob: compressedInputFile,
       });
-    };
-    file.readAsDataURL(compressedInputFile);
-  }
+    }
 
-  // clear the file input event value
-  e.target.value = "";
+    if (normalizedImageFiles.length === 0) {
+      return;
+    }
+
+    setUploadData((previousValue) => {
+      const existingImages = (previousValue.files ?? []).filter(
+        (file) => file.type === "image",
+      );
+      const mergedImages = [...existingImages, ...normalizedImageFiles];
+
+      return {
+        ...previousValue,
+        files: mergedImages.slice(0, maxImageCount),
+      };
+    });
+  } finally {
+    // clear the file input event value
+    e.target.value = "";
+  }
 };

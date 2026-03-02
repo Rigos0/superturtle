@@ -73,6 +73,8 @@ export default makeStyles((theme) => ({
   selectedFile: {
     display: "flex",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
     paddingBottom: 5,
   },
 
