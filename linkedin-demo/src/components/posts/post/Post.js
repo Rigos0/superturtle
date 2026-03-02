@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
+import PollDisplay from "../poll/PollDisplay";
 import { getLinkPreviewFromText } from "./post.utils";
 import Style from "./Style";
 
@@ -934,6 +935,7 @@ const Post = forwardRef(
                 </a>
               </div>
             )}
+            {!isEditing && !isRepost && <PollDisplay postId={postId} />}
             {isRepost && originalPost && (
               <div className={classes.repost__embed}>
                 <div className={classes.repost__embedHeader}>
