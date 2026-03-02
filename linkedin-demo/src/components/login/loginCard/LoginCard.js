@@ -1,15 +1,21 @@
 import React from "react";
-import { Paper } from "@material-ui/core";
+import { IconButton, Paper } from "@material-ui/core";
+import CloseIcon from "@material-ui/icons/Close";
 import { useAuthActions } from "@convex-dev/auth/react";
 import Style from "./Style";
 
-const LoginCard = () => {
+const LoginCard = ({ onClose }) => {
   const classes = Style();
   const authActions = useAuthActions();
   const signIn = authActions?.signIn ?? (() => Promise.resolve());
 
   return (
     <Paper elevation={3} className={classes.card}>
+      {typeof onClose === "function" && (
+        <IconButton aria-label="Close sign in" className={classes.closeButton} onClick={onClose}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      )}
       <header className={classes.header}>
         <h1 className={classes.brand}><img src="/turtle-mascot.png" alt="TurtleIn" style={{ height: 40, verticalAlign: 'middle', marginRight: 8 }} />TurtleIn</h1>
         <p className={classes.subtitle}>Sign in to continue</p>

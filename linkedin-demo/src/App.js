@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { useSelector } from "react-redux";
-import { Grid, Hidden, Typography } from "@material-ui/core";
+import { Grid, Hidden, Modal, Typography } from "@material-ui/core";
 import { ThemeProvider, createMuiTheme } from "@material-ui/core";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Header from "./components/header/Header";
 import Form from "./components/form/Form";
-import Login from "./components/login/Login";
+import LoginCard from "./components/login/loginCard/LoginCard";
 import Messaging from "./components/messaging/Messaging";
 import Network from "./components/network/Network";
 import Notifications from "./components/notifications/Notifications";
@@ -24,6 +24,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState("home");
   const [view, setView] = useState("feed");
   const [profileUserId, setProfileUserId] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
   const { isAuthenticated, isLoading } = useConvexAuth();
   const seedData = useMutation(api.seed.seedData);
   const seededRef = useRef(false);
@@ -48,6 +49,12 @@ const App = () => {
       console.error("Failed to seed Convex data:", error);
     });
   }, [seedData]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setShowLogin(false);
+    }
+  }, [isAuthenticated]);
 
   const onNavigateProfile = (userId) => {
     setProfileUserId(userId ?? null);
@@ -85,6 +92,16 @@ const App = () => {
     }, 200);
   };
 
+  const handleOpenLogin = () => {
+    if (!isAuthenticated) {
+      setShowLogin(true);
+    }
+  };
+
+  const handleCloseLogin = () => {
+    setShowLogin(false);
+  };
+
   if (isLoading) {
     return (
       <ThemeProvider theme={muiTheme}>
@@ -107,20 +124,6 @@ const App = () => {
               TurtleIn
             </Typography>
           </div>
-        </Grid>
-      </ThemeProvider>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <ThemeProvider theme={muiTheme}>
-        <Grid
-          container
-          className={`${classes.app} fade-in`}
-          style={{ backgroundColor: mode ? darkPrimary : LinkedInBgColor }}
-        >
-          <Login />
         </Grid>
       </ThemeProvider>
     );
@@ -152,6 +155,7 @@ const App = () => {
             setActiveTab={handleSetActiveTab}
             onNavigateProfile={onNavigateProfile}
             onNavigateHome={onNavigateHome}
+            onSignInClick={handleOpenLogin}
           />
         </Grid>
         <Grid item container className={classes.app__body}>
@@ -205,6 +209,20 @@ const App = () => {
             </Grid>
           </Hidden>
         </Grid>
+        <Modal open={showLogin && !isAuthenticated} onClose={handleCloseLogin}>
+          <div
+            style={{
+              minHeight: "100vh",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: 16,
+              outline: "none",
+            }}
+          >
+            <LoginCard onClose={handleCloseLogin} />
+          </div>
+        </Modal>
       </Grid>
     </ThemeProvider>
   );

@@ -18,6 +18,13 @@ export default makeStyles((theme) => ({
     justifyContent: "center",
     alignItems: "center",
     gap: 28,
+    position: "relative",
+  },
+
+  closeButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
   },
 
   header: {
