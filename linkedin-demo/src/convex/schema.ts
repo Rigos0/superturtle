@@ -187,13 +187,12 @@ export default defineSchema({
     .index("byFollowed", ["followedId"])
     .index("byFollowerAndFollowed", ["followerId", "followedId"]),
   companyFollowers: defineTable({
-    followerId: v.id("users"),
+    userId: v.id("users"),
     companyId: v.id("companies"),
     createdAt: v.number(),
   })
-    .index("byFollower", ["followerId"])
     .index("byCompany", ["companyId"])
-    .index("byFollowerAndCompany", ["followerId", "companyId"]),
+    .index("byCompanyAndUser", ["companyId", "userId"]),
   notifications: defineTable({
     userId: v.id("users"),
     type: v.string(),
