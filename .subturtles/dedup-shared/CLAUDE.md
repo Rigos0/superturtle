@@ -16,6 +16,7 @@ All duplicated helpers (resolvePhoto, resolveUserPhotoURL, buildAuthorSummary, R
 - [ ] Commit
 
 ## Notes
+- 2026-03-02: Shared photo helper import migration is complete across components; `npm run build` passes.
 - Client-side shared utils go in `linkedin-demo/src/utils/`
 - Server-side (Convex) shared helpers go in `linkedin-demo/src/convex/helpers.ts`
 - resolvePhoto pattern: takes URL string, returns Convex storage URL or fallback

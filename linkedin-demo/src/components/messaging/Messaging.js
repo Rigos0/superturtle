@@ -12,8 +12,8 @@ import {
 import ArrowBackIcon from "@material-ui/icons/ArrowBack";
 import SendIcon from "@material-ui/icons/Send";
 import { api } from "../../convex/_generated/api";
-import { DEFAULT_PHOTO } from "../../constants";
 import useConvexUser from "../../hooks/useConvexUser";
+import { resolvePhoto } from "../../utils/photo";
 import LoadingGate from "../LoadingGate";
 import useStyles from "./Style";
 
@@ -52,13 +52,6 @@ const formatTimeAgo = (timestamp) => {
   }
 
   return new Date(timestamp).toLocaleDateString();
-};
-
-const resolvePhoto = (photoURL) => {
-  if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
-    return DEFAULT_PHOTO;
-  }
-  return photoURL;
 };
 
 const Messaging = () => {
