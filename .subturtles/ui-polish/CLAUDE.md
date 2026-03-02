@@ -1,5 +1,5 @@
 ## Current Task
-Add active tab indication to desktop nav in `linkedin-demo/src/components/header/Header.js` and `linkedin-demo/src/components/header/Style.js`.
+Add loading state to OAuth buttons in `linkedin-demo/src/components/login/loginCard/LoginCard.js`.
 
 ## End Goal with Specs
 - All hardcoded white/black colors replaced with theme-aware values
@@ -26,9 +26,10 @@ Add active tab indication to desktop nav in `linkedin-demo/src/components/header
   - Line ~19: `color: "black"` → use `theme.palette.text.primary`
 - [x] Clean up dead guestBtn styles in `linkedin-demo/src/components/login/loginCard/Style.js`:
   - Remove `.guestBtn` styles (lines ~75-81) since guest auth button was removed.
-- [ ] Add active tab indication to desktop nav in `linkedin-demo/src/components/header/Header.js` and `linkedin-demo/src/components/header/Style.js`: <- current
+- [x] Add active tab indication to desktop nav in `linkedin-demo/src/components/header/Header.js` and `linkedin-demo/src/components/header/Style.js`:
   - Add a green bottom border or underline (#2e7d32) to the active tab icon in the desktop header nav. The `activeTab` state is available — use it to conditionally apply a style.
-- [ ] Add loading state to OAuth buttons in `linkedin-demo/src/components/login/loginCard/LoginCard.js`: When a sign-in button is clicked, show a small spinner or "Signing in..." text and disable both buttons to prevent double-clicks. Use a `signingIn` state.
+- [ ] Add loading state to OAuth buttons in `linkedin-demo/src/components/login/loginCard/LoginCard.js`: <- current
+  - When a sign-in button is clicked, show a small spinner or "Signing in..." text and disable both buttons to prevent double-clicks. Use a `signingIn` state.
 - [ ] Clean up DEFAULT_PROFILE in `linkedin-demo/src/components/profile/Profile.js`: The fallback object has "Alex Turner", "TurtleIn builder", "San Francisco, CA" — replace with generic fallbacks: displayName → "User", title → "", location → "". Or better, show a minimal profile when data is missing.
 - [ ] Run `cd linkedin-demo && npm run build` to verify build passes
 - [ ] Commit: "UI polish: dark mode fixes, empty states, loading UX, dead code cleanup"

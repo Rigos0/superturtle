@@ -130,10 +130,32 @@ const Header = ({
   };
 
   const items = [
-    { Icon: <HomeIcon />, title: "Home", arrow: false, onClick: () => setActiveTab("home") },
-    { Icon: <GroupIcon />, title: "My Network", arrow: false, onClick: () => setActiveTab("network") },
-    { Icon: <TelegramIcon />, title: "Messaging", arrow: false, onClick: () => setActiveTab("messaging") },
     {
+      key: "home",
+      Icon: <HomeIcon />,
+      title: "Home",
+      arrow: false,
+      onClick: () => setActiveTab("home"),
+      isActive: activeTab === "home",
+    },
+    {
+      key: "network",
+      Icon: <GroupIcon />,
+      title: "My Network",
+      arrow: false,
+      onClick: () => setActiveTab("network"),
+      isActive: activeTab === "network",
+    },
+    {
+      key: "messaging",
+      Icon: <TelegramIcon />,
+      title: "Messaging",
+      arrow: false,
+      onClick: () => setActiveTab("messaging"),
+      isActive: activeTab === "messaging",
+    },
+    {
+      key: "notifications",
       Icon: isAuthenticated ? (
         <Badge
           color="primary"
@@ -149,19 +171,24 @@ const Header = ({
       title: "Notifications",
       arrow: false,
       onClick: () => setActiveTab("notifications"),
+      isActive: activeTab === "notifications",
     },
     isAuthenticated
       ? {
+          key: "profile",
           Icon: <Avatar src={photoURL} />,
           title: "Me",
           arrow: true,
           onClick: () => onNavigateProfile(user?._id ?? null),
+          isActive: false,
         }
       : {
+          key: "sign-in",
           Icon: <PersonIcon />,
           title: "Sign In",
           arrow: false,
           onClick: () => onSignInClick?.(),
+          isActive: false,
         },
   ];
 
@@ -333,15 +360,23 @@ const Header = ({
           )}
         </div>
         <div className={classes.header__nav}>
-          {items.map(({ Icon, title, arrow, onClick }, i) => (
-            <MenuItem key={i} Icon={Icon} title={title} arrow={arrow} onClick={onClick} />
+          {items.map(({ key, Icon, title, arrow, onClick, isActive }) => (
+            <div
+              key={key}
+              className={`${classes.headerNavItem} ${
+                isActive ? classes.headerNavItemActive : ""
+              }`}
+            >
+              <MenuItem Icon={Icon} title={title} arrow={arrow} onClick={onClick} />
+            </div>
           ))}
-          <MenuItem
-            key={"mode"}
-            Icon={mode ? <Brightness4Icon /> : <BrightnessHighIcon />}
-            title={"Theme"}
-            onClick={() => dispatch(ChangeTheme())}
-          />
+          <div className={classes.headerNavItem}>
+            <MenuItem
+              Icon={mode ? <Brightness4Icon /> : <BrightnessHighIcon />}
+              title={"Theme"}
+              onClick={() => dispatch(ChangeTheme())}
+            />
+          </div>
         </div>
         {isAuthenticated ? (
           <Button className={classes.signOutButton} onClick={() => signOut()} variant="outlined">

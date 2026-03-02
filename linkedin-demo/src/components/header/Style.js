@@ -148,23 +148,36 @@ export default makeStyles((theme) => ({
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    "& > div": {
-      flex: 1,
-      height: "85%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      "&:hover": {
-        backgroundColor: theme.palette.type === "dark" ? darkSecondary : "lightgrey",
-        borderRadius: 2,
-      },
-    },
     "& > div:nth-child(6)": {
       borderLeft: `1px solid ${theme.palette.type === "dark" ? darkPrimary : "lightgrey"}`,
       borderRight: `1px solid ${theme.palette.type === "dark" ? darkPrimary : "lightgrey"}`,
     },
     [theme.breakpoints.down("xs")]: {
       display: "none",
+    },
+  },
+  headerNavItem: {
+    flex: 1,
+    height: "85%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    "&:hover": {
+      backgroundColor: theme.palette.type === "dark" ? darkSecondary : "lightgrey",
+      borderRadius: 2,
+    },
+  },
+  headerNavItemActive: {
+    "&::after": {
+      content: '""',
+      position: "absolute",
+      left: "22%",
+      right: "22%",
+      bottom: 0,
+      height: 3,
+      borderRadius: "3px 3px 0 0",
+      backgroundColor: "#2e7d32",
     },
   },
   signOutButton: {
