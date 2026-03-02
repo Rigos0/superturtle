@@ -80,6 +80,7 @@ const Post = forwardRef(
       authorUsername,
       likesCount = 0,
       commentsCount = 0,
+      repostCount,
       currentReaction,
       reactionCounts,
       profile,
@@ -127,6 +128,9 @@ const Post = forwardRef(
       api.comments.listComments,
       showComments ? { postId } : "skip"
     );
+    const queriedRepostCount = useQuery(api.reposts.getRepostCount, { postId });
+    const resolvedRepostCount =
+      typeof repostCount === "number" ? repostCount : (queriedRepostCount ?? 0);
 
     const serverReaction = currentReaction ?? null;
     const selectedReaction =
@@ -454,7 +458,17 @@ const Post = forwardRef(
       (item) => resolvedReactionCounts[item.key] > 0,
     );
 
-    const hasStats = totalReactionCount > 0 || commentsCount > 0;
+    const hasStats =
+      totalReactionCount > 0 || commentsCount > 0 || resolvedRepostCount > 0;
+    const textStats = [];
+    if (commentsCount > 0) {
+      textStats.push(`${commentsCount} ${commentsCount === 1 ? "comment" : "comments"}`);
+    }
+    if (resolvedRepostCount > 0) {
+      textStats.push(
+        `${resolvedRepostCount} ${resolvedRepostCount === 1 ? "repost" : "reposts"}`,
+      );
+    }
 
     const Reactions = () => {
       if (!hasStats) return null;
@@ -499,14 +513,16 @@ const Post = forwardRef(
               </div>
             </div>
           )}
-          {totalReactionCount > 0 && commentsCount > 0 && (
-            <FiberManualRecordRoundedIcon
-              style={{ fontSize: 6, color: "grey", margin: "0 4px" }}
-            />
-          )}
-          {commentsCount > 0 && (
-            <h4>{commentsCount} {commentsCount === 1 ? "comment" : "comments"}</h4>
-          )}
+          {textStats.map((statText, index) => (
+            <React.Fragment key={statText}>
+              {(totalReactionCount > 0 || index > 0) && (
+                <FiberManualRecordRoundedIcon
+                  style={{ fontSize: 6, color: "grey", margin: "0 4px" }}
+                />
+              )}
+              <h4>{statText}</h4>
+            </React.Fragment>
+          ))}
         </div>
       );
     };
