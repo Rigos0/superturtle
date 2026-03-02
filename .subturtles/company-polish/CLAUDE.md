@@ -1,5 +1,5 @@
 ## Current Task
-Create `src/components/company/CompanyJobsTab.js` — placeholder tab showing "No job postings yet. Check back soon!" with a WorkOutlineIcon. This will be populated in Phase 4.
+Add Jobs tab to CompanyPage.js tabs (after Posts tab).
 
 ## End Goal with Specs
 Company pages are fully theme-aware (dark mode works). Company admins see basic analytics (follower count, post engagement). Jobs tab exists as a placeholder. Verified companies show a badge.
@@ -8,8 +8,8 @@ Company pages are fully theme-aware (dark mode works). Company admins see basic 
 - [x] Add `isVerified` boolean field (optional) to companies table in schema.ts.
 - [x] Create `src/components/company/CompanyAnalytics.js` — admin-only view: total followers (number), total posts (number), total post likes (sum across company posts). Use MUI Card with simple stat display (number + label). No charts needed — just clean stat cards.
 - [x] Add analytics tab to CompanyPage.js — only visible to admins. Show CompanyAnalytics component.
-- [ ] Create `src/components/company/CompanyJobsTab.js` — placeholder tab showing "No job postings yet. Check back soon!" with a WorkOutlineIcon. This will be populated in Phase 4. <- current
-- [ ] Add Jobs tab to CompanyPage.js tabs (after Posts tab).
+- [x] Create `src/components/company/CompanyJobsTab.js` — placeholder tab showing "No job postings yet. Check back soon!" with a WorkOutlineIcon. This will be populated in Phase 4.
+- [ ] Add Jobs tab to CompanyPage.js tabs (after Posts tab). <- current
 - [ ] Add verified badge display: in CompanyPage.js header, if company.isVerified is true, show a VerifiedIcon (MUI) in blue next to the company name. Also show in search results and suggestion cards.
 - [ ] Ensure all company components use `theme.palette` tokens instead of hardcoded colors. Use `useTheme()` hook. Background, text, borders should all be theme-aware for dark mode.
 - [ ] Run `cd linkedin-demo && npx convex dev --once && npm run build` to verify.
