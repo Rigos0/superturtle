@@ -47,6 +47,7 @@ export default defineSchema({
         }),
       ),
     ),
+    featuredPostIds: v.optional(v.array(v.id("posts"))),
     connections: v.optional(v.number()),
     followers: v.optional(v.number()),
     isFeatured: v.optional(v.boolean()),

@@ -72,6 +72,36 @@ const normalizeExperienceInput = (args: {
   description: normalizeOptionalField(args.description),
 });
 
+const normalizeEducationInput = (args: {
+  school: string;
+  degree: string;
+  field: string;
+  startYear: string;
+  endYear?: string;
+}) => ({
+  school: normalizeRequiredField(args.school, "School"),
+  degree: normalizeRequiredField(args.degree, "Degree"),
+  field: normalizeRequiredField(args.field, "Field of study"),
+  startYear: normalizeRequiredField(args.startYear, "Start year"),
+  endYear: normalizeOptionalField(args.endYear),
+});
+
+const normalizeSkill = (value: string) => {
+  const normalizedValue = value.trim().replace(/\s+/g, " ");
+
+  if (!normalizedValue) {
+    throw new Error("Skill is required");
+  }
+
+  if (normalizedValue.length > 50) {
+    throw new Error("Skill must be 50 characters or fewer");
+  }
+
+  return normalizedValue;
+};
+
+const buildSkillKey = (value: string) => value.trim().toLowerCase();
+
 const resolveActivityLimit = (limit?: number) => {
   if (typeof limit !== "number" || Number.isNaN(limit)) {
     return 10;
@@ -79,6 +109,27 @@ const resolveActivityLimit = (limit?: number) => {
 
   const normalizedLimit = Math.floor(limit);
   return Math.min(Math.max(normalizedLimit, 1), 20);
+};
+
+const MAX_FEATURED_POSTS = 3;
+
+const normalizeFeaturedPostIds = (postIds?: Id<"posts">[]) => {
+  if (!Array.isArray(postIds)) {
+    return [];
+  }
+
+  const seenPostIds = new Set<Id<"posts">>();
+  const normalizedPostIds: Id<"posts">[] = [];
+
+  for (const postId of postIds) {
+    if (seenPostIds.has(postId)) {
+      continue;
+    }
+    seenPostIds.add(postId);
+    normalizedPostIds.push(postId);
+  }
+
+  return normalizedPostIds;
 };
 
 export const getUser = query({
@@ -351,6 +402,184 @@ export const updateCurrentUserProfile = mutation({
   },
 });
 
+export const addSkill = mutation({
+  args: {
+    skill: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const nextSkill = normalizeSkill(args.skill);
+    const currentSkills = user.skills ?? [];
+    const nextSkillKey = buildSkillKey(nextSkill);
+
+    if (currentSkills.some((skill) => buildSkillKey(skill) === nextSkillKey)) {
+      return currentSkills;
+    }
+
+    if (currentSkills.length >= 50) {
+      throw new Error("Maximum of 50 skills reached");
+    }
+
+    const nextSkills = [...currentSkills, nextSkill];
+    await ctx.db.patch(userId, { skills: nextSkills });
+    return nextSkills;
+  },
+});
+
+export const removeSkill = mutation({
+  args: {
+    skill: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const targetSkillKey = buildSkillKey(normalizeSkill(args.skill));
+    const currentSkills = user.skills ?? [];
+    const nextSkills = currentSkills.filter((skill) => buildSkillKey(skill) !== targetSkillKey);
+
+    if (nextSkills.length === currentSkills.length) {
+      return currentSkills;
+    }
+
+    await ctx.db.patch(userId, { skills: nextSkills });
+    return nextSkills;
+  },
+});
+
+export const updateCurrentUserAbout = mutation({
+  args: {
+    about: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const about = args.about.trim();
+    await ctx.db.patch(userId, { about });
+
+    return { ...user, about };
+  },
+});
+
+export const addFeaturedPost = mutation({
+  args: {
+    postId: v.id("posts"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const post = await ctx.db.get(args.postId);
+    if (!post || post.authorId !== userId) {
+      throw new Error("You can only feature your own posts");
+    }
+
+    const currentFeaturedPostIds = normalizeFeaturedPostIds(user.featuredPostIds);
+    const validFeaturedPostIds = (
+      await Promise.all(
+        currentFeaturedPostIds.map(async (featuredPostId) => {
+          const featuredPost = await ctx.db.get(featuredPostId);
+          if (!featuredPost || featuredPost.authorId !== userId) {
+            return null;
+          }
+          return featuredPostId;
+        }),
+      )
+    ).filter((featuredPostId): featuredPostId is Id<"posts"> => featuredPostId !== null);
+
+    if (validFeaturedPostIds.includes(args.postId)) {
+      if (validFeaturedPostIds.length !== currentFeaturedPostIds.length) {
+        await ctx.db.patch(userId, { featuredPostIds: validFeaturedPostIds });
+      }
+      return validFeaturedPostIds;
+    }
+
+    if (validFeaturedPostIds.length >= MAX_FEATURED_POSTS) {
+      throw new Error(`You can feature up to ${MAX_FEATURED_POSTS} posts`);
+    }
+
+    const nextFeaturedPostIds = [args.postId, ...validFeaturedPostIds];
+    await ctx.db.patch(userId, { featuredPostIds: nextFeaturedPostIds });
+
+    return nextFeaturedPostIds;
+  },
+});
+
+export const removeFeaturedPost = mutation({
+  args: {
+    postId: v.id("posts"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const currentFeaturedPostIds = normalizeFeaturedPostIds(user.featuredPostIds);
+    const validFeaturedPostIds = (
+      await Promise.all(
+        currentFeaturedPostIds.map(async (featuredPostId) => {
+          const featuredPost = await ctx.db.get(featuredPostId);
+          if (!featuredPost || featuredPost.authorId !== userId) {
+            return null;
+          }
+          return featuredPostId;
+        }),
+      )
+    ).filter((featuredPostId): featuredPostId is Id<"posts"> => featuredPostId !== null);
+
+    const nextFeaturedPostIds = validFeaturedPostIds.filter(
+      (featuredPostId) => featuredPostId !== args.postId,
+    );
+
+    if (
+      nextFeaturedPostIds.length === validFeaturedPostIds.length &&
+      validFeaturedPostIds.length === currentFeaturedPostIds.length
+    ) {
+      return validFeaturedPostIds;
+    }
+
+    await ctx.db.patch(userId, { featuredPostIds: nextFeaturedPostIds });
+    return nextFeaturedPostIds;
+  },
+});
+
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
@@ -561,6 +790,106 @@ export const removeExperience = mutation({
     }
 
     await ctx.db.patch(userId, { experienceEntries: nextEntries });
+  },
+});
+
+export const addEducation = mutation({
+  args: {
+    school: v.string(),
+    degree: v.string(),
+    field: v.string(),
+    startYear: v.string(),
+    endYear: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const normalizedInput = normalizeEducationInput(args);
+    const nextEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      ...normalizedInput,
+    };
+
+    await ctx.db.patch(userId, {
+      educationEntries: [...(user.educationEntries ?? []), nextEntry],
+    });
+
+    return nextEntry;
+  },
+});
+
+export const updateEducation = mutation({
+  args: {
+    entryId: v.string(),
+    school: v.string(),
+    degree: v.string(),
+    field: v.string(),
+    startYear: v.string(),
+    endYear: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const entries = user.educationEntries ?? [];
+    const existingEntry = entries.find((entry) => entry.id === args.entryId);
+
+    if (!existingEntry) {
+      throw new Error("Education entry not found");
+    }
+
+    const normalizedInput = normalizeEducationInput(args);
+    const nextEntries = entries.map((entry) =>
+      entry.id === args.entryId
+        ? {
+            id: entry.id,
+            ...normalizedInput,
+          }
+        : entry,
+    );
+
+    await ctx.db.patch(userId, { educationEntries: nextEntries });
+  },
+});
+
+export const removeEducation = mutation({
+  args: {
+    entryId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const currentEntries = user.educationEntries ?? [];
+    const nextEntries = currentEntries.filter((entry) => entry.id !== args.entryId);
+
+    if (nextEntries.length === currentEntries.length) {
+      throw new Error("Education entry not found");
+    }
+
+    await ctx.db.patch(userId, { educationEntries: nextEntries });
   },
 });
 

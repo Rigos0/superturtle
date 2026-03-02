@@ -156,6 +156,42 @@ export default makeStyles((theme) => ({
       wordBreak: "break-word",
     },
   },
+  completenessSection: {
+    width: "100%",
+    padding: theme.spacing(1.25, 2, 0, 2),
+    boxSizing: "border-box",
+  },
+  completenessHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+  },
+  completenessTitle: {
+    fontWeight: 700,
+    color: theme.palette.text.primary,
+    fontSize: "0.86rem",
+  },
+  completenessPercent: {
+    color: "#2e7d32",
+    fontWeight: 700,
+    fontSize: "0.82rem",
+  },
+  completenessProgress: {
+    marginTop: theme.spacing(0.75),
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(46, 125, 50, 0.16)",
+    "& .MuiLinearProgress-barColorPrimary": {
+      backgroundColor: "#2e7d32",
+    },
+  },
+  completenessSummary: {
+    display: "block",
+    marginTop: theme.spacing(0.5),
+    color: theme.palette.text.secondary,
+    fontSize: "0.74rem",
+  },
   section: {
     width: "100%",
     padding: theme.spacing(0, 2),
@@ -261,6 +297,61 @@ export default makeStyles((theme) => ({
       minWidth: 0,
       boxSizing: "border-box",
     },
+  },
+  featuredSection: {
+    border: "1px solid rgba(46, 125, 50, 0.2)",
+    borderRadius: 10,
+    padding: theme.spacing(1.25, 1.5),
+    backgroundColor: "rgba(46, 125, 50, 0.03)",
+  },
+  featuredHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(0.75),
+  },
+  featuredTitle: {
+    fontWeight: 700,
+    color: "#1b5e20",
+  },
+  featuredCount: {
+    color: theme.palette.text.secondary,
+    fontWeight: 600,
+  },
+  postsDivider: {
+    margin: theme.spacing(0.5, 0),
+  },
+  postsTitle: {
+    fontWeight: 700,
+    marginTop: theme.spacing(0.5),
+  },
+  profilePostItem: {
+    width: "100%",
+    minWidth: 0,
+  },
+  featuredActionRow: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "flex-end",
+    marginBottom: theme.spacing(0.5),
+  },
+  featuredActionButton: {
+    textTransform: "none",
+    borderRadius: 16,
+    borderColor: "rgba(46, 125, 50, 0.5)",
+    color: "#2e7d32",
+    fontWeight: 600,
+    minHeight: 32,
+    "&.MuiButton-text": {
+      border: "1px solid rgba(46, 125, 50, 0.35)",
+      padding: theme.spacing(0.25, 1.25),
+    },
+  },
+  featuredError: {
+    marginTop: theme.spacing(1),
+    color: theme.palette.error.main,
+    fontSize: "0.8rem",
   },
   activityList: {
     display: "flex",
