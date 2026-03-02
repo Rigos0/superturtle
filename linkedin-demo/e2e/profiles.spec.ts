@@ -313,4 +313,46 @@ test.describe("Profiles e2e", () => {
       "Expected a profile completeness percentage or progress bar to be visible.",
     ).toBe(true);
   });
+
+  test("Profile edit modal opens and key fields are editable on own profile", async ({ page }) => {
+    try {
+      await openOwnProfileFromHeader(page);
+    } catch {
+      test.skip(true, "Could not open the signed-in user's own profile on the live deployment.");
+    }
+
+    await page.getByRole("button", { name: "Edit profile", exact: true }).click();
+
+    const editDialog = page.getByRole("dialog", { name: "Edit profile" });
+    await expect(editDialog).toBeVisible({ timeout: 15_000 });
+
+    const displayNameField = editDialog.getByLabel("Display name", { exact: true });
+    const titleField = editDialog.getByLabel("Title", { exact: true });
+    const locationField = editDialog.getByLabel("Location", { exact: true });
+    const aboutField = editDialog.getByLabel("About", { exact: true });
+
+    await expect(displayNameField).toBeEditable();
+    await expect(titleField).toBeEditable();
+    await expect(locationField).toBeEditable();
+    await expect(aboutField).toBeEditable();
+
+    const suffix = Date.now().toString().slice(-6);
+    const nextDisplayName = `Guest Tester ${suffix}`;
+    const nextTitle = `QA profile check ${suffix}`;
+    const nextLocation = `Test City ${suffix}`;
+    const nextAbout = `Editable about check ${suffix}.`;
+
+    await displayNameField.fill(nextDisplayName);
+    await titleField.fill(nextTitle);
+    await locationField.fill(nextLocation);
+    await aboutField.fill(nextAbout);
+
+    await expect(displayNameField).toHaveValue(nextDisplayName);
+    await expect(titleField).toHaveValue(nextTitle);
+    await expect(locationField).toHaveValue(nextLocation);
+    await expect(aboutField).toHaveValue(nextAbout);
+
+    await editDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(editDialog).not.toBeVisible();
+  });
 });

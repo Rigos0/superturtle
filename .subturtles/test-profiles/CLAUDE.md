@@ -1,5 +1,5 @@
 ## Current Task
-Add test: Profile edit modal opens and fields are editable (displayName, title, location, about).
+All backlog items are complete.
 
 ## End Goal with Specs
 Comprehensive E2E test coverage for profile system features: photo display, skills, featured posts, mutual connections, profile completeness indicator. Tests run against live deployment at `https://linkedin-demo-iota.vercel.app`.
@@ -12,9 +12,9 @@ Comprehensive E2E test coverage for profile system features: photo display, skil
 - [x] Add test: Featured posts section visible on profile (if user has pinned posts)
 - [x] Add test: Mutual connections count shown on profile ("X mutual connections" text)
 - [x] Add test: Profile completeness indicator (progress bar or percentage) visible on own profile
-- [ ] Add test: Profile edit modal opens and fields are editable (displayName, title, location, about) <- current
-- [ ] Run tests: `cd linkedin-demo && npx playwright test e2e/profiles.spec.ts`
-- [ ] Commit
+- [x] Add test: Profile edit modal opens and fields are editable (displayName, title, location, about)
+- [x] Run tests: `cd linkedin-demo && npx playwright test e2e/profiles.spec.ts`
+- [x] Commit
 
 ## Notes
 - All tests go in a NEW file: `linkedin-demo/e2e/profiles.spec.ts`
@@ -24,3 +24,6 @@ Comprehensive E2E test coverage for profile system features: photo display, skil
 - Playwright config: `linkedin-demo/playwright.config.ts` — baseURL is `https://linkedin-demo-iota.vercel.app`
 - Tests should be resilient: use `test.skip()` with descriptive messages when live data isn't available
 - DO NOT modify existing test files — only create new ones
+
+## Loop Control
+STOP
