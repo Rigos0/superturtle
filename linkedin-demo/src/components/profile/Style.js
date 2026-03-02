@@ -50,6 +50,11 @@ export default makeStyles((theme) => ({
       marginBottom: 44,
     },
   },
+  coverAreaWithImage: {
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  },
   avatar: {
     width: 104,
     height: 104,
@@ -64,12 +69,62 @@ export default makeStyles((theme) => ({
       left: 12,
     },
   },
+  hiddenInput: {
+    display: "none",
+  },
+  photoUploadButton: {
+    position: "absolute",
+    right: 16,
+    bottom: 12,
+    textTransform: "none",
+    borderRadius: 16,
+    backgroundColor: "#2e7d32",
+    color: "#fff",
+    fontWeight: 600,
+    padding: theme.spacing(0.5, 1.5),
+    "&:hover": {
+      backgroundColor: "#1b5e20",
+    },
+    "&.Mui-disabled": {
+      backgroundColor: "#9e9e9e",
+      color: "#fff",
+    },
+    [theme.breakpoints.down("xs")]: {
+      right: 12,
+      bottom: 10,
+      padding: theme.spacing(0.5, 1.25),
+      fontSize: "0.75rem",
+    },
+  },
+  coverUploadButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    color: "#2e7d32",
+    border: "1px solid rgba(46, 125, 50, 0.35)",
+    "&:hover": {
+      backgroundColor: "#fff",
+    },
+    "&.Mui-disabled": {
+      color: "#9e9e9e",
+      borderColor: "rgba(158, 158, 158, 0.4)",
+      backgroundColor: "rgba(255, 255, 255, 0.85)",
+    },
+  },
   name: {
     fontWeight: 700,
     fontSize: "1.25rem",
     padding: theme.spacing(0, 2),
     wordBreak: "break-word",
     minWidth: 0,
+  },
+  photoUploadError: {
+    color: theme.palette.error.main,
+    padding: theme.spacing(0.5, 2, 0, 2),
+    fontSize: "0.8rem",
   },
   title: {
     color: theme.palette.text.secondary,
