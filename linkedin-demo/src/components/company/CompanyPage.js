@@ -9,12 +9,18 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Tab,
+  Tabs,
   Typography,
 } from "@material-ui/core";
+import useMediaQuery from "@material-ui/core/useMediaQuery";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
 import BusinessIcon from "@material-ui/icons/Business";
 import MoreVertIcon from "@material-ui/icons/MoreVert";
+import VerifiedUserIcon from "@material-ui/icons/VerifiedUser";
 import { api } from "../../convex/_generated/api";
+import CompanyAnalytics from "./CompanyAnalytics";
+import CompanyJobsTab from "./CompanyJobsTab";
 
 const useStyles = makeStyles((theme) => ({
   pageCard: {
@@ -43,6 +49,10 @@ const useStyles = makeStyles((theme) => ({
   headerContent: {
     position: "relative",
     paddingTop: 0,
+    paddingBottom: theme.spacing(3),
+    "@media (max-width:767px)": {
+      padding: theme.spacing(1.5, 2, 2),
+    },
   },
   logo: {
     width: 108,
@@ -51,6 +61,12 @@ const useStyles = makeStyles((theme) => ({
     marginTop: -54,
     backgroundColor: theme.palette.background.default,
     color: theme.palette.primary.main,
+    "@media (max-width:767px)": {
+      width: 84,
+      height: 84,
+      marginTop: 0,
+      borderWidth: 3,
+    },
   },
   topRow: {
     display: "flex",
@@ -60,17 +76,57 @@ const useStyles = makeStyles((theme) => ({
   },
   companyMeta: {
     marginTop: theme.spacing(1),
+    "@media (max-width:767px)": {
+      marginTop: theme.spacing(0.75),
+    },
   },
   companyName: {
     fontWeight: 700,
     color: theme.palette.text.primary,
+    "@media (max-width:767px)": {
+      fontSize: "1.35rem",
+      lineHeight: 1.25,
+    },
+  },
+  companyNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(0.75),
+  },
+  verifiedIcon: {
+    color: "#1a73e8",
+    fontSize: 22,
+    flexShrink: 0,
   },
   companyDetails: {
     marginTop: theme.spacing(0.75),
     color: theme.palette.text.secondary,
   },
-  aboutSection: {
+  tabs: {
     marginTop: theme.spacing(2),
+    borderTop: `1px solid ${theme.palette.divider}`,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    "@media (max-width:767px)": {
+      marginTop: theme.spacing(1.5),
+    },
+  },
+  tab: {
+    textTransform: "none",
+    fontWeight: 600,
+    minHeight: 44,
+    minWidth: 108,
+    "@media (max-width:767px)": {
+      minWidth: 92,
+    },
+  },
+  tabPanel: {
+    marginTop: theme.spacing(2),
+    "@media (max-width:767px)": {
+      marginTop: theme.spacing(1.5),
+    },
+  },
+  aboutSection: {
+    marginTop: 0,
   },
   aboutTitle: {
     color: theme.palette.text.secondary,
@@ -87,6 +143,14 @@ const useStyles = makeStyles((theme) => ({
   adminButton: {
     color: theme.palette.primary.main,
   },
+  emptyStateCard: {
+    border: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.background.paper,
+  },
+  emptyStateBody: {
+    color: theme.palette.text.secondary,
+    textAlign: "center",
+  },
 }));
 
 const normalizeSlug = (value = "") => value.trim().toLowerCase();
@@ -96,11 +160,18 @@ const formatFollowerCount = (count) => {
   return `${resolvedCount.toLocaleString()} follower${resolvedCount === 1 ? "" : "s"}`;
 };
 
+const TAB_ABOUT = "about";
+const TAB_POSTS = "posts";
+const TAB_JOBS = "jobs";
+const TAB_ANALYTICS = "analytics";
+
 const CompanyPage = ({ slug: slugProp }) => {
   const classes = useStyles();
   const theme = useTheme();
+  const isMobileLayout = useMediaQuery("(max-width:767px)");
   const params = useParams();
   const [adminMenuAnchor, setAdminMenuAnchor] = useState(null);
+  const [activeTab, setActiveTab] = useState(TAB_ABOUT);
   const resolvedSlug = useMemo(
     () => normalizeSlug(slugProp ?? params.slug ?? ""),
     [params.slug, slugProp],
@@ -180,6 +251,13 @@ const CompanyPage = ({ slug: slugProp }) => {
         backgroundImage: `linear-gradient(135deg, ${theme.palette.primary.main}, #66bb6a)`,
       };
 
+  const coverSectionStyle = isMobileLayout
+    ? {
+        ...coverStyle,
+        height: 128,
+      }
+    : coverStyle;
+
   const companyDetails = [
     company.industry || "Industry not set",
     company.size || "Size not set",
@@ -188,7 +266,7 @@ const CompanyPage = ({ slug: slugProp }) => {
 
   return (
     <Card elevation={0} className={classes.pageCard}>
-      <div className={classes.cover} style={coverStyle} />
+      <div className={classes.cover} style={coverSectionStyle} />
 
       <CardContent className={classes.headerContent}>
         <div className={classes.topRow}>
@@ -221,19 +299,57 @@ const CompanyPage = ({ slug: slugProp }) => {
         </div>
 
         <div className={classes.companyMeta}>
-          <Typography variant="h5" className={classes.companyName}>
-            {company.name}
-          </Typography>
+          <div className={classes.companyNameRow}>
+            <Typography variant="h5" className={classes.companyName}>
+              {company.name}
+            </Typography>
+            {company.isVerified ? (
+              <VerifiedUserIcon className={classes.verifiedIcon} aria-label="Verified company" />
+            ) : null}
+          </div>
           <Typography variant="body2" className={classes.companyDetails}>
             {companyDetails}
           </Typography>
         </div>
 
-        <div className={classes.aboutSection}>
-          <Typography className={classes.aboutTitle}>About</Typography>
-          <Typography variant="body1" className={classes.aboutBody}>
-            {company.description || "No company description available yet."}
-          </Typography>
+        <Tabs
+          value={activeTab}
+          onChange={(_, nextTab) => setActiveTab(nextTab)}
+          indicatorColor="primary"
+          textColor="primary"
+          variant={isMobileLayout ? "scrollable" : "fullWidth"}
+          scrollButtons={isMobileLayout ? "auto" : "off"}
+          className={classes.tabs}
+        >
+          <Tab value={TAB_ABOUT} label="About" className={classes.tab} />
+          <Tab value={TAB_POSTS} label="Posts" className={classes.tab} />
+          <Tab value={TAB_JOBS} label="Jobs" className={classes.tab} />
+          {isAdmin ? <Tab value={TAB_ANALYTICS} label="Analytics" className={classes.tab} /> : null}
+        </Tabs>
+
+        <div className={classes.tabPanel}>
+          {activeTab === TAB_ABOUT ? (
+            <div className={classes.aboutSection}>
+              <Typography className={classes.aboutTitle}>About</Typography>
+              <Typography variant="body1" className={classes.aboutBody}>
+                {company.description || "No company description available yet."}
+              </Typography>
+            </div>
+          ) : null}
+
+          {activeTab === TAB_POSTS ? (
+            <Card elevation={0} className={classes.emptyStateCard}>
+              <CardContent>
+                <Typography variant="body2" className={classes.emptyStateBody}>
+                  No company posts yet.
+                </Typography>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {activeTab === TAB_JOBS ? <CompanyJobsTab /> : null}
+
+          {activeTab === TAB_ANALYTICS && isAdmin ? <CompanyAnalytics companyId={company._id} /> : null}
         </div>
       </CardContent>
     </Card>
