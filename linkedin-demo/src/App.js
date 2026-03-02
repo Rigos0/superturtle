@@ -16,6 +16,7 @@ import Posts from "./components/posts/Posts";
 import ArticleEditor from "./components/articles/ArticleEditor";
 import HashtagFeed from "./components/hashtag/HashtagFeed";
 import Profile from "./components/profile/Profile";
+import SavedPosts from "./components/bookmarks/SavedPosts";
 import Sidebar from "./components/sidebar/Sidebar";
 import Widgets from "./components/widgets/Widgets";
 import { api } from "./convex/_generated/api";
@@ -46,6 +47,7 @@ const AppShell = () => {
   const navigate = useNavigate();
   const hashtagRouteMatch = useMatch("/hashtag/:tag");
   const writeArticleRouteMatch = useMatch("/write-article");
+  const savedRouteMatch = useMatch("/saved");
   const usernameRouteMatch = useMatch("/:username");
   const profileIdRouteMatch = useMatch("/profile/:userId");
   const routeHashtagParam = hashtagRouteMatch?.params?.tag ?? null;
@@ -53,14 +55,18 @@ const AppShell = () => {
     ? normalizeHashtag(decodeRouteParam(routeHashtagParam))
     : null;
   const isWriteArticleRouteActive = Boolean(writeArticleRouteMatch);
-  const routeUsername = isWriteArticleRouteActive
+  const isSavedRouteActive = Boolean(savedRouteMatch);
+  const routeUsername = isWriteArticleRouteActive || isSavedRouteActive
     ? null
     : usernameRouteMatch?.params?.username?.trim().toLowerCase() ?? null;
   const routeUserId = profileIdRouteMatch?.params?.userId ?? null;
   const isProfileRouteActive = Boolean(routeUsername || routeUserId);
   const isHashtagRouteActive = Boolean(routeHashtag);
   const isSpecialRouteActive =
-    isProfileRouteActive || isHashtagRouteActive || isWriteArticleRouteActive;
+    isProfileRouteActive ||
+    isHashtagRouteActive ||
+    isWriteArticleRouteActive ||
+    isSavedRouteActive;
   const { isAuthenticated, isLoading } = useConvexAuth();
   const seedData = useMutation(api.seed.seedData);
   const currentUser = useQuery(api.users.getCurrentUser, isAuthenticated ? {} : "skip");
@@ -241,7 +247,9 @@ const AppShell = () => {
   });
   const shouldShowHashtagView = isHashtagRouteActive;
   const shouldShowWriteArticleView = isWriteArticleRouteActive;
+  const shouldShowSavedView = isSavedRouteActive;
   const shouldShowProfileView =
+    !shouldShowSavedView &&
     !shouldShowHashtagView &&
     !shouldShowWriteArticleView &&
     (isProfileRouteActive || view === "profile");
@@ -302,12 +310,14 @@ const AppShell = () => {
                 />
               )}
               {shouldShowWriteArticleView && <ArticleEditor />}
+              {shouldShowSavedView && <SavedPosts onNavigateProfile={onNavigateProfile} />}
 
               {/* Keep-alive tabs — always mounted, shown/hidden via display.
                   This prevents Convex query re-fetching and skeleton flashes. */}
               <div
                 style={showWhen(
                   !shouldShowProfileView &&
+                    !shouldShowSavedView &&
                     !shouldShowHashtagView &&
                     !shouldShowWriteArticleView &&
                     activeTab === "home",
@@ -324,6 +334,7 @@ const AppShell = () => {
               <div
                 style={showWhen(
                   !shouldShowProfileView &&
+                    !shouldShowSavedView &&
                     !shouldShowHashtagView &&
                     !shouldShowWriteArticleView &&
                     activeTab === "network",
@@ -335,6 +346,7 @@ const AppShell = () => {
               <div
                 style={showWhen(
                   !shouldShowProfileView &&
+                    !shouldShowSavedView &&
                     !shouldShowHashtagView &&
                     !shouldShowWriteArticleView &&
                     activeTab === "messaging",
@@ -346,6 +358,7 @@ const AppShell = () => {
               <div
                 style={showWhen(
                   !shouldShowProfileView &&
+                  !shouldShowSavedView &&
                   !shouldShowHashtagView &&
                   !shouldShowWriteArticleView &&
                   activeTab === "notifications",

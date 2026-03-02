@@ -1,5 +1,5 @@
 ## Current Task
-Add `/saved` route in App.js and link from profile or sidebar.
+Run `cd linkedin-demo && npx convex dev --once` to push schema.
 
 ## End Goal with Specs
 Item 33 from Phase 2: Users can bookmark posts and access them from a "Saved" section.
@@ -13,8 +13,8 @@ Item 33 from Phase 2: Users can bookmark posts and access them from a "Saved" se
 - [x] Create `linkedin-demo/src/convex/bookmarks.ts` — mutations: toggleBookmark(postId); queries: isBookmarked(postId), getUserBookmarks()
 - [x] Add bookmark button to post footer in `linkedin-demo/src/components/posts/post/Post.js` — filled/outline icon toggle
 - [x] Create `linkedin-demo/src/components/bookmarks/SavedPosts.js` — page listing all bookmarked posts
-- [ ] Add `/saved` route in App.js and link from profile or sidebar <- current
-- [ ] Run `cd linkedin-demo && npx convex dev --once` to push schema
+- [x] Add `/saved` route in App.js and link from profile or sidebar
+- [ ] Run `cd linkedin-demo && npx convex dev --once` to push schema <- current
 - [ ] Test and commit
 
 ## Notes

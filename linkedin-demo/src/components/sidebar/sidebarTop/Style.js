@@ -80,4 +80,9 @@ export default makeStyles((theme) => ({
       backgroundColor: theme.palette.type === "dark" ? darkSecondary : "lightgrey",
     },
   },
+  savedPostsLink: {
+    width: "100%",
+    textDecoration: "none",
+    color: "inherit",
+  },
 }));
