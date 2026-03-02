@@ -1,5 +1,5 @@
 ## Current Task
-Update form/composer icons in `linkedin-demo/src/components/form/Form.js` to non-branded outlined variants.
+Update sidebar icons in `linkedin-demo/src/components/sidebar/sidebarTop/SidebarTop.js` to outlined variants where appropriate.
 
 ## End Goal with Specs
 Modern, professional icons that match LinkedIn's visual language. Replace generic icons with more appropriate MUI icon variants. Improve post action bar, header nav, and sidebar icons.
@@ -19,13 +19,13 @@ Modern, professional icons that match LinkedIn's visual language. Replace generi
   - Ensure Like/ThumbUp icons use outlined when not active, filled when active (verify this works)
 - [x] **Post header** in `linkedin-demo/src/components/posts/post/PostHeader.js`:
   - `MoreHorizOutlinedIcon` is fine — keep
-- [ ] **Form/composer icons** in `linkedin-demo/src/components/form/Form.js`: <- current
+- [x] **Form/composer icons** in `linkedin-demo/src/components/form/Form.js`:
   - `VideocamRoundedIcon` → `VideocamOutlinedIcon` (consistent outlined style)
   - `YouTubeIcon` → `OndemandVideoOutlinedIcon` or `PlayCircleOutlineIcon` (YouTubeIcon is a branded logo)
   - `PhotoSizeSelectActualIcon` → `ImageOutlinedIcon` or `PhotoOutlinedIcon` (cleaner)
   - `CreateIcon` → `EditOutlinedIcon` or `CreateOutlinedIcon`
   - `InsertLinkIcon` → `LinkOutlinedIcon` (if available) or keep
-- [ ] **Sidebar icons** in `linkedin-demo/src/components/sidebar/sidebarTop/SidebarTop.js`:
+- [ ] **Sidebar icons** in `linkedin-demo/src/components/sidebar/sidebarTop/SidebarTop.js`: <- current
   - `LabelImportantIcon` → `BookmarkBorderIcon` or `LabelOutlinedIcon`
   - `BookmarkIcon` — check if using outlined variant
 - [ ] **Widgets icons** in `linkedin-demo/src/components/widgets/Widgets.js`:

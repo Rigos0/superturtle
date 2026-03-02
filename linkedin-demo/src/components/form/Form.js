@@ -4,16 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { Chip, Paper, Snackbar, TextField } from "@material-ui/core";
 import { useTheme } from "@material-ui/core/styles";
 import Alert from "@material-ui/lab/Alert";
-import VideocamRoundedIcon from "@material-ui/icons/VideocamRounded";
-import YouTubeIcon from "@material-ui/icons/YouTube";
-import PhotoSizeSelectActualIcon from "@material-ui/icons/PhotoSizeSelectActual";
-import CreateIcon from "@material-ui/icons/Create";
+import VideocamOutlinedIcon from "@material-ui/icons/VideocamOutlined";
+import OndemandVideoOutlinedIcon from "@material-ui/icons/OndemandVideoOutlined";
+import ImageOutlinedIcon from "@material-ui/icons/ImageOutlined";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import PollIcon from "@material-ui/icons/Poll";
 import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 import HighlightOffRoundedIcon from "@material-ui/icons/HighlightOffRounded";
 // Colors import removed — using green branding directly
 import Styles from "./Style";
-import InsertLinkIcon from "@material-ui/icons/InsertLink";
+import LinkOutlinedIcon from "@material-ui/icons/LinkOutlined";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import { imageUploadHandler } from "./form.utils";
 import { api } from "../../convex/_generated/api";
@@ -427,7 +427,7 @@ const Form = () => {
     <Paper className={classes.upload}>
       <div className={classes.upload__header}>
         <form className={classes.header__form} onSubmit={handleSubmitButton}>
-          <CreateIcon />
+          <EditOutlinedIcon />
           <TextField
             className={classes.headerTextField}
             placeholder="Start a post"
@@ -493,9 +493,9 @@ const Form = () => {
               onDelete={() => handleRemoveFile(fileIndex)}
               icon={
                 file.type === "image" ? (
-                  <PhotoSizeSelectActualIcon />
+                  <ImageOutlinedIcon />
                 ) : (
-                  <VideocamRoundedIcon />
+                  <VideocamOutlinedIcon />
                 )
               }
               label={file.name}
@@ -505,7 +505,7 @@ const Form = () => {
       )}
       {openURL && (
         <div className={classes.pasteURL_Input}>
-          <InsertLinkIcon />
+          <LinkOutlinedIcon />
           <input
             placeholder="Paste an image URL"
             value={URL}
@@ -572,7 +572,7 @@ const Form = () => {
           onClick={closeURL_Tab}
           className={classes.media__options}
         >
-          <PhotoSizeSelectActualIcon
+          <ImageOutlinedIcon
             style={{ color: theme.palette.primary.main }}
           />
           <h4>Photo</h4>
@@ -582,11 +582,11 @@ const Form = () => {
           onClick={closeURL_Tab}
           className={classes.media__options}
         >
-          <YouTubeIcon style={{ color: "orange" }} />
+          <OndemandVideoOutlinedIcon style={{ color: "orange" }} />
           <h4>Video</h4>
         </label>
         <div className={classes.media__options} onClick={toggleURL_Tab}>
-          <InsertLinkIcon style={{ color: "#e88ee4", fontSize: 30 }} />
+          <LinkOutlinedIcon style={{ color: "#e88ee4", fontSize: 30 }} />
           <h4>URL</h4>
         </div>
         <div className={classes.media__options} onClick={togglePollComposer}>
