@@ -7,8 +7,8 @@ export const followCompany = mutation({
     companyId: v.id("companies"),
   },
   handler: async (ctx, args) => {
-    const followerId = await getAuthUserId(ctx);
-    if (!followerId) {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
       throw new Error("Authentication required");
     }
 
@@ -16,8 +16,8 @@ export const followCompany = mutation({
       ctx.db.get(args.companyId),
       ctx.db
         .query("companyFollowers")
-        .withIndex("byFollowerAndCompany", (q) =>
-          q.eq("followerId", followerId).eq("companyId", args.companyId),
+        .withIndex("byCompanyAndUser", (q) =>
+          q.eq("companyId", args.companyId).eq("userId", userId),
         )
         .first(),
     ]);
@@ -31,7 +31,7 @@ export const followCompany = mutation({
     }
 
     return await ctx.db.insert("companyFollowers", {
-      followerId,
+      userId,
       companyId: args.companyId,
       createdAt: Date.now(),
     });
@@ -43,15 +43,15 @@ export const unfollowCompany = mutation({
     companyId: v.id("companies"),
   },
   handler: async (ctx, args) => {
-    const followerId = await getAuthUserId(ctx);
-    if (!followerId) {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
       throw new Error("Authentication required");
     }
 
     const existingFollow = await ctx.db
       .query("companyFollowers")
-      .withIndex("byFollowerAndCompany", (q) =>
-        q.eq("followerId", followerId).eq("companyId", args.companyId),
+      .withIndex("byCompanyAndUser", (q) =>
+        q.eq("companyId", args.companyId).eq("userId", userId),
       )
       .first();
 
@@ -83,15 +83,15 @@ export const isFollowing = query({
     companyId: v.id("companies"),
   },
   handler: async (ctx, args) => {
-    const followerId = await getAuthUserId(ctx);
-    if (!followerId) {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
       return false;
     }
 
     const follow = await ctx.db
       .query("companyFollowers")
-      .withIndex("byFollowerAndCompany", (q) =>
-        q.eq("followerId", followerId).eq("companyId", args.companyId),
+      .withIndex("byCompanyAndUser", (q) =>
+        q.eq("companyId", args.companyId).eq("userId", userId),
       )
       .first();
 
