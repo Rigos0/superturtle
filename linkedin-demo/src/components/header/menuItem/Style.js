@@ -16,7 +16,7 @@ export default makeStyles((theme) => ({
       height: 24,
     },
     "&:hover": {
-      color: "black",
+      color: theme.palette.text.primary,
     },
   },
   title: {
