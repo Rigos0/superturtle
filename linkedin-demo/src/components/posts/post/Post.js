@@ -8,6 +8,7 @@ import DialogTitle from "@material-ui/core/DialogTitle";
 import Menu from "@material-ui/core/Menu";
 import MenuItem from "@material-ui/core/MenuItem";
 import Paper from "@material-ui/core/Paper";
+import Snackbar from "@material-ui/core/Snackbar";
 import MoreHorizOutlinedIcon from "@material-ui/icons/MoreHorizOutlined";
 import ThumbUpAltIcon from "@material-ui/icons/ThumbUpAlt";
 import ThumbUpAltOutlinedIcon from "@material-ui/icons/ThumbUpAltOutlined";
@@ -28,6 +29,7 @@ import { api } from "../../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
 import PollDisplay from "../poll/PollDisplay";
+import ReportDialog from "../report/ReportDialog";
 import { getLinkPreviewFromText } from "./post.utils";
 import Style from "./Style";
 
@@ -142,6 +144,7 @@ const Post = forwardRef(
     const updatePost = useMutation(api.posts.updatePost);
     const repostPost = useMutation(api.reposts.repostPost);
     const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
+    const reportPost = useMutation(api.reports.reportPost);
 
     const [showComments, setShowComments] = React.useState(false);
     const [commentText, setCommentText] = React.useState("");
@@ -156,6 +159,13 @@ const Post = forwardRef(
     const [optimisticReaction, setOptimisticReaction] = React.useState(undefined);
     const [isReactionMutationPending, setIsReactionMutationPending] = React.useState(false);
     const [isReactionPickerOpen, setIsReactionPickerOpen] = React.useState(false);
+    const [isReportDialogOpen, setIsReportDialogOpen] = React.useState(false);
+    const [isReportSubmitting, setIsReportSubmitting] = React.useState(false);
+    const [hasReportedOptimistic, setHasReportedOptimistic] = React.useState(false);
+    const [reportSnackbarState, setReportSnackbarState] = React.useState({
+      open: false,
+      message: "",
+    });
     const reactionPickerCloseTimeoutRef = React.useRef(null);
     const reactionPickerLongPressTimeoutRef = React.useRef(null);
     const didLongPressOpenReactionPickerRef = React.useRef(false);
@@ -210,6 +220,12 @@ const Post = forwardRef(
       return segments;
     }, [description]);
 
+    const canInteract = Boolean(isAuthenticated && user?._id);
+    const isOwnPost = Boolean(!isRepost && canInteract && authorId && authorId === user._id);
+    const hasReported = useQuery(
+      api.reports.hasReported,
+      canInteract && !isOwnPost ? { postId } : "skip"
+    );
     const comments = useQuery(
       api.comments.listComments,
       showComments ? { postId } : "skip"
@@ -238,12 +254,11 @@ const Post = forwardRef(
       }
     }, [bookmarked]);
     const commentsList = comments ?? [];
-    const canInteract = Boolean(isAuthenticated && user?._id);
+    const hasReportedPost = Boolean(hasReported || hasReportedOptimistic);
     const canBookmark = canInteract && !isBookmarkMutationPending;
     const canReact = canInteract && !isReactionMutationPending;
     const isBookmarked =
       optimisticBookmarked !== undefined ? optimisticBookmarked : (bookmarked ?? false);
-    const isOwnPost = Boolean(!isRepost && canInteract && authorId && authorId === user._id);
     const canShowPostMenu = canInteract;
     const canReportPost = canShowPostMenu && !isOwnPost;
     const isMenuOpen = Boolean(menuAnchorEl);
@@ -517,7 +532,63 @@ const Post = forwardRef(
         return;
       }
 
+      if (hasReportedPost) {
+        handleMenuClose();
+        return;
+      }
+
+      setIsReportDialogOpen(true);
       handleMenuClose();
+    };
+    const handleReportDialogClose = () => {
+      if (isReportSubmitting) {
+        return;
+      }
+
+      setIsReportDialogOpen(false);
+    };
+    const handleReportSnackbarClose = (_, reason) => {
+      if (reason === "clickaway") {
+        return;
+      }
+
+      setReportSnackbarState((previousState) => ({
+        ...previousState,
+        open: false,
+      }));
+    };
+    const handleReportSubmit = async ({ reason, details }) => {
+      if (!canReportPost || hasReportedPost || isReportSubmitting) {
+        return;
+      }
+
+      setIsReportSubmitting(true);
+
+      try {
+        const trimmedDetails = typeof details === "string" ? details.trim() : "";
+        const result = await reportPost({
+          postId,
+          reason,
+          details: trimmedDetails.length > 0 ? trimmedDetails : undefined,
+        });
+
+        setHasReportedOptimistic(true);
+        setIsReportDialogOpen(false);
+        setReportSnackbarState({
+          open: true,
+          message: result?.alreadyReported
+            ? "You already reported this post."
+            : "Report submitted successfully.",
+        });
+      } catch (error) {
+        console.error("Failed to report post:", error);
+        setReportSnackbarState({
+          open: true,
+          message: "Failed to submit report. Please try again.",
+        });
+      } finally {
+        setIsReportSubmitting(false);
+      }
     };
 
     const handleEditSave = async () => {
@@ -851,7 +922,12 @@ const Post = forwardRef(
                       <MenuItem onClick={handleDeleteClick}>Delete</MenuItem>
                     </>
                   ) : (
-                    <MenuItem onClick={handleReportClick}>Report</MenuItem>
+                    <MenuItem
+                      onClick={handleReportClick}
+                      disabled={hasReportedPost || isReportSubmitting}
+                    >
+                      {hasReportedPost ? "Reported" : "Report"}
+                    </MenuItem>
                   )}
                 </Menu>
               </>
@@ -1166,6 +1242,21 @@ const Post = forwardRef(
             </button>
           </DialogActions>
         </Dialog>
+
+        <ReportDialog
+          open={isReportDialogOpen}
+          onClose={handleReportDialogClose}
+          onSubmit={handleReportSubmit}
+          loading={isReportSubmitting}
+        />
+
+        <Snackbar
+          open={reportSnackbarState.open}
+          autoHideDuration={4000}
+          onClose={handleReportSnackbarClose}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          message={reportSnackbarState.message}
+        />
       </>
     );
   }

@@ -22,3 +22,4 @@ Item 34 from Phase 2: Users can report posts with a reason. Reports stored in da
 - Post component: `linkedin-demo/src/components/posts/post/Post.js`
 - Schema: `linkedin-demo/src/convex/schema.ts`
 - Use MUI Dialog, Select, TextField, Snackbar components
+- Verification: `cd linkedin-demo && npm run build` passed on 2026-03-02.
