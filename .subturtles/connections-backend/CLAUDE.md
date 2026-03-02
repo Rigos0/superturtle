@@ -1,5 +1,5 @@
 ## Current Task
-Run `npx convex dev --once` to push schema + functions.
+All backlog items complete.
 
 ## End Goal with Specs
 - New `connections` table in Convex schema with: userId1, userId2, status ("pending"|"accepted"), requestedBy, createdAt
@@ -35,8 +35,8 @@ Run `npx convex dev --once` to push schema + functions.
   - `listConnections` query: args { userId: v.id("users") }. Returns all accepted connections for this user (both directions). Joins user data (displayName, photoURL, title, location). Returns array of { connectionId, user: { _id, displayName, photoURL, title, location } }.
   - `listPendingRequests` query: args { userId: v.id("users") }. Returns pending connections where userId2=userId (incoming requests). Joins requester user data.
   - `getConnectionCount` query: args { userId: v.id("users") }. Counts accepted connections (both directions). Returns a number.
-- [ ] Run `npx convex dev --once` to push schema + functions <- current
-- [ ] Commit: "Add connections backend: schema, mutations, queries, real counts"
+- [x] Run `npx convex dev --once` to push schema + functions
+- [x] Commit: "Add connections backend: schema, mutations, queries, real counts"
 
 ## Notes
 - All paths from repo root: `/Users/Richard.Mladek/Documents/projects/agentic/`
@@ -47,3 +47,6 @@ Run `npx convex dev --once` to push schema + functions.
 - For checking both directions, query once with userId1=A,userId2=B and once with userId1=B,userId2=A using the byUsers index
 - Convex doesn't support compound OR queries well, so use collect+filter or two index queries
 - Green is irrelevant here — this is pure backend
+
+## Loop Control
+STOP
