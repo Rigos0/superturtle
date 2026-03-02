@@ -274,6 +274,21 @@ export const listPostsByUser = query({
   },
 });
 
+export const getCompanyPosts = query({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, args) => {
+    const posts = await ctx.db
+      .query("posts")
+      .withIndex("byCompanyId", (q) => q.eq("companyId", args.companyId))
+      .collect();
+    const sortedPosts = [...posts].sort((a, b) => b.createdAt - a.createdAt);
+
+    return await Promise.all(sortedPosts.map((post) => buildFeedPostPayload(ctx, post)));
+  },
+});
+
 export const searchPosts = query({
   args: {
     query: v.string(),
@@ -389,6 +404,104 @@ export const createPost = mutation({
             userId: mentionedUser._id,
             type: "mention",
             fromUserId: authorId,
+            postId,
+            read: false,
+            createdAt: Date.now(),
+          }),
+        ),
+      );
+    }
+
+    return postId;
+  },
+});
+
+export const createCompanyPost = mutation({
+  args: {
+    companyId: v.id("companies"),
+    description: v.string(),
+    visibility: v.optional(v.union(v.literal("public"), v.literal("connections"))),
+    fileType: v.optional(v.string()),
+    fileData: v.optional(v.string()),
+    imageStorageIds: v.optional(v.array(v.id("_storage"))),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const company = await ctx.db.get(args.companyId);
+    if (!company) {
+      throw new Error("Company not found");
+    }
+
+    const isCompanyAdmin = company.admins.some((adminId) => adminId === userId);
+    if (!isCompanyAdmin) {
+      throw new Error("Only company admins can create company posts");
+    }
+
+    const imageStorageIds = normalizeImageStorageIds(args.imageStorageIds);
+    const hasStorageImages = imageStorageIds.length > 0;
+    const postId = await ctx.db.insert("posts", {
+      authorId: userId,
+      companyId: args.companyId,
+      description: args.description,
+      visibility: args.visibility ?? "public",
+      createdAt: Date.now(),
+      likesCount: 0,
+      commentsCount: 0,
+      ...(hasStorageImages ? { imageStorageIds, fileType: "image" } : {}),
+      ...(!hasStorageImages && args.fileType ? { fileType: args.fileType } : {}),
+      ...(!hasStorageImages && args.fileData ? { fileData: args.fileData } : {}),
+    });
+
+    const hashtags = extractHashtags(args.description);
+    if (hashtags.length > 0) {
+      await Promise.all(
+        hashtags.map((tag) =>
+          ctx.db.insert("hashtags", {
+            tag,
+            postId,
+          }),
+        ),
+      );
+    }
+
+    const mentionedUsernames = new Set<string>();
+    const mentionMatches = args.description.matchAll(
+      /(^|[^a-z0-9-])@([a-z0-9]+(?:-[a-z0-9]+)*)/gi,
+    );
+
+    for (const match of mentionMatches) {
+      const mentionUsername = match[2]?.trim().toLowerCase();
+      if (mentionUsername) {
+        mentionedUsernames.add(mentionUsername);
+      }
+    }
+
+    const uniqueMentionedUsernames = Array.from(mentionedUsernames);
+    if (uniqueMentionedUsernames.length > 0) {
+      const mentionedUsers = await Promise.all(
+        uniqueMentionedUsernames.map((username) =>
+          ctx.db
+            .query("users")
+            .withIndex("username", (q) => q.eq("username", username))
+            .unique(),
+        ),
+      );
+
+      const notificationsToCreate = mentionedUsers.filter(
+        (mentionedUser): mentionedUser is Doc<"users"> =>
+          mentionedUser !== null && mentionedUser._id !== userId,
+      );
+
+      await Promise.all(
+        notificationsToCreate.map((mentionedUser) =>
+          ctx.db.insert("notifications", {
+            userId: mentionedUser._id,
+            type: "mention",
+            fromUserId: userId,
             postId,
             read: false,
             createdAt: Date.now(),

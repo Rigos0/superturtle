@@ -71,6 +71,7 @@ export default defineSchema({
   }).index("slug", ["slug"]),
   posts: defineTable({
     authorId: v.id("users"),
+    companyId: v.optional(v.id("companies")),
     description: v.string(),
     type: v.optional(v.union(v.literal("post"), v.literal("article"))),
     articleTitle: v.optional(v.string()),
@@ -85,7 +86,7 @@ export default defineSchema({
     createdAt: v.number(),
     likesCount: v.number(),
     commentsCount: v.number(),
-  }),
+  }).index("byCompanyId", ["companyId"]),
   postEdits: defineTable({
     postId: v.id("posts"),
     previousDescription: v.string(),
