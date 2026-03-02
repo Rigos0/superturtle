@@ -5,6 +5,7 @@ import { Grid, Hidden, Modal, Typography } from "@material-ui/core";
 import { ThemeProvider, createMuiTheme } from "@material-ui/core";
 import { BrowserRouter, useMatch, useNavigate } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
+import LoadingGate from "./components/LoadingGate";
 import Header from "./components/header/Header";
 import Form from "./components/form/Form";
 import LoginCard from "./components/login/loginCard/LoginCard";
@@ -13,12 +14,103 @@ import Network from "./components/network/Network";
 import Notifications from "./components/notifications/Notifications";
 import Onboarding from "./components/onboarding/Onboarding";
 import Posts from "./components/posts/Posts";
+import Post from "./components/posts/post/Post";
 import Profile from "./components/profile/Profile";
 import Sidebar from "./components/sidebar/Sidebar";
 import Widgets from "./components/widgets/Widgets";
+import { DEFAULT_PHOTO } from "./constants";
 import { api } from "./convex/_generated/api";
+import useConvexUser from "./hooks/useConvexUser";
 import Styles from "./Style";
 import { LinkedInBgColor, darkPrimary } from "./assets/Colors";
+
+const normalizeHashtag = (value) =>
+  value
+    .trim()
+    .replace(/^#+/, "")
+    .toLowerCase();
+
+const decodeRouteParam = (value = "") => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const resolvePhoto = (photoURL) => {
+  if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
+    return DEFAULT_PHOTO;
+  }
+
+  return photoURL;
+};
+
+const HashtagFeedRoute = ({ tag, onNavigateProfile }) => {
+  const normalizedTag = useMemo(() => normalizeHashtag(tag ?? ""), [tag]);
+  const posts = useQuery(
+    api.hashtags.getPostsByHashtag,
+    normalizedTag ? { tag: normalizedTag } : "skip",
+  );
+  const user = useConvexUser();
+  const isLoading = posts === undefined;
+  const postIds = useMemo(() => (posts ?? []).map((post) => post._id), [posts]);
+  const userReactions = useQuery(
+    api.likes.getUserReactionsByPostIds,
+    user?._id && postIds.length > 0 ? { userId: user._id, postIds } : "skip",
+  );
+  const reactionCounts = useQuery(
+    api.likes.getReactionCountsByPostIds,
+    postIds.length > 0 ? { postIds } : "skip",
+  );
+
+  if (!normalizedTag) {
+    return (
+      <Typography variant="body2" color="textSecondary">
+        Invalid hashtag.
+      </Typography>
+    );
+  }
+
+  return (
+    <div style={{ width: "100%" }}>
+      <Typography
+        variant="h6"
+        style={{ fontWeight: 700, padding: "4px 0 12px", color: "#2e7d32" }}
+      >
+        #{normalizedTag}
+      </Typography>
+      <LoadingGate isLoading={isLoading}>
+        {posts?.length === 0 ? (
+          <Typography variant="body2" color="textSecondary">
+            No posts found for #{normalizedTag}.
+          </Typography>
+        ) : (
+          posts?.map((post) => (
+            <Post
+              key={post._id}
+              postId={post._id}
+              authorId={post.authorId}
+              authorUsername={post.author?.username ?? null}
+              likesCount={post.likesCount}
+              commentsCount={post.commentsCount}
+              currentReaction={userReactions?.[post._id] ?? undefined}
+              reactionCounts={reactionCounts?.[post._id]}
+              profile={resolvePhoto(post.authorPhotoURL ?? post.author?.photoURL)}
+              username={post.authorName ?? post.author?.displayName}
+              timestamp={post.createdAt}
+              description={post.description}
+              fileType={post.fileType}
+              fileData={post.fileData}
+              imageUrls={post.imageUrls}
+              onNavigateProfile={onNavigateProfile}
+            />
+          ))
+        )}
+      </LoadingGate>
+    </div>
+  );
+};
 
 const AppShell = () => {
   const classes = Styles();
@@ -28,11 +120,17 @@ const AppShell = () => {
   const [profileUserId, setProfileUserId] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
   const navigate = useNavigate();
+  const hashtagRouteMatch = useMatch("/hashtag/:tag");
   const usernameRouteMatch = useMatch("/:username");
   const profileIdRouteMatch = useMatch("/profile/:userId");
+  const routeHashtagParam = hashtagRouteMatch?.params?.tag ?? null;
+  const routeHashtag = routeHashtagParam
+    ? normalizeHashtag(decodeRouteParam(routeHashtagParam))
+    : null;
   const routeUsername = usernameRouteMatch?.params?.username?.trim().toLowerCase() ?? null;
   const routeUserId = profileIdRouteMatch?.params?.userId ?? null;
   const isProfileRouteActive = Boolean(routeUsername || routeUserId);
+  const isHashtagRouteActive = Boolean(routeHashtag);
   const { isAuthenticated, isLoading } = useConvexAuth();
   const seedData = useMutation(api.seed.seedData);
   const currentUser = useQuery(api.users.getCurrentUser, isAuthenticated ? {} : "skip");
@@ -110,7 +208,7 @@ const AppShell = () => {
   };
 
   const handleSetActiveTab = (tab) => {
-    if (isProfileRouteActive) {
+    if (isProfileRouteActive || isHashtagRouteActive) {
       navigate("/");
     }
     setActiveTab(tab);
@@ -118,7 +216,7 @@ const AppShell = () => {
   };
 
   const onNavigateHome = () => {
-    if (isProfileRouteActive) {
+    if (isProfileRouteActive || isHashtagRouteActive) {
       navigate("/");
     }
     setActiveTab("home");
@@ -126,7 +224,7 @@ const AppShell = () => {
   };
 
   const onNavigateMessaging = () => {
-    if (isProfileRouteActive) {
+    if (isProfileRouteActive || isHashtagRouteActive) {
       navigate("/");
     }
     setActiveTab("messaging");
@@ -138,7 +236,7 @@ const AppShell = () => {
       return;
     }
 
-    if (isProfileRouteActive) {
+    if (isProfileRouteActive || isHashtagRouteActive) {
       navigate("/");
     }
     setActiveTab("home");
@@ -211,7 +309,9 @@ const AppShell = () => {
     display: condition ? undefined : "none",
     width: "100%",
   });
-  const shouldShowProfileView = isProfileRouteActive || view === "profile";
+  const shouldShowHashtagView = isHashtagRouteActive;
+  const shouldShowProfileView =
+    !shouldShowHashtagView && (isProfileRouteActive || view === "profile");
   const routedProfileUserId = routeUserId || null;
   const routedProfileUsername = routeUsername || null;
 
@@ -262,10 +362,20 @@ const AppShell = () => {
                   onViewProfile={onNavigateProfile}
                 />
               )}
+              {shouldShowHashtagView && (
+                <HashtagFeedRoute
+                  tag={routeHashtag}
+                  onNavigateProfile={onNavigateProfile}
+                />
+              )}
 
               {/* Keep-alive tabs — always mounted, shown/hidden via display.
                   This prevents Convex query re-fetching and skeleton flashes. */}
-              <div style={showWhen(!shouldShowProfileView && activeTab === "home")}>
+              <div
+                style={showWhen(
+                  !shouldShowProfileView && !shouldShowHashtagView && activeTab === "home",
+                )}
+              >
                 <Grid item className={classes.feed__form}>
                   <Form />
                 </Grid>
@@ -274,15 +384,29 @@ const AppShell = () => {
                 </Grid>
               </div>
 
-              <div style={showWhen(!shouldShowProfileView && activeTab === "network")}>
+              <div
+                style={showWhen(
+                  !shouldShowProfileView && !shouldShowHashtagView && activeTab === "network",
+                )}
+              >
                 <Network onNavigateProfile={onNavigateProfile} />
               </div>
 
-              <div style={showWhen(!shouldShowProfileView && activeTab === "messaging")}>
+              <div
+                style={showWhen(
+                  !shouldShowProfileView && !shouldShowHashtagView && activeTab === "messaging",
+                )}
+              >
                 <Messaging />
               </div>
 
-              <div style={showWhen(!shouldShowProfileView && activeTab === "notifications")}>
+              <div
+                style={showWhen(
+                  !shouldShowProfileView &&
+                  !shouldShowHashtagView &&
+                  activeTab === "notifications",
+                )}
+              >
                 <Notifications
                   onViewPost={onViewPost}
                   onNavigateProfile={onNavigateProfile}
