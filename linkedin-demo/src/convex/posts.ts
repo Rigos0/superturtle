@@ -112,9 +112,15 @@ export const listPosts = query({
     sortBy: v.optional(
       v.union(v.literal("recent"), v.literal("top"), v.literal("following")),
     ),
+    offset: v.optional(v.number()),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const sortBy = args.sortBy ?? "recent";
+    const rawOffset = Math.floor(args.offset ?? 0);
+    const rawLimit = Math.floor(args.limit ?? 10);
+    const offset = rawOffset < 0 ? 0 : rawOffset;
+    const limit = Math.min(Math.max(rawLimit, 1), 50);
     const viewerId = await getAuthUserId(ctx);
     const posts = await ctx.db.query("posts").collect();
     const connectedAuthorIds = new Set<Id<"users">>();
@@ -260,7 +266,9 @@ export const listPosts = query({
       return b.feedCreatedAt - a.feedCreatedAt;
     });
 
-    return sortedFeedItems.map(({ feedCreatedAt, ...feedItem }) => feedItem);
+    return sortedFeedItems
+      .slice(offset, offset + limit)
+      .map(({ feedCreatedAt, ...feedItem }) => feedItem);
   },
 });
 

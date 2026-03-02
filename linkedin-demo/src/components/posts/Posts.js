@@ -1,6 +1,7 @@
 import React from "react";
 import { useQuery } from "convex/react";
 import { makeStyles } from "@material-ui/core/styles";
+import Button from "@material-ui/core/Button";
 import Typography from "@material-ui/core/Typography";
 import Tabs from "@material-ui/core/Tabs";
 import Tab from "@material-ui/core/Tab";
@@ -12,12 +13,41 @@ import useConvexPosts from "../../hooks/useConvexPosts";
 import useConvexUser from "../../hooks/useConvexUser";
 import LoadingGate from "../LoadingGate";
 
+const PAGE_SIZE = 10;
+
 const Posts = ({ onNavigateProfile }) => {
   const classes = Style();
   const [sortBy, setSortBy] = React.useState("recent");
-  const posts = useConvexPosts(sortBy);
+  const [page, setPage] = React.useState(0);
+  const [pagedPosts, setPagedPosts] = React.useState({});
+  const offset = page * PAGE_SIZE;
+  const currentPagePosts = useConvexPosts(sortBy, { offset, limit: PAGE_SIZE });
   const user = useConvexUser();
-  const isLoading = posts === undefined;
+  const posts = React.useMemo(() => {
+    const pageIndexes = Object.keys(pagedPosts)
+      .map((pageIndex) => Number(pageIndex))
+      .sort((a, b) => a - b);
+
+    return pageIndexes.flatMap((pageIndex) => pagedPosts[pageIndex] ?? []);
+  }, [pagedPosts]);
+
+  const isLoading = page === 0 && currentPagePosts === undefined && !Array.isArray(pagedPosts[0]);
+  const isLoadingMore = page > 0 && currentPagePosts === undefined;
+  const currentLoadedPagePosts = pagedPosts[page];
+  const hasMore = Array.isArray(currentLoadedPagePosts)
+    ? currentLoadedPagePosts.length === PAGE_SIZE
+    : true;
+
+  React.useEffect(() => {
+    if (!Array.isArray(currentPagePosts)) {
+      return;
+    }
+
+    setPagedPosts((previousPages) => ({
+      ...previousPages,
+      [page]: currentPagePosts,
+    }));
+  }, [currentPagePosts, page]);
 
   const postIds = React.useMemo(() => {
     if (!Array.isArray(posts) || posts.length === 0) {
@@ -61,7 +91,15 @@ const Posts = ({ onNavigateProfile }) => {
       <div className={classes.feedSort}>
         <Tabs
           value={sortBy}
-          onChange={(_, nextSortBy) => setSortBy(nextSortBy)}
+          onChange={(_, nextSortBy) => {
+            if (nextSortBy === sortBy) {
+              return;
+            }
+
+            setSortBy(nextSortBy);
+            setPage(0);
+            setPagedPosts({});
+          }}
           indicatorColor="primary"
           textColor="primary"
           variant="fullWidth"
@@ -73,7 +111,7 @@ const Posts = ({ onNavigateProfile }) => {
         </Tabs>
       </div>
       <LoadingGate isLoading={isLoading}>
-        {posts?.length === 0 ? (
+        {posts.length === 0 ? (
           <Typography variant="body2" color="textSecondary">
             No posts yet.
           </Typography>
@@ -104,6 +142,19 @@ const Posts = ({ onNavigateProfile }) => {
             ))}
           </FlipMove>
         )}
+        {posts.length > 0 && hasMore && (
+          <div className={classes.loadMoreContainer}>
+            <Button
+              variant="outlined"
+              color="primary"
+              size="small"
+              onClick={() => setPage((previousPage) => previousPage + 1)}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? "Loading..." : "Load more"}
+            </Button>
+          </div>
+        )}
       </LoadingGate>
     </div>
   );
@@ -129,6 +180,12 @@ const Style = makeStyles((theme) => ({
     minHeight: 44,
     fontWeight: 600,
     textTransform: "none",
+  },
+  loadMoreContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+    display: "flex",
+    justifyContent: "center",
   },
 }));
 
