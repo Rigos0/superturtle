@@ -1,5 +1,5 @@
 ## Current Task
-Test build: `cd linkedin-demo && npm run build`
+Run `cd linkedin-demo && npx convex dev --once` to verify Convex functions still work
 
 ## End Goal with Specs
 All duplicated helpers (resolvePhoto, resolveUserPhotoURL, buildAuthorSummary, REACTION_ITEMS) extracted into shared files. Each utility defined once, imported everywhere.
@@ -11,8 +11,8 @@ All duplicated helpers (resolvePhoto, resolveUserPhotoURL, buildAuthorSummary, R
 - [x] Update all components to import from shared modules instead of defining locally
 - [x] Update all Convex functions to import from shared helpers
 - [x] Verify no unused local copies remain (grep for old function definitions)
-- [ ] Test build: `cd linkedin-demo && npm run build` <- current
-- [ ] Run `cd linkedin-demo && npx convex dev --once` to verify Convex functions still work
+- [x] Test build: `cd linkedin-demo && npm run build`
+- [ ] Run `cd linkedin-demo && npx convex dev --once` to verify Convex functions still work <- current
 - [ ] Commit
 
 ## Notes
