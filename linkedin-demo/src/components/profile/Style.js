@@ -262,4 +262,41 @@ export default makeStyles((theme) => ({
       boxSizing: "border-box",
     },
   },
+  activityList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1),
+    padding: theme.spacing(1, 0),
+  },
+  activityCard: {
+    border: "1px solid rgba(46, 125, 50, 0.2)",
+    borderRadius: 10,
+    padding: theme.spacing(1.25, 1.5),
+    backgroundColor: "#fff",
+  },
+  activityHeading: {
+    fontSize: "0.8rem",
+    fontWeight: 700,
+    color: "#1b5e20",
+    marginBottom: 2,
+  },
+  activityTimestamp: {
+    fontSize: "0.75rem",
+    color: theme.palette.text.secondary,
+    marginBottom: 8,
+  },
+  activityBody: {
+    fontSize: "0.88rem",
+    lineHeight: 1.5,
+    color: theme.palette.text.primary,
+    whiteSpace: "pre-line",
+    wordBreak: "break-word",
+  },
+  activityContext: {
+    marginTop: 8,
+    fontSize: "0.8rem",
+    lineHeight: 1.45,
+    color: theme.palette.text.secondary,
+    wordBreak: "break-word",
+  },
 }));
