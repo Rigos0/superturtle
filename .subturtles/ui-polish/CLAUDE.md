@@ -1,5 +1,5 @@
 ## Current Task
-Run `cd linkedin-demo && npm run build` to verify build passes.
+All ui-polish backlog items are complete.
 
 ## End Goal with Specs
 - All hardcoded white/black colors replaced with theme-aware values
@@ -32,8 +32,8 @@ Run `cd linkedin-demo && npm run build` to verify build passes.
   - When a sign-in button is clicked, show a small spinner or "Signing in..." text and disable both buttons to prevent double-clicks. Use a `signingIn` state.
 - [x] Clean up DEFAULT_PROFILE in `linkedin-demo/src/components/profile/Profile.js`
   - The fallback object has "Alex Turner", "TurtleIn builder", "San Francisco, CA" — replace with generic fallbacks: displayName → "User", title → "", location → "". Or better, show a minimal profile when data is missing.
-- [ ] Run `cd linkedin-demo && npm run build` to verify build passes <- current
-- [ ] Commit: "UI polish: dark mode fixes, empty states, loading UX, dead code cleanup"
+- [x] Run `cd linkedin-demo && npm run build` to verify build passes
+- [x] Commit: "UI polish: dark mode fixes, empty states, loading UX, dead code cleanup"
 
 ## Notes
 - All paths from repo root: `/Users/Richard.Mladek/Documents/projects/agentic/`
@@ -44,3 +44,6 @@ Run `cd linkedin-demo && npm run build` to verify build passes.
 - `theme.palette.background.default` = light gray in light, darker gray in dark
 - Green colors: primary #2e7d32, light #66bb6a, dark #1b5e20
 - ErrorBoundary is a class component — may need to use `withTheme` HOC or `ThemeProvider` context to access theme
+
+## Loop Control
+STOP
