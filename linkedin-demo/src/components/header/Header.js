@@ -15,11 +15,11 @@ import {
 import SearchIcon from "@material-ui/icons/Search";
 import HomeIcon from "@material-ui/icons/Home";
 import HomeOutlinedIcon from "@material-ui/icons/HomeOutlined";
-import GroupIcon from "@material-ui/icons/Group";
-import TelegramIcon from "@material-ui/icons/Telegram";
+import PeopleAltIcon from "@material-ui/icons/PeopleAlt";
 import NotificationsIcon from "@material-ui/icons/Notifications";
 import NotificationsOutlinedIcon from "@material-ui/icons/NotificationsOutlined";
 import PeopleAltOutlinedIcon from "@material-ui/icons/PeopleAltOutlined";
+import ForumIcon from "@material-ui/icons/Forum";
 import ForumOutlinedIcon from "@material-ui/icons/ForumOutlined";
 import NightsStayOutlinedIcon from "@material-ui/icons/NightsStayOutlined";
 import WbSunnyOutlinedIcon from "@material-ui/icons/WbSunnyOutlined";
@@ -225,28 +225,36 @@ const Header = ({
   };
 
   const tabItems = [
-    { key: "home", icon: HomeIcon, onClick: navigateToHome, isActive: activeTab === "home" },
+    {
+      key: "home",
+      icon: activeTab === "home" ? HomeIcon : HomeOutlinedIcon,
+      onClick: navigateToHome,
+      isActive: activeTab === "home",
+    },
     {
       key: "network",
-      icon: GroupIcon,
+      icon: activeTab === "network" ? PeopleAltIcon : PeopleAltOutlinedIcon,
       onClick: () => setActiveTab("network"),
       isActive: activeTab === "network",
     },
     {
       key: "messaging",
-      icon: TelegramIcon,
+      icon: activeTab === "messaging" ? ForumIcon : ForumOutlinedIcon,
       onClick: () => setActiveTab("messaging"),
       isActive: activeTab === "messaging",
     },
     {
       key: "notifications",
-      icon: NotificationsIcon,
+      icon:
+        activeTab === "notifications"
+          ? NotificationsIcon
+          : NotificationsOutlinedIcon,
       onClick: () => setActiveTab("notifications"),
       isActive: activeTab === "notifications",
     },
     {
       key: "profile",
-      icon: PersonIcon,
+      icon: activeTab === "profile" ? PersonIcon : PersonOutlineIcon,
       onClick: () => {
         if (isAuthenticated) {
           onNavigateProfile({
