@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { Avatar, Button, Paper, TextField, Typography } from "@material-ui/core";
 import { api } from "../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../constants";
+import useConvexUser from "../../hooks/useConvexUser";
 import LoadingGate from "../LoadingGate";
 import Style from "./Style";
 
@@ -16,9 +17,11 @@ const resolvePhoto = (photoURL) => {
 
 const Network = ({ onNavigateProfile }) => {
   const classes = Style();
+  const authUser = useConvexUser();
   const users = useQuery(api.users.listAllUsers);
   const [searchTerm, setSearchTerm] = useState("");
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  const canConnect = Boolean(authUser?._id);
   const normalizedTerm = searchTerm.trim().toLowerCase();
   const filteredUsers = useMemo(() => {
     if (!users) {
@@ -92,29 +95,31 @@ const Network = ({ onNavigateProfile }) => {
                       {user.location?.trim().length > 0 ? user.location : "Location not listed"}
                     </Typography>
                   </div>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={isPending}
-                    className={`${classes.connectButton} ${
-                      isPending ? classes.connectButtonPending : ""
-                    }`}
-                    onClick={(event) => {
-                      event.stopPropagation();
+                  {canConnect && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={isPending}
+                      className={`${classes.connectButton} ${
+                        isPending ? classes.connectButtonPending : ""
+                      }`}
+                      onClick={(event) => {
+                        event.stopPropagation();
 
-                      if (isPending) {
-                        return;
-                      }
+                        if (isPending) {
+                          return;
+                        }
 
-                      setPendingIds((prev) => {
-                        const next = new Set(prev);
-                        next.add(user._id);
-                        return next;
-                      });
-                    }}
-                  >
-                    {isPending ? "Pending" : "Connect"}
-                  </Button>
+                        setPendingIds((prev) => {
+                          const next = new Set(prev);
+                          next.add(user._id);
+                          return next;
+                        });
+                      }}
+                    >
+                      {isPending ? "Pending" : "Connect"}
+                    </Button>
+                  )}
                 </Paper>
               );
             })}
