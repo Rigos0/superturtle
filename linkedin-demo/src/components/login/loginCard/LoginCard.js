@@ -1,5 +1,5 @@
 import React from "react";
-import { IconButton, Paper } from "@material-ui/core";
+import { CircularProgress, IconButton, Paper } from "@material-ui/core";
 import CloseIcon from "@material-ui/icons/Close";
 import { useAuthActions } from "@convex-dev/auth/react";
 import Style from "./Style";
@@ -8,6 +8,21 @@ const LoginCard = ({ onClose }) => {
   const classes = Style();
   const authActions = useAuthActions();
   const signIn = authActions?.signIn ?? (() => Promise.resolve());
+  const [signingIn, setSigningIn] = React.useState("");
+  const isSigningIn = Boolean(signingIn);
+
+  const handleSignIn = async (provider) => {
+    if (isSigningIn) {
+      return;
+    }
+
+    setSigningIn(provider);
+    try {
+      await signIn(provider);
+    } catch (_error) {
+      setSigningIn("");
+    }
+  };
 
   return (
     <Paper elevation={3} className={classes.card}>
@@ -22,12 +37,28 @@ const LoginCard = ({ onClose }) => {
       </header>
 
       <div className={classes.authButtons}>
-        <button className={classes.githubBtn} onClick={() => signIn("github")} type="button">
-          Sign in with GitHub
+        <button className={classes.githubBtn} disabled={isSigningIn} onClick={() => handleSignIn("github")} type="button">
+          {signingIn === "github" ? (
+            <>
+              <CircularProgress size={16} color="inherit" thickness={5} />
+              <span>Signing in...</span>
+            </>
+          ) : (
+            "Sign in with GitHub"
+          )}
         </button>
-        <button className={classes.googleBtn} onClick={() => signIn("google")} type="button">
-          <span className={classes.googleMark}>G</span>
-          <span>Sign in with Google</span>
+        <button className={classes.googleBtn} disabled={isSigningIn} onClick={() => handleSignIn("google")} type="button">
+          {signingIn === "google" ? (
+            <>
+              <CircularProgress size={16} color="inherit" thickness={5} />
+              <span>Signing in...</span>
+            </>
+          ) : (
+            <>
+              <span className={classes.googleMark}>G</span>
+              <span>Sign in with Google</span>
+            </>
+          )}
         </button>
       </div>
     </Paper>

@@ -69,6 +69,13 @@ export default makeStyles((theme) => ({
       "&:hover": {
         transform: "translateY(-1px)",
       },
+      "&:disabled": {
+        cursor: "not-allowed",
+        opacity: 0.75,
+      },
+      "&:disabled:hover": {
+        transform: "none",
+      },
     },
   },
 
