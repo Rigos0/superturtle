@@ -11,10 +11,13 @@ const useConvexUser = () => {
   }
 
   if (currentUser) {
+    const storageBackedPhotoURL =
+      currentUser.photoStorageId && currentUser.photoURL ? currentUser.photoURL : null;
+
     return {
       ...currentUser,
       displayName: currentUser.displayName ?? currentUser.name ?? "Guest User",
-      photoURL: currentUser.photoURL ?? currentUser.image ?? DEFAULT_PHOTO,
+      photoURL: storageBackedPhotoURL ?? currentUser.photoURL ?? currentUser.image ?? DEFAULT_PHOTO,
     };
   }
 
