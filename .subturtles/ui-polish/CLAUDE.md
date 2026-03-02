@@ -1,5 +1,5 @@
 ## Current Task
-Fix ErrorBoundary dark mode in `linkedin-demo/src/components/ErrorBoundary.js` with theme-aware colors.
+Fix dark mode colors in `linkedin-demo/src/components/posts/post/Style.js`.
 
 ## End Goal with Specs
 - All hardcoded white/black colors replaced with theme-aware values
@@ -13,8 +13,8 @@ Fix ErrorBoundary dark mode in `linkedin-demo/src/components/ErrorBoundary.js` w
 
 ## Backlog
 - [x] Fix empty posts feed bug in `linkedin-demo/src/components/posts/Posts.js`: When `posts.length === 0`, show "No posts yet" message instead of loading animation. The loading state should only show when `posts === undefined` (still loading from Convex), not when it's an empty array.
-- [ ] Fix ErrorBoundary dark mode in `linkedin-demo/src/components/ErrorBoundary.js`: Replace hardcoded `background: "#ffffff"`, `color` values with theme-aware colors. Use `useTheme` hook or pass theme via context. The error page should look good in both light and dark mode. <- current
-- [ ] Fix dark mode colors in `linkedin-demo/src/components/posts/post/Style.js`: 
+- [x] Fix ErrorBoundary dark mode in `linkedin-demo/src/components/ErrorBoundary.js`: Replace hardcoded `background: "#ffffff"`, `color` values with theme-aware colors. Use `useTheme` hook or pass theme via context. The error page should look good in both light and dark mode.
+- [ ] Fix dark mode colors in `linkedin-demo/src/components/posts/post/Style.js`: <- current
   - Line ~86: Save button `color: "white"` — change to `color: theme.palette.common.white` (this is intentional white-on-green)
   - Line ~275: Comment input `backgroundColor: "white"` → use `theme.palette.background.paper`
   - Line ~292: Comment submit button text color — verify contrast in dark mode

@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import { withTheme } from "@material-ui/core/styles";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -16,9 +17,11 @@ class ErrorBoundary extends Component {
 
   render() {
     const { hasError } = this.state;
-    const { children } = this.props;
+    const { children, theme } = this.props;
 
     if (hasError) {
+      const isDark = theme?.palette?.type === "dark";
+
       return (
         <div
           style={{
@@ -30,7 +33,9 @@ class ErrorBoundary extends Component {
             padding: "24px",
             boxSizing: "border-box",
             background:
-              "linear-gradient(180deg, rgba(46, 125, 50, 0.08) 0%, rgba(46, 125, 50, 0.02) 100%)",
+              theme?.palette?.type === "dark"
+                ? `linear-gradient(180deg, rgba(46, 125, 50, 0.16) 0%, ${theme.palette.background.default} 100%)`
+                : "linear-gradient(180deg, rgba(46, 125, 50, 0.08) 0%, rgba(46, 125, 50, 0.02) 100%)",
           }}
         >
           <div
@@ -38,12 +43,12 @@ class ErrorBoundary extends Component {
               width: "100%",
               maxWidth: "460px",
               borderRadius: "14px",
-              border: "1px solid #d7e5d8",
-              backgroundColor: "#ffffff",
-              boxShadow: "0 12px 30px rgba(0, 0, 0, 0.08)",
+              border: `1px solid ${theme.palette.divider}`,
+              backgroundColor: theme.palette.background.paper,
+              boxShadow: isDark ? "0 12px 30px rgba(0, 0, 0, 0.45)" : "0 12px 30px rgba(0, 0, 0, 0.08)",
               padding: "28px 24px",
               textAlign: "center",
-              color: "#1f2933",
+              color: theme.palette.text.primary,
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
             }}
@@ -56,7 +61,7 @@ class ErrorBoundary extends Component {
                 margin: 0,
                 fontSize: "1.5rem",
                 fontWeight: 700,
-                color: "#111827",
+                color: theme.palette.text.primary,
               }}
             >
               Something went wrong
@@ -66,7 +71,7 @@ class ErrorBoundary extends Component {
                 margin: "12px 0 20px",
                 fontSize: "0.98rem",
                 lineHeight: 1.5,
-                color: "#4b5563",
+                color: theme.palette.text.secondary,
               }}
             >
               Try refreshing the page.
@@ -79,7 +84,7 @@ class ErrorBoundary extends Component {
                 borderRadius: "999px",
                 padding: "10px 18px",
                 backgroundColor: "#2e7d32",
-                color: "#ffffff",
+                color: theme.palette.common.white,
                 fontSize: "0.95rem",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -96,4 +101,4 @@ class ErrorBoundary extends Component {
   }
 }
 
-export default ErrorBoundary;
+export default withTheme(ErrorBoundary);
