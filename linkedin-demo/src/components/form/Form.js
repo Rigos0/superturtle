@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { Chip, Paper } from "@material-ui/core";
 import VideocamRoundedIcon from "@material-ui/icons/VideocamRounded";
@@ -13,8 +13,32 @@ import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import { imageUploadHandler } from "./form.utils";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
+import MentionAutocomplete from "../mentions/MentionAutocomplete";
 
 const MAX_POST_IMAGES = 4;
+const MENTION_TRIGGER_REGEX = /(^|\s)@([a-z0-9-]*)$/i;
+
+const getActiveMention = (value, caretPosition) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedCaretPosition =
+    typeof caretPosition === "number" ? caretPosition : value.length;
+  const textBeforeCursor = value.slice(0, normalizedCaretPosition);
+  const match = textBeforeCursor.match(MENTION_TRIGGER_REGEX);
+
+  if (!match) {
+    return null;
+  }
+
+  const tokenStart = (match.index ?? 0) + (match[1] ? match[1].length : 0);
+  return {
+    query: match[2] ?? "",
+    start: tokenStart,
+    end: normalizedCaretPosition,
+  };
+};
 
 const Form = () => {
   const classes = Styles();
@@ -32,6 +56,84 @@ const Form = () => {
   const [URL, setURL] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [postVisibility, setPostVisibility] = useState("public");
+  const [mentionState, setMentionState] = useState({
+    open: false,
+    query: "",
+    start: -1,
+    end: -1,
+  });
+  const descriptionInputRef = useRef(null);
+
+  const closeMentionAutocomplete = () => {
+    setMentionState({
+      open: false,
+      query: "",
+      start: -1,
+      end: -1,
+    });
+  };
+
+  const updateMentionState = (value, caretPosition) => {
+    const activeMention = getActiveMention(value, caretPosition);
+    if (!activeMention || !activeMention.query) {
+      closeMentionAutocomplete();
+      return;
+    }
+
+    setMentionState({
+      open: true,
+      ...activeMention,
+    });
+  };
+
+  const handleDescriptionChange = (event) => {
+    const nextDescription = event.target.value;
+    const caretPosition = event.target.selectionStart;
+    setUploadData((previousValue) => ({
+      ...previousValue,
+      description: nextDescription,
+    }));
+    updateMentionState(nextDescription, caretPosition);
+  };
+
+  const handleDescriptionCursorChange = (event) => {
+    updateMentionState(event.target.value, event.target.selectionStart);
+  };
+
+  const handleMentionSelect = (selectedUser) => {
+    if (!selectedUser?.username) {
+      closeMentionAutocomplete();
+      return;
+    }
+
+    const mentionStart = mentionState.start;
+    const mentionEnd = mentionState.end;
+    if (mentionStart < 0 || mentionEnd < mentionStart) {
+      closeMentionAutocomplete();
+      return;
+    }
+
+    const currentDescription = uploadData.description;
+    const mentionText = `@${selectedUser.username} `;
+    const nextDescription = `${currentDescription.slice(
+      0,
+      mentionStart,
+    )}${mentionText}${currentDescription.slice(mentionEnd)}`;
+    const nextCursorPosition = mentionStart + mentionText.length;
+
+    setUploadData((previousValue) => ({
+      ...previousValue,
+      description: nextDescription,
+    }));
+    closeMentionAutocomplete();
+
+    requestAnimationFrame(() => {
+      if (descriptionInputRef.current) {
+        descriptionInputRef.current.focus();
+        descriptionInputRef.current.setSelectionRange(nextCursorPosition, nextCursorPosition);
+      }
+    });
+  };
 
   const handleSubmitButton = async (e) => {
     e.preventDefault();
@@ -148,6 +250,7 @@ const Form = () => {
     setOpenURL(false);
     setURL("");
     setPostVisibility("public");
+    closeMentionAutocomplete();
   };
 
   const handleRemoveFile = (indexToRemove) => {
@@ -186,8 +289,11 @@ const Form = () => {
           <CreateIcon />
           <input
             placeholder="Start a post"
+            ref={descriptionInputRef}
             value={uploadData.description}
-            onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })}
+            onChange={handleDescriptionChange}
+            onClick={handleDescriptionCursorChange}
+            onKeyUp={handleDescriptionCursorChange}
           />
           <input
             id="upload-image"
@@ -222,6 +328,13 @@ const Form = () => {
           </select>
           <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Posting..." : "Post"}</button>
         </form>
+        <MentionAutocomplete
+          anchorEl={descriptionInputRef.current}
+          open={mentionState.open}
+          query={mentionState.query}
+          onSelect={handleMentionSelect}
+          onClose={closeMentionAutocomplete}
+        />
       </div>
       {!openURL && uploadData.files.length > 0 && (
         <div className={classes.selectedFile}>
