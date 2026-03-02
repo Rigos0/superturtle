@@ -12,9 +12,9 @@ import RepeatIcon from "@material-ui/icons/Repeat";
 import ReactPlayer from "react-player";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
-import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
 import useErrorToast from "../../../hooks/useErrorToast";
+import { resolvePhoto } from "../../../utils/photo";
 import EditHistoryDialog from "../editHistory/EditHistoryDialog";
 import PollDisplay from "../poll/PollDisplay";
 import ReportDialog from "../report/ReportDialog";
@@ -25,14 +25,6 @@ import RepostCard from "./RepostCard";
 import { getLinkPreviewFromText } from "./post.utils";
 import Style from "./Style";
 import { REACTION_ITEMS } from "../../../utils/reactions";
-
-const resolvePhoto = (photoURL) => {
-  if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
-    return DEFAULT_PHOTO;
-  }
-
-  return photoURL;
-};
 
 const resolvePostImages = ({ fileType, fileData, imageUrls }) => {
   if (fileType !== "image") {
