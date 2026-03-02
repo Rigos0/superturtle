@@ -5,50 +5,13 @@ import Avatar from "@material-ui/core/Avatar";
 import Button from "@material-ui/core/Button";
 import CircularProgress from "@material-ui/core/CircularProgress";
 import Paper from "@material-ui/core/Paper";
-import ThumbUpAltIcon from "@material-ui/icons/ThumbUpAlt";
-import FavoriteIcon from "@material-ui/icons/Favorite";
-import EmojiEventsIcon from "@material-ui/icons/EmojiEvents";
-import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
-import SentimentVerySatisfiedIcon from "@material-ui/icons/SentimentVerySatisfied";
 import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
 import ReactTimeago from "react-timeago";
 import { api } from "../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../constants";
 import useConvexUser from "../../hooks/useConvexUser";
-
-const REACTION_ITEMS = [
-  {
-    key: "like",
-    label: "Like",
-    color: "#2e7d32",
-    Icon: ThumbUpAltIcon,
-  },
-  {
-    key: "love",
-    label: "Love",
-    color: "#d32f2f",
-    Icon: FavoriteIcon,
-  },
-  {
-    key: "celebrate",
-    label: "Celebrate",
-    color: "#ed6c02",
-    Icon: EmojiEventsIcon,
-  },
-  {
-    key: "insightful",
-    label: "Insightful",
-    color: "#0288d1",
-    Icon: EmojiObjectsIcon,
-  },
-  {
-    key: "funny",
-    label: "Funny",
-    color: "#f9a825",
-    Icon: SentimentVerySatisfiedIcon,
-  },
-];
+import { REACTION_ITEMS } from "../../utils/reactions";
 
 const renderInlineRichText = (line, lineIndex) => {
   const tokens = line.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g);
