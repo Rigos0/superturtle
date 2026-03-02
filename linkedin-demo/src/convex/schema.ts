@@ -21,6 +21,7 @@ export default defineSchema({
     headline: v.optional(v.string()),
     location: v.optional(v.string()),
     about: v.optional(v.string()),
+    skills: v.optional(v.array(v.string())),
     experience: v.optional(v.array(v.string())),
     experienceEntries: v.optional(
       v.array(
@@ -31,6 +32,18 @@ export default defineSchema({
           startDate: v.string(),
           endDate: v.optional(v.string()),
           description: v.optional(v.string()),
+        }),
+      ),
+    ),
+    educationEntries: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          school: v.string(),
+          degree: v.string(),
+          field: v.string(),
+          startYear: v.string(),
+          endYear: v.optional(v.string()),
         }),
       ),
     ),
