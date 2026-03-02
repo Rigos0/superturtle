@@ -118,6 +118,7 @@ const Post = forwardRef(
       profile,
       username,
       timestamp,
+      isEdited = false,
       description,
       fileType,
       fileData,
@@ -576,6 +577,10 @@ const Post = forwardRef(
         onNavigateProfile({ username: mentionUsername.toLowerCase(), userId: null });
       }
     };
+    const handleEditedBadgeClick = (event) => {
+      // Edit history dialog wiring is added in a follow-up task.
+      event.preventDefault();
+    };
     const renderTextWithMentions = (value, segmentIndex) => {
       if (typeof value !== "string" || value.length === 0) {
         return value;
@@ -814,9 +819,21 @@ const Post = forwardRef(
               >
                 {capitalize(username)}
               </h4>
-              <p>
-                <ReactTimeago date={new Date(timestamp).toUTCString()} units="minute" />
-              </p>
+              <div className={classes.header__meta}>
+                <p>
+                  <ReactTimeago date={new Date(timestamp).toUTCString()} units="minute" />
+                </p>
+                {isEdited && (
+                  <button
+                    type="button"
+                    className={classes.editedBadge}
+                    onClick={handleEditedBadgeClick}
+                    aria-label="View edit history"
+                  >
+                    Edited
+                  </button>
+                )}
+              </div>
             </div>
             {canShowPostMenu && (
               <>

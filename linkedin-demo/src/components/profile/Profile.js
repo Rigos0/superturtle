@@ -316,11 +316,15 @@ const Profile = ({
     [userPosts],
   );
 
-  const profileLikeStatuses = useQuery(
-    api.likes.getLikeStatuses,
+  const profileUserReactions = useQuery(
+    api.likes.getUserReactionsByPostIds,
     authUser?._id && profilePostIds.length > 0
       ? { userId: authUser._id, postIds: profilePostIds }
       : "skip",
+  );
+  const profileReactionCounts = useQuery(
+    api.likes.getReactionCountsByPostIds,
+    profilePostIds.length > 0 ? { postIds: profilePostIds } : "skip",
   );
 
   const [activeTab, setActiveTab] = useState(0);
@@ -421,8 +425,8 @@ const Profile = ({
     setCoverUploadError("");
     setSkillInputValue("");
     setSkillError("");
-    setIsFollowActionPending(false);
     setIsSkillMutationPending(false);
+    setIsFollowActionPending(false);
     setFeaturedMutationPostId(null);
     setFeaturedPostError("");
   }, [resolvedUserId]);
@@ -1424,13 +1428,18 @@ const Profile = ({
                               authorId={post.authorId}
                               likesCount={post.likesCount}
                               commentsCount={post.commentsCount}
-                              liked={profileLikeStatuses?.[post._id] ?? undefined}
+                              currentReaction={
+                                profileUserReactions?.[post._id] ?? undefined
+                              }
+                              reactionCounts={profileReactionCounts?.[post._id]}
                               profile={resolveProfilePhoto(post.author?.photoURL ?? userAvatar)}
                               username={post.author?.displayName ?? userName}
                               timestamp={post.createdAt}
+                              isEdited={Boolean(post.isEdited)}
                               description={post.description}
                               fileType={post.fileType}
                               fileData={post.fileData}
+                              imageUrls={post.imageUrls}
                             />
                           </div>
                         ))
@@ -1483,13 +1492,18 @@ const Profile = ({
                               authorId={post.authorId}
                               likesCount={post.likesCount}
                               commentsCount={post.commentsCount}
-                              liked={profileLikeStatuses?.[post._id] ?? undefined}
+                              currentReaction={
+                                profileUserReactions?.[post._id] ?? undefined
+                              }
+                              reactionCounts={profileReactionCounts?.[post._id]}
                               profile={resolveProfilePhoto(post.author?.photoURL ?? userAvatar)}
                               username={post.author?.displayName ?? userName}
                               timestamp={post.createdAt}
+                              isEdited={Boolean(post.isEdited)}
                               description={post.description}
                               fileType={post.fileType}
                               fileData={post.fileData}
+                              imageUrls={post.imageUrls}
                             />
                           </div>
                         );

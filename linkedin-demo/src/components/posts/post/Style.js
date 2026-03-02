@@ -75,9 +75,32 @@ export default makeStyles((theme) => ({
       fontWeight: 500,
       marginBottom: 3,
     },
+  },
+  header__meta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
     "& > p": {
+      margin: 0,
       color: "grey",
       fontSize: 12,
+    },
+  },
+  editedBadge: {
+    background: "none",
+    border: "none",
+    margin: 0,
+    padding: 0,
+    color: "grey",
+    fontSize: 12,
+    lineHeight: 1.2,
+    fontWeight: 600,
+    cursor: "pointer",
+    textDecoration: "underline",
+    "&:focus": {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: 1,
+      borderRadius: 2,
     },
   },
   post__body: {

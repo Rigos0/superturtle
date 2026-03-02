@@ -131,6 +131,7 @@ const Posts = ({ onNavigateProfile }) => {
                 profile={getProfilePhoto(post.authorPhotoURL ?? post.author?.photoURL)}
                 username={post.authorName ?? post.author?.displayName}
                 timestamp={post.createdAt}
+                isEdited={Boolean(post.isEdited)}
                 description={post.description}
                 fileType={post.fileType}
                 fileData={post.fileData}
