@@ -1,6 +1,10 @@
 import React, { forwardRef } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Avatar from "@material-ui/core/Avatar";
+import Dialog from "@material-ui/core/Dialog";
+import DialogActions from "@material-ui/core/DialogActions";
+import DialogContent from "@material-ui/core/DialogContent";
+import DialogTitle from "@material-ui/core/DialogTitle";
 import Menu from "@material-ui/core/Menu";
 import MenuItem from "@material-ui/core/MenuItem";
 import Paper from "@material-ui/core/Paper";
@@ -98,12 +102,16 @@ const Post = forwardRef(
     const deletePost = useMutation(api.posts.deletePost);
     const deleteComment = useMutation(api.comments.deleteComment);
     const updatePost = useMutation(api.posts.updatePost);
+    const repostPost = useMutation(api.reposts.repostPost);
 
     const [showComments, setShowComments] = React.useState(false);
     const [commentText, setCommentText] = React.useState("");
     const [menuAnchorEl, setMenuAnchorEl] = React.useState(null);
     const [isEditing, setIsEditing] = React.useState(false);
     const [editText, setEditText] = React.useState(description ?? "");
+    const [isRepostDialogOpen, setIsRepostDialogOpen] = React.useState(false);
+    const [repostCommentary, setRepostCommentary] = React.useState("");
+    const [isRepostPending, setIsRepostPending] = React.useState(false);
     const [optimisticReaction, setOptimisticReaction] = React.useState(undefined);
     const [isReactionMutationPending, setIsReactionMutationPending] = React.useState(false);
     const [isReactionPickerOpen, setIsReactionPickerOpen] = React.useState(false);
@@ -314,6 +322,40 @@ const Post = forwardRef(
       if (!canInteract) {
         return;
       }
+
+      setIsRepostDialogOpen(true);
+    };
+
+    const handleRepostDialogClose = () => {
+      if (isRepostPending) {
+        return;
+      }
+
+      setRepostCommentary("");
+      setIsRepostDialogOpen(false);
+    };
+
+    const handleRepostSubmit = async () => {
+      if (!canInteract || !user?._id || isRepostPending) {
+        return;
+      }
+
+      const nextCommentary = repostCommentary.trim();
+      setIsRepostPending(true);
+
+      try {
+        await repostPost(
+          nextCommentary.length > 0
+            ? { postId, commentary: nextCommentary }
+            : { postId },
+        );
+        setRepostCommentary("");
+        setIsRepostDialogOpen(false);
+      } catch (error) {
+        console.error("Failed to repost:", error);
+      } finally {
+        setIsRepostPending(false);
+      }
     };
 
     const handleMenuOpen = (event) => {
@@ -470,7 +512,8 @@ const Post = forwardRef(
     };
 
     return (
-      <Paper ref={ref} className={classes.post} id={`post-${postId}`}>
+      <>
+        <Paper ref={ref} className={classes.post} id={`post-${postId}`}>
         <div className={classes.post__header}>
           <Avatar
             src={resolvePhoto(profile)}
@@ -709,7 +752,48 @@ const Post = forwardRef(
             </div>
           )}
         </div>
-      </Paper>
+        </Paper>
+
+        <Dialog
+          open={isRepostDialogOpen}
+          onClose={handleRepostDialogClose}
+          fullWidth
+          maxWidth="sm"
+          aria-labelledby={`repost-dialog-title-${postId}`}
+        >
+          <DialogTitle id={`repost-dialog-title-${postId}`}>Repost</DialogTitle>
+          <DialogContent dividers>
+            <p className={classes.repostDialogHint}>Add commentary (optional)</p>
+            <textarea
+              className={classes.repostDialogTextarea}
+              rows={4}
+              value={repostCommentary}
+              onChange={(event) => setRepostCommentary(event.target.value)}
+              placeholder="Share your thoughts"
+              aria-label="Repost commentary"
+              disabled={isRepostPending}
+            />
+          </DialogContent>
+          <DialogActions className={classes.repostDialogActions}>
+            <button
+              type="button"
+              className={classes.repostDialogCancelButton}
+              onClick={handleRepostDialogClose}
+              disabled={isRepostPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={classes.repostDialogSubmitButton}
+              onClick={handleRepostSubmit}
+              disabled={isRepostPending}
+            >
+              {isRepostPending ? "Reposting..." : "Repost"}
+            </button>
+          </DialogActions>
+        </Dialog>
+      </>
     );
   }
 );
