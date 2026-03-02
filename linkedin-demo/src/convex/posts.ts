@@ -344,10 +344,16 @@ export const createPost = mutation({
     imageStorageIds: v.optional(v.array(v.id("_storage"))),
   },
   handler: async (ctx, args) => {
+    const authenticatedUserId = await getAuthUserId(ctx);
+    if (authenticatedUserId && args.authorId !== authenticatedUserId) {
+      throw new Error("Cannot create posts for another user");
+    }
+
+    const authorId = authenticatedUserId ?? args.authorId;
     const imageStorageIds = normalizeImageStorageIds(args.imageStorageIds);
     const hasStorageImages = imageStorageIds.length > 0;
     const postId = await ctx.db.insert("posts", {
-      authorId: args.authorId,
+      authorId,
       description: args.description,
       visibility: args.visibility ?? "public",
       createdAt: Date.now(),
@@ -395,7 +401,7 @@ export const createPost = mutation({
 
       const notificationsToCreate = mentionedUsers.filter(
         (mentionedUser): mentionedUser is Doc<"users"> =>
-          mentionedUser !== null && mentionedUser._id !== args.authorId,
+          mentionedUser !== null && mentionedUser._id !== authorId,
       );
 
       await Promise.all(
@@ -403,7 +409,7 @@ export const createPost = mutation({
           ctx.db.insert("notifications", {
             userId: mentionedUser._id,
             type: "mention",
-            fromUserId: args.authorId,
+            fromUserId: authorId,
             postId,
             read: false,
             createdAt: Date.now(),
