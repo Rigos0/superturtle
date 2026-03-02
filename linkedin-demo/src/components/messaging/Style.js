@@ -187,7 +187,7 @@ export default makeStyles((theme) => ({
     color: "#fff",
     textTransform: "none",
     "&:hover": {
-      backgroundColor: "#1b5e20",
+      backgroundColor: theme.palette.primary.dark,
     },
     "&.Mui-disabled": {
       color: "rgba(255,255,255,0.8)",

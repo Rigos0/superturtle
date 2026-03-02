@@ -24,7 +24,7 @@ const SidebarTop = () => {
       <div
         className={classes.cover}
         style={{
-          backgroundImage: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, #1b5e20 100%)`,
+          backgroundImage: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
         }}
       ></div>
       <Avatar src={user?.photoURL} />

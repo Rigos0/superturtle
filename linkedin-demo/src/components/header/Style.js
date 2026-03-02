@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 import { darkSecondary, darkPrimary } from "../../assets/Colors";
 
 export default makeStyles((theme) => ({
@@ -68,7 +68,7 @@ export default makeStyles((theme) => ({
     transition: "border-color 0.2s ease, box-shadow 0.2s ease",
     "&:focus-within": {
       borderColor: theme.palette.primary.main,
-      boxShadow: "0 0 0 1px rgba(46, 125, 50, 0.15)",
+      boxShadow: `0 0 0 1px ${fade(theme.palette.primary.main, 0.15)}`,
     },
     "& > .MuiSvgIcon-root": {
       color: theme.palette.type === "dark" ? "lightgrey" : "#546e7a",
@@ -189,9 +189,9 @@ export default makeStyles((theme) => ({
     borderRadius: 999,
     minWidth: 100,
     "&:hover": {
-      borderColor: "#1b5e20",
-      color: "#1b5e20",
-      backgroundColor: "rgba(46, 125, 50, 0.08)",
+      borderColor: theme.palette.primary.dark,
+      color: theme.palette.primary.dark,
+      backgroundColor: fade(theme.palette.primary.main, 0.08),
     },
     [theme.breakpoints.down("xs")]: {
       display: "none",
@@ -207,7 +207,7 @@ export default makeStyles((theme) => ({
     minWidth: 100,
     boxShadow: "none",
     "&:hover": {
-      backgroundColor: "#1b5e20",
+      backgroundColor: theme.palette.primary.dark,
       boxShadow: "none",
     },
     [theme.breakpoints.down("xs")]: {
@@ -227,7 +227,7 @@ export default makeStyles((theme) => ({
       minWidth: 80,
       padding: "4px 12px",
       "&:hover": {
-        backgroundColor: "#1b5e20",
+        backgroundColor: theme.palette.primary.dark,
       },
     },
   },

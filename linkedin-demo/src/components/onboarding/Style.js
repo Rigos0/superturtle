@@ -43,7 +43,7 @@ export default makeStyles((theme) => ({
     color: theme.palette.text.secondary,
   },
   helperSuccess: {
-    color: "#2e7d32",
+    color: theme.palette.primary.main,
   },
   helperError: {
     color: theme.palette.error.main,
@@ -52,6 +52,22 @@ export default makeStyles((theme) => ({
     marginTop: theme.spacing(1),
     display: "flex",
     justifyContent: "flex-end",
+    gap: theme.spacing(1),
+  },
+  skipButton: {
+    minWidth: 120,
+    minHeight: 40,
+    borderRadius: 20,
+    textTransform: "none",
+    fontWeight: 600,
+    color: theme.palette.text.secondary,
+    border: `1px solid ${theme.palette.divider}`,
+    "&:hover": {
+      backgroundColor: theme.palette.action.hover,
+    },
+    "&.Mui-disabled": {
+      color: "#9e9e9e",
+    },
   },
   submitButton: {
     minWidth: 132,
@@ -59,10 +75,10 @@ export default makeStyles((theme) => ({
     borderRadius: 20,
     textTransform: "none",
     fontWeight: 600,
-    backgroundColor: "#2e7d32",
+    backgroundColor: theme.palette.primary.main,
     color: "#fff",
     "&:hover": {
-      backgroundColor: "#1b5e20",
+      backgroundColor: theme.palette.primary.dark,
     },
     "&.Mui-disabled": {
       backgroundColor: "#9e9e9e",

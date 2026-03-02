@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 import { darkSecondary, LinkedInBlue, LinkedInLightBlue } from "../../assets/Colors";
 
 export default makeStyles((theme) => ({
@@ -85,7 +85,7 @@ export default makeStyles((theme) => ({
       fontWeight: 600,
       transition: "all 0.4s ease",
       "&:hover": {
-        backgroundColor: "#1b5e20",
+        backgroundColor: theme.palette.primary.dark,
       },
     },
   },
@@ -117,7 +117,7 @@ export default makeStyles((theme) => ({
     outlineWidth: 0,
     borderRadius: 999,
     padding: "0 14px",
-    backgroundColor: "rgba(46,125,50,0.1)",
+    backgroundColor: fade(theme.palette.primary.main, 0.1),
     color: theme.palette.primary.main,
     fontWeight: 700,
     fontSize: 13,
@@ -125,8 +125,8 @@ export default makeStyles((theme) => ({
     whiteSpace: "nowrap",
     transition: "background-color 0.2s ease, color 0.2s ease",
     "&:hover": {
-      backgroundColor: "rgba(46,125,50,0.18)",
-      color: "#1b5e20",
+      backgroundColor: fade(theme.palette.primary.main, 0.18),
+      color: theme.palette.primary.dark,
     },
     [theme.breakpoints.down("xs")]: {
       height: 36,
@@ -200,13 +200,14 @@ export default makeStyles((theme) => ({
       theme.palette.type === "dark"
         ? "1px solid rgba(225,225,225,0.1)"
         : "1px solid rgba(0,0,0,0.1)",
-    backgroundColor: theme.palette.type === "dark" ? darkSecondary : "rgba(46,125,50,0.04)",
+    backgroundColor:
+      theme.palette.type === "dark" ? darkSecondary : fade(theme.palette.primary.main, 0.04),
   },
 
   pollLabel: {
     fontSize: 12,
     fontWeight: 700,
-    color: theme.palette.type === "dark" ? "rgba(255,255,255,0.9)" : "#1b5e20",
+    color: theme.palette.type === "dark" ? "rgba(255,255,255,0.9)" : theme.palette.primary.dark,
     textTransform: "uppercase",
     letterSpacing: 0.3,
   },
@@ -270,8 +271,11 @@ export default makeStyles((theme) => ({
     cursor: "pointer",
     fontWeight: 700,
     fontSize: 12,
-    color: theme.palette.type === "dark" ? "#a5d6a7" : "#1b5e20",
-    backgroundColor: theme.palette.type === "dark" ? "rgba(46,125,50,0.2)" : "rgba(46,125,50,0.15)",
+    color: theme.palette.type === "dark" ? "#a5d6a7" : theme.palette.primary.dark,
+    backgroundColor:
+      theme.palette.type === "dark"
+        ? fade(theme.palette.primary.main, 0.2)
+        : fade(theme.palette.primary.main, 0.15),
     "&:disabled": {
       cursor: "not-allowed",
       opacity: 0.6,

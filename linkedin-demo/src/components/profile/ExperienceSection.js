@@ -9,7 +9,7 @@ import {
   TextField,
   Typography,
 } from "@material-ui/core";
-import { useTheme } from "@material-ui/core/styles";
+import { fade, useTheme } from "@material-ui/core/styles";
 
 const formatExperienceDateRange = (startDate, endDate) => {
   const hasStartDate = typeof startDate === "string" && startDate.trim().length > 0;
@@ -86,7 +86,7 @@ const ExperienceSection = ({
         <div
           key={entry.id}
           style={{
-            border: "1px solid rgba(46, 125, 50, 0.2)",
+            border: `1px solid ${fade(theme.palette.primary.main, 0.2)}`,
             borderRadius: 10,
             padding: "10px 12px",
             marginBottom: 10,

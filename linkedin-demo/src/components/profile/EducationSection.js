@@ -9,6 +9,7 @@ import {
   TextField,
   Typography,
 } from "@material-ui/core";
+import { fade, useTheme } from "@material-ui/core/styles";
 
 const formatEducationDateRange = (startYear, endYear) => {
   const hasStartYear = typeof startYear === "string" && startYear.trim().length > 0;
@@ -39,8 +40,11 @@ const EducationSection = ({
   onCloseDialog,
   onSaveEducation,
   onEducationFieldChange,
-}) => (
-  <>
+}) => {
+  const theme = useTheme();
+
+  return (
+    <>
     <div
       style={{
         display: "flex",
@@ -82,7 +86,7 @@ const EducationSection = ({
         <div
           key={entry.id}
           style={{
-            border: "1px solid rgba(46, 125, 50, 0.2)",
+            border: `1px solid ${fade(theme.palette.primary.main, 0.2)}`,
             borderRadius: 10,
             padding: "10px 12px",
             marginBottom: 10,
@@ -221,7 +225,8 @@ const EducationSection = ({
         </Button>
       </DialogActions>
     </Dialog>
-  </>
-);
+    </>
+  );
+};
 
 export default EducationSection;

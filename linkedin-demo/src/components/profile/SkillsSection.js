@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Chip, TextField, Typography } from "@material-ui/core";
+import { fade, useTheme } from "@material-ui/core/styles";
 
 const SkillsSection = ({
   isOwnProfile,
@@ -11,8 +12,11 @@ const SkillsSection = ({
   onSkillInputChange,
   onAddSkill,
   onRemoveSkill,
-}) => (
-  <>
+}) => {
+  const theme = useTheme();
+
+  return (
+    <>
     <Typography variant="subtitle2" style={{ fontWeight: 700, marginBottom: 8 }}>
       Skills
     </Typography>
@@ -86,15 +90,16 @@ const SkillsSection = ({
             onDelete={isOwnProfile ? () => onRemoveSkill(skill) : undefined}
             disabled={isSkillMutationPending}
             style={{
-              backgroundColor: "rgba(46, 125, 50, 0.12)",
-              color: "#1b5e20",
+              backgroundColor: fade(theme.palette.primary.main, 0.12),
+              color: theme.palette.primary.dark,
               fontWeight: 600,
             }}
           />
         ))}
       </div>
     )}
-  </>
-);
+    </>
+  );
+};
 
 export default SkillsSection;

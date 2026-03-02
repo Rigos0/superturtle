@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 import { darkSecondary } from "../../../assets/Colors";
 
 export default makeStyles((theme) => ({
@@ -129,7 +129,7 @@ export default makeStyles((theme) => ({
     border: `1px solid ${theme.palette.type === "dark" ? "#2f6f34" : "#cfe3d1"}`,
     background:
       theme.palette.type === "dark"
-        ? "linear-gradient(135deg, rgba(46, 125, 50, 0.2), rgba(31, 36, 42, 0.9))"
+        ? `linear-gradient(135deg, ${fade(theme.palette.primary.main, 0.2)}, rgba(31, 36, 42, 0.9))`
         : "linear-gradient(135deg, #f2f8f3, #ffffff)",
     borderRadius: 10,
     padding: "12px 14px",
@@ -141,8 +141,8 @@ export default makeStyles((theme) => ({
     cursor: "pointer",
     transition: "border-color 0.2s ease, box-shadow 0.2s ease",
     "&:hover": {
-      borderColor: "#2e7d32",
-      boxShadow: "0 0 0 1px rgba(46, 125, 50, 0.2)",
+      borderColor: theme.palette.primary.main,
+      boxShadow: `0 0 0 1px ${fade(theme.palette.primary.main, 0.2)}`,
     },
     "&:focus-visible": {
       outline: `2px solid ${theme.palette.primary.main}`,
@@ -154,7 +154,7 @@ export default makeStyles((theme) => ({
     fontWeight: 700,
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: theme.palette.type === "dark" ? "#a5d6a7" : "#2e7d32",
+    color: theme.palette.type === "dark" ? "#a5d6a7" : theme.palette.primary.main,
   },
   articleTitle: {
     margin: 0,
@@ -177,17 +177,17 @@ export default makeStyles((theme) => ({
   articleCta: {
     fontSize: 13,
     fontWeight: 600,
-    color: theme.palette.type === "dark" ? "#81c784" : "#2e7d32",
+    color: theme.palette.type === "dark" ? "#81c784" : theme.palette.primary.main,
   },
   hashtag: {
-    color: theme.palette.type === "dark" ? "#81c784" : "#2e7d32",
+    color: theme.palette.type === "dark" ? "#81c784" : theme.palette.primary.main,
     cursor: "pointer",
     fontWeight: 600,
     "&:hover": {
       textDecoration: "underline",
     },
     "&:focus": {
-      outline: `2px solid ${theme.palette.type === "dark" ? "#81c784" : "#2e7d32"}`,
+      outline: `2px solid ${theme.palette.type === "dark" ? "#81c784" : theme.palette.primary.main}`,
       outlineOffset: 1,
       borderRadius: 2,
     },
@@ -220,8 +220,8 @@ export default makeStyles((theme) => ({
     padding: "10px 12px",
     transition: "border-color 0.2s ease, box-shadow 0.2s ease",
     "&:hover": {
-      borderColor: "#2e7d32",
-      boxShadow: "0 0 0 1px rgba(46, 125, 50, 0.2)",
+      borderColor: theme.palette.primary.main,
+      boxShadow: `0 0 0 1px ${fade(theme.palette.primary.main, 0.2)}`,
     },
     "& > h5": {
       margin: 0,
@@ -240,14 +240,25 @@ export default makeStyles((theme) => ({
   },
   editTextarea: {
     width: "100%",
-    padding: 8,
-    border: `1px solid ${theme.palette.divider}`,
-    backgroundColor: theme.palette.background.paper,
-    color: theme.palette.text.primary,
-    borderRadius: 4,
-    resize: "vertical",
-    fontFamily: "inherit",
-    fontSize: 14,
+    "& .MuiOutlinedInput-root": {
+      backgroundColor: theme.palette.background.paper,
+      color: theme.palette.text.primary,
+      fontFamily: "inherit",
+      fontSize: 14,
+      "& .MuiOutlinedInput-notchedOutline": {
+        borderColor: theme.palette.divider,
+      },
+      "&:hover .MuiOutlinedInput-notchedOutline": {
+        borderColor: theme.palette.text.secondary,
+      },
+      "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+        borderColor: theme.palette.primary.main,
+      },
+    },
+    "& .MuiOutlinedInput-inputMultiline": {
+      padding: 8,
+      resize: "vertical",
+    },
   },
   editActions: {
     display: "flex",
@@ -255,7 +266,7 @@ export default makeStyles((theme) => ({
     marginTop: 8,
   },
   saveButton: {
-    backgroundColor: "#2e7d32",
+    backgroundColor: theme.palette.primary.main,
     color: theme.palette.common.white,
     border: "none",
     padding: "6px 16px",
@@ -638,7 +649,7 @@ export default makeStyles((theme) => ({
       outline: "none",
       fontSize: 13,
       "&:focus": {
-        borderColor: "#2e7d32",
+        borderColor: theme.palette.primary.main,
       },
     },
     "& > button": {
@@ -650,7 +661,7 @@ export default makeStyles((theme) => ({
       fontSize: 13,
       fontWeight: 600,
       color: theme.palette.common.white,
-      backgroundColor: "#2e7d32",
+      backgroundColor: theme.palette.primary.main,
       transition: "opacity 0.2s ease",
       "&:disabled": {
         cursor: "not-allowed",
@@ -676,7 +687,7 @@ export default makeStyles((theme) => ({
     fontFamily: "inherit",
     resize: "vertical",
     "&:focus": {
-      borderColor: "#2e7d32",
+      borderColor: theme.palette.primary.main,
     },
     "&:disabled": {
       opacity: 0.7,
@@ -704,7 +715,7 @@ export default makeStyles((theme) => ({
   },
   repostDialogSubmitButton: {
     border: 0,
-    backgroundColor: "#2e7d32",
+    backgroundColor: theme.palette.primary.main,
     color: theme.palette.common.white,
     borderRadius: 18,
     padding: "6px 14px",

@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
 import useErrorToast from "../../hooks/useErrorToast";
 import { resolvePhoto } from "../../utils/photo";
+import ConfirmDialog from "../common/ConfirmDialog";
 import LoadingGate from "../LoadingGate";
 import Style from "./Style";
 
@@ -51,6 +52,7 @@ const NetworkUserCard = ({
   const [isConnectionActionPending, setIsConnectionActionPending] = useState(false);
   const [isFollowActionPending, setIsFollowActionPending] = useState(false);
   const [isConnectedActionHovered, setIsConnectedActionHovered] = useState(false);
+  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
   const connectionState = connectionStatus?.status ?? "none";
   const candidateUsername = candidateProfile?.username ?? candidateUser?.username ?? null;
 
@@ -114,8 +116,24 @@ const NetworkUserCard = ({
     }
   };
 
-  const handleRemove = async (event) => {
+  const handleRemove = (event) => {
     event.stopPropagation();
+    if (!connectionStatus?.connectionId || isConnectionActionPending) {
+      return;
+    }
+
+    setIsRemoveDialogOpen(true);
+  };
+
+  const handleRemoveDialogClose = () => {
+    if (isConnectionActionPending) {
+      return;
+    }
+
+    setIsRemoveDialogOpen(false);
+  };
+
+  const handleConfirmRemove = async () => {
     if (!connectionStatus?.connectionId || isConnectionActionPending) {
       return;
     }
@@ -124,6 +142,7 @@ const NetworkUserCard = ({
     try {
       await removeConnection({ connectionId: connectionStatus.connectionId });
       setIsConnectedActionHovered(false);
+      setIsRemoveDialogOpen(false);
     } catch (error) {
       console.error("Failed to remove connection:", error);
       showError("Failed to remove connection. Please try again.");
@@ -234,67 +253,78 @@ const NetworkUserCard = ({
   };
 
   return (
-    <Paper
-      elevation={1}
-      className={classes.card}
-      role="button"
-      tabIndex={0}
-      onClick={() =>
-        onNavigateProfile({
-          username: candidateUsername,
-          userId: candidateUser._id,
-        })
-      }
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
+    <>
+      <Paper
+        elevation={1}
+        className={classes.card}
+        role="button"
+        tabIndex={0}
+        onClick={() =>
           onNavigateProfile({
             username: candidateUsername,
             userId: candidateUser._id,
-          });
+          })
         }
-      }}
-    >
-      <Avatar
-        src={resolvePhoto(candidateUser.photoURL)}
-        alt={candidateUser.displayName}
-        className={classes.avatar}
-      />
-      <div className={classes.info}>
-        <Typography className={classes.displayName}>{candidateUser.displayName}</Typography>
-        <Typography className={classes.title}>{candidateUser.title}</Typography>
-        <Typography className={classes.location}>
-          {candidateUser.location?.trim().length > 0
-            ? candidateUser.location
-            : "Location not listed"}
-        </Typography>
-        <Typography className={classes.connectionCount}>
-          {(connectionCount ?? 0)} connections
-        </Typography>
-        {authUserId && mutualConnectionsCount !== undefined && (
-          <Typography className={classes.mutualConnectionCount}>
-            {mutualConnectionsCount} mutual connection
-            {mutualConnectionsCount === 1 ? "" : "s"}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onNavigateProfile({
+              username: candidateUsername,
+              userId: candidateUser._id,
+            });
+          }
+        }}
+      >
+        <Avatar
+          src={resolvePhoto(candidateUser.photoURL)}
+          alt={candidateUser.displayName}
+          className={classes.avatar}
+        />
+        <div className={classes.info}>
+          <Typography className={classes.displayName}>{candidateUser.displayName}</Typography>
+          <Typography className={classes.title}>{candidateUser.title}</Typography>
+          <Typography className={classes.location}>
+            {candidateUser.location?.trim().length > 0
+              ? candidateUser.location
+              : "Location not listed"}
           </Typography>
-        )}
-      </div>
-      {canConnect && (
-        <div className={classes.actionRow}>
-          {renderConnectionAction()}
-          <Button
-            variant={isFollowing ? "contained" : "outlined"}
-            size="small"
-            className={`${classes.followButton} ${
-              isFollowing ? classes.followButtonFollowing : ""
-            }`}
-            onClick={handleToggleFollow}
-            disabled={isFollowActionPending || isFollowing === undefined}
-          >
-            {isFollowing ? "Following" : "Follow"}
-          </Button>
+          <Typography className={classes.connectionCount}>
+            {(connectionCount ?? 0)} connections
+          </Typography>
+          {authUserId && mutualConnectionsCount !== undefined && (
+            <Typography className={classes.mutualConnectionCount}>
+              {mutualConnectionsCount} mutual connection
+              {mutualConnectionsCount === 1 ? "" : "s"}
+            </Typography>
+          )}
         </div>
-      )}
-    </Paper>
+        {canConnect && (
+          <div className={classes.actionRow}>
+            {renderConnectionAction()}
+            <Button
+              variant={isFollowing ? "contained" : "outlined"}
+              size="small"
+              className={`${classes.followButton} ${
+                isFollowing ? classes.followButtonFollowing : ""
+              }`}
+              onClick={handleToggleFollow}
+              disabled={isFollowActionPending || isFollowing === undefined}
+            >
+              {isFollowing ? "Following" : "Follow"}
+            </Button>
+          </div>
+        )}
+      </Paper>
+      <ConfirmDialog
+        open={isRemoveDialogOpen}
+        onClose={handleRemoveDialogClose}
+        onConfirm={handleConfirmRemove}
+        description={`Remove ${candidateUser.displayName} from your connections?`}
+        confirmLabel="Remove connection"
+        isPending={isConnectionActionPending}
+        dialogId={`remove-connection-dialog-title-${candidateUser._id}`}
+      />
+    </>
   );
 };
 

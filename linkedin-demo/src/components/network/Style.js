@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 
 export default makeStyles((theme) => ({
   network: {
@@ -35,7 +35,7 @@ export default makeStyles((theme) => ({
     border: `1px solid ${theme.palette.divider}`,
     backgroundColor: theme.palette.background.default,
     "&:focus-visible": {
-      boxShadow: "0px 0px 0px 3px rgba(46, 125, 50, 0.25)",
+      boxShadow: `0px 0px 0px 3px ${fade(theme.palette.primary.main, 0.25)}`,
     },
   },
   searchField: {
@@ -67,11 +67,11 @@ export default makeStyles((theme) => ({
     outline: "none",
     transition: "box-shadow 150ms ease, transform 150ms ease",
     "&:hover": {
-      boxShadow: "0px 4px 14px rgba(46, 125, 50, 0.18)",
+      boxShadow: `0px 4px 14px ${fade(theme.palette.primary.main, 0.18)}`,
       transform: "translateY(-1px)",
     },
     "&:focus-visible": {
-      boxShadow: "0px 0px 0px 3px rgba(46, 125, 50, 0.25)",
+      boxShadow: `0px 0px 0px 3px ${fade(theme.palette.primary.main, 0.25)}`,
     },
   },
   avatar: {
@@ -133,7 +133,7 @@ export default makeStyles((theme) => ({
     minWidth: 92,
     "&:hover": {
       borderColor: theme.palette.primary.main,
-      backgroundColor: "rgba(46, 125, 50, 0.08)",
+      backgroundColor: fade(theme.palette.primary.main, 0.08),
     },
   },
   connectButtonPending: {
@@ -147,7 +147,7 @@ export default makeStyles((theme) => ({
     fontWeight: 600,
     minWidth: 82,
     "&:hover": {
-      backgroundColor: "#1b5e20",
+      backgroundColor: theme.palette.primary.dark,
     },
   },
   rejectButton: {
@@ -167,14 +167,14 @@ export default makeStyles((theme) => ({
     color: theme.palette.primary.main,
     "&:hover": {
       borderColor: theme.palette.primary.main,
-      backgroundColor: "rgba(46, 125, 50, 0.08)",
+      backgroundColor: fade(theme.palette.primary.main, 0.08),
     },
   },
   followButtonFollowing: {
     backgroundColor: theme.palette.primary.main,
     color: "#fff",
     "&:hover": {
-      backgroundColor: "#1b5e20",
+      backgroundColor: theme.palette.primary.dark,
     },
   },
 }));

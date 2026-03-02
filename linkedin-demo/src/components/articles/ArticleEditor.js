@@ -8,7 +8,7 @@ import {
   TextField,
   Typography,
 } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 import { api } from "../../convex/_generated/api";
 
 const TITLE_MAX_LENGTH = 150;
@@ -67,11 +67,11 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 700,
     textTransform: "none",
     "&:hover": {
-      backgroundColor: "#1f6a2b",
+      backgroundColor: theme.palette.primary.dark,
     },
     "&.Mui-disabled": {
       color: "rgba(255,255,255,0.7)",
-      backgroundColor: "rgba(46,125,50,0.55)",
+      backgroundColor: fade(theme.palette.primary.main, 0.55),
     },
   },
   inlineLoader: {

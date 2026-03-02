@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 
 export default makeStyles((theme) => ({
   root: {
@@ -58,7 +58,7 @@ export default makeStyles((theme) => ({
     flexShrink: 0,
     "&:hover": {
       borderColor: theme.palette.primary.main,
-      backgroundColor: "rgba(46, 125, 50, 0.08)",
+      backgroundColor: fade(theme.palette.primary.main, 0.08),
     },
     [theme.breakpoints.down("xs")]: {
       width: "100%",
@@ -105,7 +105,9 @@ export default makeStyles((theme) => ({
     borderLeft: `4px solid ${theme.palette.primary.main}`,
     paddingLeft: 12,
     backgroundColor:
-      theme.palette.type === "dark" ? "rgba(46,125,50,0.08)" : "#f8fcf8",
+      theme.palette.type === "dark"
+        ? fade(theme.palette.primary.main, 0.08)
+        : fade(theme.palette.primary.main, 0.04),
     [theme.breakpoints.down("xs")]: {
       paddingLeft: 8,
     },

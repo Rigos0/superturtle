@@ -6,7 +6,7 @@ import Button from "@material-ui/core/Button";
 import CircularProgress from "@material-ui/core/CircularProgress";
 import Paper from "@material-ui/core/Paper";
 import Typography from "@material-ui/core/Typography";
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 import ReactTimeago from "react-timeago";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
@@ -142,7 +142,7 @@ const useStyles = makeStyles((theme) => ({
   },
   activeReactionButton: {
     borderColor: theme.palette.primary.main,
-    backgroundColor: "rgba(46,125,50,0.08)",
+    backgroundColor: fade(theme.palette.primary.main, 0.08),
   },
   reactionCount: {
     marginLeft: "auto",

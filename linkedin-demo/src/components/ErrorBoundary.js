@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { makeStyles, withTheme } from "@material-ui/core/styles";
+import { fade, makeStyles, withTheme } from "@material-ui/core/styles";
 
 const useStyles = makeStyles((theme) => {
   const isDark = theme.palette.type === "dark";
@@ -14,8 +14,8 @@ const useStyles = makeStyles((theme) => {
       padding: "24px",
       boxSizing: "border-box",
       background: isDark
-        ? `linear-gradient(180deg, rgba(46, 125, 50, 0.16) 0%, ${theme.palette.background.default} 100%)`
-        : "linear-gradient(180deg, rgba(46, 125, 50, 0.08) 0%, rgba(46, 125, 50, 0.02) 100%)",
+        ? `linear-gradient(180deg, ${fade(theme.palette.primary.main, 0.16)} 0%, ${theme.palette.background.default} 100%)`
+        : `linear-gradient(180deg, ${fade(theme.palette.primary.main, 0.08)} 0%, ${fade(theme.palette.primary.main, 0.02)} 100%)`,
     },
     card: {
       width: "100%",

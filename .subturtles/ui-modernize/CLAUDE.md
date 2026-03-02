@@ -1,5 +1,5 @@
 ## Current Task
-Replace all hardcoded `#2e7d32` colors with `theme.palette.primary.main` — check ArticleEditor.js:33, ArticleView.js:115, HashtagFeed.js:55, and grep for others.
+Add MUI Skeleton loaders to replace CircularProgress spinners in: Profile.js, Network.js, Notifications.js feed loading states (import Skeleton from @material-ui/lab).
 
 ## End Goal with Specs
 All raw HTML buttons, inputs, textareas replaced with MUI equivalents. Consistent styling. No sweetalert. No hardcoded colors. Skeleton loaders instead of spinners.
@@ -12,8 +12,8 @@ All raw HTML buttons, inputs, textareas replaced with MUI equivalents. Consisten
 - [x] Replace raw `<button>` elements in Notifications.js (lines ~148-170) with MUI Button
 - [x] Replace raw button elements in Network.js (lines ~237-258, ~376-397) with MUI Button
 - [x] Move inline styles from ErrorBoundary.js (lines 26-95) to makeStyles
-- [ ] Replace all hardcoded `#2e7d32` colors with `theme.palette.primary.main` — check ArticleEditor.js:33, ArticleView.js:115, HashtagFeed.js:55, and grep for others <- current
-- [ ] Add MUI Skeleton loaders to replace CircularProgress spinners in: Profile.js, Network.js, Notifications.js feed loading states (import Skeleton from @material-ui/lab)
+- [x] Replace all hardcoded `#2e7d32` colors with `theme.palette.primary.main` — check ArticleEditor.js:33, ArticleView.js:115, HashtagFeed.js:55, and grep for others
+- [ ] Add MUI Skeleton loaders to replace CircularProgress spinners in: Profile.js, Network.js, Notifications.js feed loading states (import Skeleton from @material-ui/lab) <- current
 - [ ] Test build: `cd linkedin-demo && npm run build`
 - [ ] Commit
 
@@ -23,4 +23,4 @@ All raw HTML buttons, inputs, textareas replaced with MUI equivalents. Consisten
 - Skeleton is in `@material-ui/lab`: `import { Skeleton } from '@material-ui/lab'`
 - Keep functionality identical — only change presentation layer
 - Test that dark mode still works after all changes
-- Progress: converted most hardcoded `#2e7d32` usages to `theme.palette.primary.main`; remaining replacements are pending in files with overlapping refactors.
+- Progress: completed repo-wide replacement of hardcoded primary green values with theme-based `theme.palette.primary.*`/`fade(...)`.

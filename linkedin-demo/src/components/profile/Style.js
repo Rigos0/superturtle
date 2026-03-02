@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core/styles";
+import { fade, makeStyles } from "@material-ui/core/styles";
 
 export default makeStyles((theme) => ({
   profile: {
@@ -43,7 +43,7 @@ export default makeStyles((theme) => ({
   coverArea: {
     width: "100%",
     height: "clamp(88px, 24vw, 120px)",
-    background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, #1b5e20 100%)`,
+    background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
     position: "relative",
     marginBottom: 52,
     [theme.breakpoints.down("xs")]: {
@@ -83,7 +83,7 @@ export default makeStyles((theme) => ({
     fontWeight: 600,
     padding: theme.spacing(0.5, 1.5),
     "&:hover": {
-      backgroundColor: "#1b5e20",
+      backgroundColor: theme.palette.primary.dark,
     },
     "&.Mui-disabled": {
       backgroundColor: "#9e9e9e",
@@ -104,7 +104,7 @@ export default makeStyles((theme) => ({
     height: 32,
     backgroundColor: "rgba(255, 255, 255, 0.92)",
     color: theme.palette.primary.main,
-    border: "1px solid rgba(46, 125, 50, 0.35)",
+    border: `1px solid ${fade(theme.palette.primary.main, 0.35)}`,
     "&:hover": {
       backgroundColor: "#fff",
     },
@@ -181,7 +181,7 @@ export default makeStyles((theme) => ({
     marginTop: theme.spacing(0.75),
     height: 8,
     borderRadius: 999,
-    backgroundColor: "rgba(46, 125, 50, 0.16)",
+    backgroundColor: fade(theme.palette.primary.main, 0.16),
     "& .MuiLinearProgress-barColorPrimary": {
       backgroundColor: theme.palette.primary.main,
     },
@@ -244,15 +244,15 @@ export default makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     gap: theme.spacing(1.25),
-    border: "1px solid rgba(46, 125, 50, 0.25)",
+    border: `1px solid ${fade(theme.palette.primary.main, 0.25)}`,
     borderRadius: 10,
     padding: theme.spacing(1),
     cursor: "pointer",
     transition: "background-color 0.2s ease, border-color 0.2s ease",
     "&:hover, &:focus": {
       outline: "none",
-      backgroundColor: "rgba(46, 125, 50, 0.06)",
-      borderColor: "rgba(46, 125, 50, 0.45)",
+      backgroundColor: fade(theme.palette.primary.main, 0.06),
+      borderColor: fade(theme.palette.primary.main, 0.45),
     },
   },
   connectionAvatar: {
@@ -299,10 +299,10 @@ export default makeStyles((theme) => ({
     },
   },
   featuredSection: {
-    border: "1px solid rgba(46, 125, 50, 0.2)",
+    border: `1px solid ${fade(theme.palette.primary.main, 0.2)}`,
     borderRadius: 10,
     padding: theme.spacing(1.25, 1.5),
-    backgroundColor: "rgba(46, 125, 50, 0.03)",
+    backgroundColor: fade(theme.palette.primary.main, 0.03),
   },
   featuredHeader: {
     display: "flex",
@@ -313,7 +313,7 @@ export default makeStyles((theme) => ({
   },
   featuredTitle: {
     fontWeight: 700,
-    color: "#1b5e20",
+    color: theme.palette.primary.dark,
   },
   featuredCount: {
     color: theme.palette.text.secondary,
@@ -339,12 +339,12 @@ export default makeStyles((theme) => ({
   featuredActionButton: {
     textTransform: "none",
     borderRadius: 16,
-    borderColor: "rgba(46, 125, 50, 0.5)",
+    borderColor: fade(theme.palette.primary.main, 0.5),
     color: theme.palette.primary.main,
     fontWeight: 600,
     minHeight: 32,
     "&.MuiButton-text": {
-      border: "1px solid rgba(46, 125, 50, 0.35)",
+      border: `1px solid ${fade(theme.palette.primary.main, 0.35)}`,
       padding: theme.spacing(0.25, 1.25),
     },
   },
@@ -360,7 +360,7 @@ export default makeStyles((theme) => ({
     padding: theme.spacing(1, 0),
   },
   activityCard: {
-    border: "1px solid rgba(46, 125, 50, 0.2)",
+    border: `1px solid ${fade(theme.palette.primary.main, 0.2)}`,
     borderRadius: 10,
     padding: theme.spacing(1.25, 1.5),
     backgroundColor: "#fff",
@@ -368,7 +368,7 @@ export default makeStyles((theme) => ({
   activityHeading: {
     fontSize: "0.8rem",
     fontWeight: 700,
-    color: "#1b5e20",
+    color: theme.palette.primary.dark,
     marginBottom: 2,
   },
   activityTimestamp: {
