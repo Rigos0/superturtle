@@ -189,4 +189,33 @@ test.describe("Profiles e2e", () => {
     await expect(schoolEntry).toHaveText(/\S+/);
     await expect(degreeEntry).toHaveText(/\S+/);
   });
+
+  test("Featured posts section is visible on profile when pinned posts are available", async ({
+    page,
+  }) => {
+    try {
+      await openProfileFromFirstPost(page);
+    } catch {
+      test.skip(true, "Feed/profile navigation data is unavailable on the live deployment.");
+    }
+
+    const featuredHeading = page.getByRole("heading", { name: "Featured", exact: true });
+    await expect(featuredHeading).toBeVisible();
+
+    const featuredSection = featuredHeading.locator("xpath=ancestor::div[2]");
+    const featuredCountLabel = featuredHeading.locator("xpath=following-sibling::*[1]");
+    await expect(featuredCountLabel).toBeVisible();
+
+    const featuredCountText = ((await featuredCountLabel.textContent()) ?? "").trim();
+    const featuredCount = Number.parseInt(featuredCountText.split("/")[0] ?? "", 10);
+    test.skip(
+      Number.isNaN(featuredCount),
+      "Could not determine featured posts count from the profile header.",
+    );
+    test.skip(featuredCount === 0, "Profile has no pinned featured posts in the current live dataset.");
+
+    const featuredPosts = featuredSection.locator('[id^="post-"]');
+    await expect(featuredPosts.first()).toBeVisible();
+    expect(await featuredPosts.count()).toBeGreaterThan(0);
+  });
 });
