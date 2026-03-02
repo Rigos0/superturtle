@@ -1,5 +1,5 @@
 ## Current Task
-Create `linkedin-demo/src/components/posts/editHistory/EditHistoryDialog.js` — dialog listing previous versions with timestamps.
+Run `cd linkedin-demo && npx convex dev --once` to push schema.
 
 ## End Goal with Specs
 Item 35 from Phase 2: When a post is edited, show "Edited" indicator. Users can view previous versions.
@@ -14,8 +14,8 @@ Item 35 from Phase 2: When a post is edited, show "Edited" indicator. Users can 
 - [x] Add `isEdited` boolean field to posts schema
 - [x] Create `linkedin-demo/src/convex/postEdits.ts` — query: getEditHistory(postId) returns all previous versions ordered by editedAt desc
 - [x] Show "Edited" badge in Post.js next to timestamp — small text, clickable
-- [ ] Create `linkedin-demo/src/components/posts/editHistory/EditHistoryDialog.js` — dialog listing previous versions with timestamps <- current
-- [ ] Run `cd linkedin-demo && npx convex dev --once` to push schema
+- [x] Create `linkedin-demo/src/components/posts/editHistory/EditHistoryDialog.js` — dialog listing previous versions with timestamps
+- [ ] Run `cd linkedin-demo && npx convex dev --once` to push schema <- current
 - [ ] Test and commit
 
 ## Notes

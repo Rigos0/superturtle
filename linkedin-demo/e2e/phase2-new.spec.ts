@@ -139,4 +139,38 @@ test.describe("Phase 2 batch 2 e2e", () => {
       }
     }
   });
+
+  test("Article creation stores articleTitle and articleBody fields", async ({
+    page,
+  }) => {
+    const client = await createAuthenticatedConvexClient(page);
+    let createdArticleId: string | null = null;
+    const articleTitle = `E2E article title ${Date.now()}`;
+    const articleBody = `E2E article body ${Date.now()}\n\nThis verifies article persistence fields.`;
+
+    try {
+      createdArticleId = await runConvexCallOrSkip("articles:createArticle", () =>
+        client.mutation("articles:createArticle", {
+          title: articleTitle,
+          body: articleBody,
+          description: `E2E article summary ${Date.now()}`,
+        }),
+      );
+
+      const article = await runConvexCallOrSkip("articles:getArticle", () =>
+        client.query("articles:getArticle", { postId: createdArticleId! }),
+      );
+
+      expect(article).not.toBeNull();
+      expect(article?.type).toBe("article");
+      expect(article?.articleTitle).toBe(articleTitle);
+      expect(article?.articleBody).toBe(articleBody);
+    } finally {
+      if (createdArticleId) {
+        await client
+          .mutation("posts:deletePost", { postId: createdArticleId })
+          .catch(() => {});
+      }
+    }
+  });
 });

@@ -128,4 +128,32 @@ test.describe("Profiles e2e", () => {
     await expect(headerImages.first()).toBeVisible();
     expect(await headerImages.count()).toBeGreaterThan(0);
   });
+
+  test("Profile skills section displays skill tags on About tab when available", async ({
+    page,
+  }) => {
+    try {
+      await openProfileFromFirstPost(page);
+    } catch {
+      test.skip(true, "Feed/profile navigation data is unavailable on the live deployment.");
+    }
+
+    await page.getByRole("tab", { name: "About", exact: true }).click();
+
+    const skillsHeading = page.getByRole("heading", { name: "Skills", exact: true });
+    await expect(skillsHeading).toBeVisible();
+
+    const emptySkillsState = page.getByText("No skills added yet.", { exact: true });
+    test.skip(
+      await emptySkillsState.isVisible().catch(() => false),
+      "Profile has no skills in the current live dataset.",
+    );
+
+    const aboutSection = skillsHeading.locator("xpath=ancestor::div[1]");
+    const skillTags = aboutSection.locator(".MuiChip-root");
+
+    await expect(skillTags.first()).toBeVisible();
+    expect(await skillTags.count()).toBeGreaterThan(0);
+    await expect(skillTags.first()).toHaveText(/\S+/);
+  });
 });
