@@ -82,6 +82,42 @@ async function openProfileFromFirstPost(page: Page): Promise<void> {
   });
 }
 
+async function openNonOwnProfileFromFeed(page: Page, maxPostsToTry = 6): Promise<void> {
+  await ensureFeedReady(page);
+
+  const posts = page.locator('[id^="post-"]');
+  const totalPosts = await posts.count();
+  const attempts = Math.min(totalPosts, maxPostsToTry);
+
+  for (let index = 0; index < attempts; index += 1) {
+    const authorHeading = posts.nth(index).locator("h4").first();
+    if (!(await authorHeading.isVisible().catch(() => false))) {
+      continue;
+    }
+
+    await clickWithRetry(authorHeading);
+
+    const backToFeedButton = page.getByRole("button", { name: "Back to feed", exact: true });
+    if (!(await backToFeedButton.isVisible().catch(() => false))) {
+      await page.goBack({ waitUntil: "domcontentloaded" }).catch(() => {});
+      continue;
+    }
+
+    const isOwnProfile = await page
+      .getByRole("button", { name: "Edit profile", exact: true })
+      .isVisible()
+      .catch(() => false);
+    if (!isOwnProfile) {
+      return;
+    }
+
+    await backToFeedButton.click();
+    await ensureFeedReady(page);
+  }
+
+  throw new Error("Could not find a non-self profile from the visible feed posts.");
+}
+
 test.describe("Profiles e2e", () => {
   test.setTimeout(45_000);
 
@@ -217,5 +253,20 @@ test.describe("Profiles e2e", () => {
     const featuredPosts = featuredSection.locator('[id^="post-"]');
     await expect(featuredPosts.first()).toBeVisible();
     expect(await featuredPosts.count()).toBeGreaterThan(0);
+  });
+
+  test("Mutual connections count is shown on profile for non-self users", async ({ page }) => {
+    try {
+      await openNonOwnProfileFromFeed(page);
+    } catch {
+      test.skip(
+        true,
+        "Could not open a non-self profile from feed posts in the current live dataset.",
+      );
+    }
+
+    const mutualConnectionsText = page.getByText(/^\d+\s+mutual connections?$/i).first();
+    await expect(mutualConnectionsText).toBeVisible({ timeout: 15_000 });
+    await expect(mutualConnectionsText).toHaveText(/^\d+\s+mutual connections?$/i);
   });
 });
