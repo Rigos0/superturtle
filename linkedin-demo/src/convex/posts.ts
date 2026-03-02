@@ -108,14 +108,20 @@ const buildFeedPostPayload = async (ctx: QueryCtx, post: Doc<"posts">) => {
 };
 
 export const listPosts = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    sortBy: v.optional(
+      v.union(v.literal("recent"), v.literal("top"), v.literal("following")),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const sortBy = args.sortBy ?? "recent";
     const viewerId = await getAuthUserId(ctx);
     const posts = await ctx.db.query("posts").collect();
     const connectedAuthorIds = new Set<Id<"users">>();
+    const followedAuthorIds = new Set<Id<"users">>();
 
     if (viewerId) {
-      const [requestedConnections, receivedConnections] = await Promise.all([
+      const [requestedConnections, receivedConnections, follows] = await Promise.all([
         ctx.db
           .query("connections")
           .withIndex("byUser1", (q) => q.eq("userId1", viewerId).eq("status", "accepted"))
@@ -124,6 +130,12 @@ export const listPosts = query({
           .query("connections")
           .withIndex("byUser2", (q) => q.eq("userId2", viewerId).eq("status", "accepted"))
           .collect(),
+        sortBy === "following"
+          ? ctx.db
+              .query("follows")
+              .withIndex("byFollower", (q) => q.eq("followerId", viewerId))
+              .collect()
+          : Promise.resolve([]),
       ]);
 
       for (const connection of requestedConnections) {
@@ -132,6 +144,10 @@ export const listPosts = query({
 
       for (const connection of receivedConnections) {
         connectedAuthorIds.add(connection.userId1);
+      }
+
+      for (const follow of follows) {
+        followedAuthorIds.add(follow.followedId);
       }
     }
 
@@ -212,10 +228,39 @@ export const listPosts = query({
       }),
     );
 
-    return [...feedPosts, ...repostFeedPosts]
+    const feedItems = [...feedPosts, ...repostFeedPosts]
       .filter((feedItem): feedItem is NonNullable<typeof feedItem> => feedItem !== null)
-      .sort((a, b) => b.feedCreatedAt - a.feedCreatedAt)
-      .map(({ feedCreatedAt, ...feedItem }) => feedItem);
+      .filter((feedItem) => {
+        if (sortBy !== "following") {
+          return true;
+        }
+
+        if (!viewerId) {
+          return false;
+        }
+
+        if (feedItem.authorId === viewerId) {
+          return true;
+        }
+
+        return (
+          connectedAuthorIds.has(feedItem.authorId) || followedAuthorIds.has(feedItem.authorId)
+        );
+      });
+
+    const sortedFeedItems = [...feedItems].sort((a, b) => {
+      if (sortBy === "top") {
+        const aScore = (a.likesCount ?? 0) + (a.commentsCount ?? 0);
+        const bScore = (b.likesCount ?? 0) + (b.commentsCount ?? 0);
+        if (bScore !== aScore) {
+          return bScore - aScore;
+        }
+      }
+
+      return b.feedCreatedAt - a.feedCreatedAt;
+    });
+
+    return sortedFeedItems.map(({ feedCreatedAt, ...feedItem }) => feedItem);
   },
 });
 

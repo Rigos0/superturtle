@@ -1,5 +1,5 @@
 ## Current Task
-Feed sort tabs — Recent (default, by createdAt), Top (most reactions+comments), Following (only from connections+followed users)
+Add feed sort UI — tabs or dropdown above feed in `linkedin-demo/src/App.js` or feed component
 
 ## End Goal with Specs
 Items 26-30 from Phase 2: Post visibility (public/connections only), feed algorithm (Recent/Top/Following), follow system, infinite scroll pagination.
@@ -11,8 +11,8 @@ Items 26-30 from Phase 2: Post visibility (public/connections only), feed algori
 - [x] Add `follows` table to schema — followerId, followedId, createdAt. Indexed by both.
 - [x] Create `linkedin-demo/src/convex/follows.ts` — followUser, unfollowUser, getFollowerCount, getFollowingCount, isFollowing queries/mutations
 - [x] Add Follow button to profile page and user cards (alongside Connect button)
-- [ ] Feed sort tabs — Recent (default, by createdAt), Top (most reactions+comments), Following (only from connections+followed users) <- current
-- [ ] Add feed sort UI — tabs or dropdown above feed in `linkedin-demo/src/App.js` or feed component
+- [x] Feed sort tabs — Recent (default, by createdAt), Top (most reactions+comments), Following (only from connections+followed users)
+- [ ] Add feed sort UI — tabs or dropdown above feed in `linkedin-demo/src/App.js` or feed component <- current
 - [ ] Pagination — load 10 posts at a time in listPosts, add "Load more" button or infinite scroll with intersection observer
 - [ ] Run `cd linkedin-demo && npx convex dev --once` to push schema
 - [ ] Test and commit
