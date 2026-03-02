@@ -1,5 +1,5 @@
 ## Current Task
-Run `cd linkedin-demo && npx convex dev --once` to verify Convex functions still work
+All backlog items complete
 
 ## End Goal with Specs
 All duplicated helpers (resolvePhoto, resolveUserPhotoURL, buildAuthorSummary, REACTION_ITEMS) extracted into shared files. Each utility defined once, imported everywhere.
@@ -12,13 +12,14 @@ All duplicated helpers (resolvePhoto, resolveUserPhotoURL, buildAuthorSummary, R
 - [x] Update all Convex functions to import from shared helpers
 - [x] Verify no unused local copies remain (grep for old function definitions)
 - [x] Test build: `cd linkedin-demo && npm run build`
-- [ ] Run `cd linkedin-demo && npx convex dev --once` to verify Convex functions still work <- current
-- [ ] Commit
+- [x] Run `cd linkedin-demo && npx convex dev --once` to verify Convex functions still work
+- [x] Commit
 
 ## Notes
 - 2026-03-02: Shared photo helper import migration is complete across components; `npm run build` passes.
 - 2026-03-02: Convex helper migration completed in `users.ts`, `comments.ts`, `hashtags.ts`, `messaging.ts`, `notifications.ts`, and `connections.ts`; author/photo helpers now import from `src/convex/helpers.ts`.
 - 2026-03-02: `cd linkedin-demo && npm run build` passes after helper migration.
+- 2026-03-02: `cd linkedin-demo && npx convex dev --once` passes after fixing null-narrowing in `src/convex/connections.ts`.
 - 2026-03-02: Verified with `rg` that local definitions of `resolvePhoto`, `resolveUserPhotoURL`, `buildAuthorSummary`, and `REACTION_ITEMS` only remain in shared helper files.
 - Client-side shared utils go in `linkedin-demo/src/utils/`
 - Server-side (Convex) shared helpers go in `linkedin-demo/src/convex/helpers.ts`
@@ -26,3 +27,6 @@ All duplicated helpers (resolvePhoto, resolveUserPhotoURL, buildAuthorSummary, R
 - REACTION_ITEMS: array of {type, emoji, label} objects for the 5 reaction types
 - buildAuthorSummary: takes user doc, returns {displayName, photoURL, username}
 - Be careful with Convex imports — server-side code uses different import paths than client
+
+## Loop Control
+STOP

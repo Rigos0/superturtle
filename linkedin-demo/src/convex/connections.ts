@@ -212,7 +212,7 @@ export const listConnections = query({
           connection,
         ): connection is NonNullable<typeof connection> & {
           user: NonNullable<NonNullable<typeof connection>["user"]>;
-        } => Boolean(connection) && Boolean(connection.user),
+        } => connection !== null && connection.user !== null,
       )
       .sort((a, b) => a.user.displayName.localeCompare(b.user.displayName));
   },
@@ -256,7 +256,7 @@ export const listPendingRequests = query({
           connection,
         ): connection is NonNullable<typeof connection> & {
           user: NonNullable<NonNullable<typeof connection>["user"]>;
-        } => Boolean(connection) && Boolean(connection.user),
+        } => connection !== null && connection.user !== null,
       )
       .sort((a, b) => a.user.displayName.localeCompare(b.user.displayName));
   },
