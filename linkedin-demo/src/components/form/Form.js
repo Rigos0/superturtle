@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { useNavigate } from "react-router-dom";
-import { Chip, Paper, Snackbar } from "@material-ui/core";
+import { Chip, Paper, Snackbar, TextField } from "@material-ui/core";
 import Alert from "@material-ui/lab/Alert";
 import VideocamRoundedIcon from "@material-ui/icons/VideocamRounded";
 import YouTubeIcon from "@material-ui/icons/YouTube";
@@ -385,13 +385,16 @@ const Form = () => {
       <div className={classes.upload__header}>
         <form className={classes.header__form} onSubmit={handleSubmitButton}>
           <CreateIcon />
-          <input
+          <TextField
+            className={classes.headerTextField}
             placeholder="Start a post"
-            ref={descriptionInputRef}
+            inputRef={descriptionInputRef}
             value={uploadData.description}
             onChange={handleDescriptionChange}
             onClick={handleDescriptionCursorChange}
             onKeyUp={handleDescriptionCursorChange}
+            InputProps={{ disableUnderline: true }}
+            inputProps={{ "aria-label": "Start a post" }}
           />
           <input
             id="upload-image"

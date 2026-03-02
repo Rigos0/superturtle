@@ -1,14 +1,14 @@
 ## Current Task
-Replace raw `<textarea>` in Post.js (lines ~986-1010) with MUI TextField multiline.
+Replace raw `<button>` elements in Messaging.js (lines ~159-175) with MUI Button/IconButton.
 
 ## End Goal with Specs
 All raw HTML buttons, inputs, textareas replaced with MUI equivalents. Consistent styling. No sweetalert. No hardcoded colors. Skeleton loaders instead of spinners.
 
 ## Backlog
 - [x] Replace sweetalert (swal) in Form.js (lines 167-258) with MUI Snackbar/Alert pattern. Remove `@sweetalert/with-react` import.
-- [ ] Replace raw `<textarea>` in Post.js (lines ~986-1010) with MUI TextField multiline <- current
-- [ ] Replace raw `<input>` in Form.js (lines ~368-376) with MUI TextField
-- [ ] Replace raw `<button>` elements in Messaging.js (lines ~159-175) with MUI Button/IconButton
+- [x] Replace raw `<textarea>` in Post.js (lines ~986-1010) with MUI TextField multiline
+- [x] Replace raw `<input>` in Form.js (lines ~368-376) with MUI TextField
+- [ ] Replace raw `<button>` elements in Messaging.js (lines ~159-175) with MUI Button/IconButton <- current
 - [ ] Replace raw `<button>` elements in Notifications.js (lines ~148-170) with MUI Button
 - [ ] Replace raw button elements in Network.js (lines ~237-258, ~376-397) with MUI Button
 - [ ] Move inline styles from ErrorBoundary.js (lines 26-95) to makeStyles

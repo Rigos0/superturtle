@@ -90,6 +90,27 @@ export default makeStyles((theme) => ({
     },
   },
 
+  headerTextField: {
+    flex: 1,
+    "& .MuiInputBase-root": {
+      height: "100%",
+      color: theme.palette.type === "dark" ? "lightgrey" : "inherit",
+    },
+    "& .MuiInputBase-input": {
+      height: "100%",
+      boxSizing: "border-box",
+      padding: "0 10px",
+      color: theme.palette.type === "dark" ? "lightgrey" : "inherit",
+      fontSize: 14,
+      fontWeight: 600,
+      backgroundColor: "transparent",
+      "&::placeholder": {
+        color: theme.palette.type === "dark" ? "grey" : "inherit",
+        opacity: 1,
+      },
+    },
+  },
+
   writeArticleButton: {
     height: 40,
     border: 0,
