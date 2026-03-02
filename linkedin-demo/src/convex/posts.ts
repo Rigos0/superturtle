@@ -284,6 +284,48 @@ export const createPost = mutation({
       );
     }
 
+    const mentionedUsernames = new Set<string>();
+    const mentionMatches = args.description.matchAll(
+      /(^|[^a-z0-9-])@([a-z0-9]+(?:-[a-z0-9]+)*)/gi,
+    );
+
+    for (const match of mentionMatches) {
+      const mentionUsername = match[2]?.trim().toLowerCase();
+      if (mentionUsername) {
+        mentionedUsernames.add(mentionUsername);
+      }
+    }
+
+    const uniqueMentionedUsernames = Array.from(mentionedUsernames);
+    if (uniqueMentionedUsernames.length > 0) {
+      const mentionedUsers = await Promise.all(
+        uniqueMentionedUsernames.map((username) =>
+          ctx.db
+            .query("users")
+            .withIndex("username", (q) => q.eq("username", username))
+            .unique(),
+        ),
+      );
+
+      const notificationsToCreate = mentionedUsers.filter(
+        (mentionedUser): mentionedUser is Doc<"users"> =>
+          Boolean(mentionedUser) && mentionedUser._id !== args.authorId,
+      );
+
+      await Promise.all(
+        notificationsToCreate.map((mentionedUser) =>
+          ctx.db.insert("notifications", {
+            userId: mentionedUser._id,
+            type: "mention",
+            fromUserId: args.authorId,
+            postId,
+            read: false,
+            createdAt: Date.now(),
+          }),
+        ),
+      );
+    }
+
     return postId;
   },
 });
