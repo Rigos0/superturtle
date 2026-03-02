@@ -6,6 +6,7 @@ import useMediaQuery from "@material-ui/core/useMediaQuery";
 import ReactTimeago from "react-timeago";
 import { api } from "../../convex/_generated/api";
 import useConvexUser from "../../hooks/useConvexUser";
+import useErrorToast from "../../hooks/useErrorToast";
 import { resolvePhoto } from "../../utils/photo";
 import LoadingGate from "../LoadingGate";
 import Style from "./Style";
@@ -35,6 +36,7 @@ const Notifications = ({ onViewPost, onNavigateProfile, onNavigateMessaging }) =
   const user = useConvexUser();
   const markAsRead = useMutation(api.notifications.markAsRead);
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
+  const { showError, ErrorToast } = useErrorToast();
 
   const notifications = useQuery(
     api.notifications.listNotifications,
@@ -59,6 +61,7 @@ const Notifications = ({ onViewPost, onNavigateProfile, onNavigateMessaging }) =
         await markAsRead({ notificationId: notification._id });
       } catch (error) {
         console.error("Failed to mark notification as read:", error);
+        showError("Failed to mark notification as read. Please try again.");
       }
     }
 
@@ -96,76 +99,83 @@ const Notifications = ({ onViewPost, onNavigateProfile, onNavigateMessaging }) =
       await markAllAsRead({ userId: user._id });
     } catch (error) {
       console.error("Failed to mark all notifications as read:", error);
+      showError("Failed to update notifications. Please try again.");
     }
   };
 
   if (!user?._id) {
     return (
-      <Paper className={classes.stateCard} elevation={1}>
-        <Typography variant="body2" color="textSecondary">
-          Sign in to view notifications.
-        </Typography>
-      </Paper>
+      <>
+        <Paper className={classes.stateCard} elevation={1}>
+          <Typography variant="body2" color="textSecondary">
+            Sign in to view notifications.
+          </Typography>
+        </Paper>
+        <ErrorToast />
+      </>
     );
   }
 
   return (
-    <Paper className={classes.root} elevation={1}>
-      <div className={classes.header}>
-        <Typography variant="h6" className={classes.title}>
-          Notifications
-        </Typography>
-        <Button
-          variant="outlined"
-          size={isMobile ? "medium" : "small"}
-          fullWidth={isMobile}
-          onClick={handleMarkAllAsRead}
-          disabled={unreadCount === 0}
-          className={classes.markAllButton}
-        >
-          Mark all as read
-        </Button>
-      </div>
+    <>
+      <Paper className={classes.root} elevation={1}>
+        <div className={classes.header}>
+          <Typography variant="h6" className={classes.title}>
+            Notifications
+          </Typography>
+          <Button
+            variant="outlined"
+            size={isMobile ? "medium" : "small"}
+            fullWidth={isMobile}
+            onClick={handleMarkAllAsRead}
+            disabled={unreadCount === 0}
+            className={classes.markAllButton}
+          >
+            Mark all as read
+          </Button>
+        </div>
 
-      <LoadingGate isLoading={notifications === undefined}>
-        {notifications?.length === 0 ? (
-          <div className={classes.emptyState}>
-            <Typography variant="body2" color="textSecondary">
-              No notifications yet.
-            </Typography>
-          </div>
-        ) : (
-          <div className={classes.list}>
-            {notifications?.map((notification) => (
-              <Button
-                type="button"
-                key={notification._id}
-                className={`${classes.item} ${
-                  notification.read ? classes.readItem : classes.unreadItem
-                }`}
-                onClick={() => handleItemClick(notification)}
-                disableRipple
-              >
-                <Avatar
-                  src={resolvePhoto(notification.fromUser?.photoURL)}
-                  alt={notification.fromUser?.displayName ?? "User"}
-                  className={classes.avatar}
-                />
-                <div className={classes.content}>
-                  <Typography className={classes.message}>{getNotificationMessage(notification)}</Typography>
-                  <Typography className={classes.timestamp}>
-                    <ReactTimeago
-                      date={new Date(notification.createdAt).toUTCString()}
-                      units="minute"
-                    />
-                  </Typography>
-                </div>
-              </Button>
-            ))}
-          </div>
-        )}
-      </LoadingGate>
-    </Paper>
+        <LoadingGate isLoading={notifications === undefined}>
+          {notifications?.length === 0 ? (
+            <div className={classes.emptyState}>
+              <Typography variant="body2" color="textSecondary">
+                No notifications yet.
+              </Typography>
+            </div>
+          ) : (
+            <div className={classes.list}>
+              {notifications?.map((notification) => (
+                <Button
+                  type="button"
+                  key={notification._id}
+                  className={`${classes.item} ${
+                    notification.read ? classes.readItem : classes.unreadItem
+                  }`}
+                  onClick={() => handleItemClick(notification)}
+                  disableRipple
+                >
+                  <Avatar
+                    src={resolvePhoto(notification.fromUser?.photoURL)}
+                    alt={notification.fromUser?.displayName ?? "User"}
+                    className={classes.avatar}
+                  />
+                  <div className={classes.content}>
+                    <Typography className={classes.message}>{getNotificationMessage(notification)}</Typography>
+                    <Typography className={classes.timestamp}>
+                      <ReactTimeago
+                        date={new Date(notification.createdAt).toUTCString()}
+                        units="minute"
+                      />
+                    </Typography>
+                  </div>
+                </Button>
+              ))}
+            </div>
+          )}
+        </LoadingGate>
+      </Paper>
+      <ErrorToast />
+    </>
   );
 };
 
