@@ -173,4 +173,50 @@ test.describe("Phase 2 batch 2 e2e", () => {
       }
     }
   });
+
+  test("Bookmark toggle bookmarks and unbookmarks a post", async ({ page }) => {
+    const client = await createAuthenticatedConvexClient(page);
+    let createdPostId: string | null = null;
+
+    try {
+      const currentUser = await runConvexCallOrSkip("users:getCurrentUser", () =>
+        client.query("users:getCurrentUser", {}),
+      );
+      test.skip(!currentUser?._id, "Skipped: current user lookup failed for guest auth session.");
+
+      createdPostId = await runConvexCallOrSkip("posts:createPost", () =>
+        client.mutation("posts:createPost", {
+          authorId: currentUser._id,
+          description: `E2E bookmark post ${Date.now()}`,
+          visibility: "public",
+        }),
+      );
+
+      const firstToggle = await runConvexCallOrSkip("bookmarks:toggleBookmark", () =>
+        client.mutation("bookmarks:toggleBookmark", { postId: createdPostId! }),
+      );
+      expect(firstToggle?.bookmarked).toBe(true);
+
+      const bookmarkedAfterFirstToggle = await runConvexCallOrSkip("bookmarks:isBookmarked", () =>
+        client.query("bookmarks:isBookmarked", { postId: createdPostId! }),
+      );
+      expect(bookmarkedAfterFirstToggle).toBe(true);
+
+      const secondToggle = await runConvexCallOrSkip("bookmarks:toggleBookmark", () =>
+        client.mutation("bookmarks:toggleBookmark", { postId: createdPostId! }),
+      );
+      expect(secondToggle?.bookmarked).toBe(false);
+
+      const bookmarkedAfterSecondToggle = await runConvexCallOrSkip("bookmarks:isBookmarked", () =>
+        client.query("bookmarks:isBookmarked", { postId: createdPostId! }),
+      );
+      expect(bookmarkedAfterSecondToggle).toBe(false);
+    } finally {
+      if (createdPostId) {
+        await client
+          .mutation("posts:deletePost", { postId: createdPostId })
+          .catch(() => {});
+      }
+    }
+  });
 });
