@@ -1,5 +1,52 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { getAuthUserId } from "@convex-dev/auth/server";
+import type { Doc, Id } from "./_generated/dataModel";
+
+const MAX_POST_IMAGES = 4;
+
+const normalizeImageStorageIds = (storageIds?: Id<"_storage">[]) => {
+  if (!Array.isArray(storageIds)) {
+    return [];
+  }
+
+  const uniqueStorageIds: Id<"_storage">[] = [];
+  const seenStorageIds = new Set<Id<"_storage">>();
+
+  for (const storageId of storageIds) {
+    if (seenStorageIds.has(storageId)) {
+      continue;
+    }
+
+    seenStorageIds.add(storageId);
+    uniqueStorageIds.push(storageId);
+
+    if (uniqueStorageIds.length >= MAX_POST_IMAGES) {
+      break;
+    }
+  }
+
+  return uniqueStorageIds;
+};
+
+const resolvePostImageUrls = async (
+  ctx: { storage: { getUrl: (storageId: Id<"_storage">) => Promise<string | null> } },
+  post: Doc<"posts">,
+) => {
+  if (post.imageStorageIds?.length) {
+    const resolvedUrls = await Promise.all(
+      post.imageStorageIds.map((storageId) => ctx.storage.getUrl(storageId)),
+    );
+
+    return resolvedUrls.filter((url): url is string => typeof url === "string" && url.length > 0);
+  }
+
+  if (post.fileType === "image" && post.fileData) {
+    return [post.fileData];
+  }
+
+  return [];
+};
 
 export const listPosts = query({
   args: {},
@@ -10,6 +57,9 @@ export const listPosts = query({
     return await Promise.all(
       sortedPosts.map(async (post) => {
         const author = await ctx.db.get(post.authorId);
+        const imageUrls = await resolvePostImageUrls(ctx, post);
+        const resolvedFileData =
+          post.fileType === "image" && imageUrls.length > 0 ? imageUrls[0] : post.fileData;
         const likes = await ctx.db
           .query("likes")
           .filter((q) => q.eq(q.field("postId"), post._id))
@@ -21,8 +71,10 @@ export const listPosts = query({
 
         return {
           ...post,
+          fileData: resolvedFileData,
           likesCount: likes.length,
           commentsCount: comments.length,
+          imageUrls,
           author: author
             ? {
                 displayName: author.displayName ?? author.name ?? "Guest User",
@@ -51,6 +103,9 @@ export const listPostsByUser = query({
     return await Promise.all(
       sortedPosts.map(async (post) => {
         const author = await ctx.db.get(post.authorId);
+        const imageUrls = await resolvePostImageUrls(ctx, post);
+        const resolvedFileData =
+          post.fileType === "image" && imageUrls.length > 0 ? imageUrls[0] : post.fileData;
         const likes = await ctx.db
           .query("likes")
           .filter((q) => q.eq(q.field("postId"), post._id))
@@ -62,8 +117,10 @@ export const listPostsByUser = query({
 
         return {
           ...post,
+          fileData: resolvedFileData,
           likesCount: likes.length,
           commentsCount: comments.length,
+          imageUrls,
           author: author
             ? {
                 displayName: author.displayName ?? author.name ?? "Guest User",
@@ -99,11 +156,17 @@ export const searchPosts = query({
     return await Promise.all(
       matchingPosts.map(async (post) => {
         const author = await ctx.db.get(post.authorId);
+        const imageUrls = await resolvePostImageUrls(ctx, post);
+        const resolvedFileData =
+          post.fileType === "image" && imageUrls.length > 0 ? imageUrls[0] : post.fileData;
         return {
           _id: post._id,
           authorId: post.authorId,
           description: post.description,
           createdAt: post.createdAt,
+          fileType: post.fileType,
+          fileData: resolvedFileData,
+          imageUrls,
           author: author
             ? {
                 _id: author._id,
@@ -125,17 +188,34 @@ export const createPost = mutation({
     description: v.string(),
     fileType: v.optional(v.string()),
     fileData: v.optional(v.string()),
+    imageStorageIds: v.optional(v.array(v.id("_storage"))),
   },
   handler: async (ctx, args) => {
+    const imageStorageIds = normalizeImageStorageIds(args.imageStorageIds);
+    const hasStorageImages = imageStorageIds.length > 0;
+
     return await ctx.db.insert("posts", {
       authorId: args.authorId,
       description: args.description,
       createdAt: Date.now(),
       likesCount: 0,
       commentsCount: 0,
-      ...(args.fileType ? { fileType: args.fileType } : {}),
-      ...(args.fileData ? { fileData: args.fileData } : {}),
+      ...(hasStorageImages ? { imageStorageIds, fileType: "image" } : {}),
+      ...(!hasStorageImages && args.fileType ? { fileType: args.fileType } : {}),
+      ...(!hasStorageImages && args.fileData ? { fileData: args.fileData } : {}),
     });
+  },
+});
+
+export const generateImageUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    return await ctx.storage.generateUploadUrl();
   },
 });
 
@@ -144,6 +224,11 @@ export const deletePost = mutation({
     postId: v.id("posts"),
   },
   handler: async (ctx, args) => {
+    const post = await ctx.db.get(args.postId);
+    if (post?.imageStorageIds?.length) {
+      await Promise.all(post.imageStorageIds.map((storageId) => ctx.storage.delete(storageId)));
+    }
+
     await ctx.db.delete(args.postId);
   },
 });

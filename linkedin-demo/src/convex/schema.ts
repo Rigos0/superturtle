@@ -59,6 +59,7 @@ export default defineSchema({
     description: v.string(),
     fileType: v.optional(v.string()),
     fileData: v.optional(v.string()),
+    imageStorageIds: v.optional(v.array(v.id("_storage"))),
     createdAt: v.number(),
     likesCount: v.number(),
     commentsCount: v.number(),

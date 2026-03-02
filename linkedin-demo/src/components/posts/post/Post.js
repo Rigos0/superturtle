@@ -16,6 +16,7 @@ import ReactTimeago from "react-timeago";
 import { api } from "../../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
+import { getLinkPreviewFromText } from "./post.utils";
 import Style from "./Style";
 
 const resolvePhoto = (photoURL) => {
@@ -60,6 +61,10 @@ const Post = forwardRef(
     const [isEditing, setIsEditing] = React.useState(false);
     const [editText, setEditText] = React.useState(description ?? "");
     const [optimisticLike, setOptimisticLike] = React.useState(null);
+    const linkPreview = React.useMemo(
+      () => getLinkPreviewFromText(description),
+      [description]
+    );
 
     const comments = useQuery(
       api.comments.listComments,
@@ -301,6 +306,19 @@ const Post = forwardRef(
             )}
           </div>
           {fileData && (
+          {!isEditing && linkPreview && (
+            <div className={classes.body__linkPreview}>
+              <a
+                className={classes.linkPreviewCard}
+                href={linkPreview.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <h5>{linkPreview.hostname}</h5>
+                <p>{linkPreview.href}</p>
+              </a>
+            </div>
+          )}
             <div className={classes.body__image}>
               {fileType === "image" ? (
                 // <img src={fileData} alt="post" />
