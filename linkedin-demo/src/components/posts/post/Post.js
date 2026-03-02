@@ -7,17 +7,9 @@ import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
 import Paper from "@material-ui/core/Paper";
 import Snackbar from "@material-ui/core/Snackbar";
-import ThumbUpAltIcon from "@material-ui/icons/ThumbUpAlt";
-import ThumbUpAltOutlinedIcon from "@material-ui/icons/ThumbUpAltOutlined";
-import FavoriteIcon from "@material-ui/icons/Favorite";
-import EmojiEventsIcon from "@material-ui/icons/EmojiEvents";
-import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
-import SentimentVerySatisfiedIcon from "@material-ui/icons/SentimentVerySatisfied";
+import TextField from "@material-ui/core/TextField";
 import FiberManualRecordRoundedIcon from "@material-ui/icons/FiberManualRecordRounded";
-import CommentOutlinedIcon from "@material-ui/icons/CommentOutlined";
 import RepeatIcon from "@material-ui/icons/Repeat";
-import BookmarkBorderOutlinedIcon from "@material-ui/icons/BookmarkBorderOutlined";
-import BookmarkIcon from "@material-ui/icons/Bookmark";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import ReactPlayer from "react-player";
 import ReactTimeago from "react-timeago";
@@ -25,12 +17,15 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import { DEFAULT_PHOTO } from "../../../constants";
 import useConvexUser from "../../../hooks/useConvexUser";
+import useErrorToast from "../../../hooks/useErrorToast";
 import EditHistoryDialog from "../editHistory/EditHistoryDialog";
 import PollDisplay from "../poll/PollDisplay";
 import ReportDialog from "../report/ReportDialog";
+import PostActions from "./PostActions";
 import PostHeader from "./PostHeader";
 import { getLinkPreviewFromText } from "./post.utils";
 import Style from "./Style";
+import { REACTION_ITEMS } from "../../../utils/reactions";
 
 const resolvePhoto = (photoURL) => {
   if (!photoURL || (typeof photoURL === "string" && photoURL.startsWith("/"))) {
@@ -67,38 +62,6 @@ const getImageGridClassName = (classes, imageCount) =>
         ? classes.imageGrid3
         : classes.imageGrid4;
 
-const REACTION_ITEMS = [
-  {
-    key: "like",
-    label: "Like",
-    color: "#2e7d32",
-    Icon: ThumbUpAltIcon,
-  },
-  {
-    key: "love",
-    label: "Love",
-    color: "#d32f2f",
-    Icon: FavoriteIcon,
-  },
-  {
-    key: "celebrate",
-    label: "Celebrate",
-    color: "#ed6c02",
-    Icon: EmojiEventsIcon,
-  },
-  {
-    key: "insightful",
-    label: "Insightful",
-    color: "#0288d1",
-    Icon: EmojiObjectsIcon,
-  },
-  {
-    key: "funny",
-    label: "Funny",
-    color: "#f9a825",
-    Icon: SentimentVerySatisfiedIcon,
-  },
-];
 const REACTION_ITEM_BY_KEY = REACTION_ITEMS.reduce((accumulator, item) => {
   accumulator[item.key] = item;
   return accumulator;
@@ -181,7 +144,6 @@ const Post = forwardRef(
     const [isBookmarkMutationPending, setIsBookmarkMutationPending] = React.useState(false);
     const [optimisticReaction, setOptimisticReaction] = React.useState(undefined);
     const [isReactionMutationPending, setIsReactionMutationPending] = React.useState(false);
-    const [isReactionPickerOpen, setIsReactionPickerOpen] = React.useState(false);
     const [isReportDialogOpen, setIsReportDialogOpen] = React.useState(false);
     const [isReportSubmitting, setIsReportSubmitting] = React.useState(false);
     const [hasReportedOptimistic, setHasReportedOptimistic] = React.useState(false);
@@ -190,9 +152,7 @@ const Post = forwardRef(
       open: false,
       message: "",
     });
-    const reactionPickerCloseTimeoutRef = React.useRef(null);
-    const reactionPickerLongPressTimeoutRef = React.useRef(null);
-    const didLongPressOpenReactionPickerRef = React.useRef(false);
+    const { showError, ErrorToast } = useErrorToast();
     const linkPreview = React.useMemo(
       () => getLinkPreviewFromText(description),
       [description]
@@ -310,17 +270,6 @@ const Post = forwardRef(
       }
     }, [description, isEditing]);
 
-    React.useEffect(() => {
-      return () => {
-        if (reactionPickerCloseTimeoutRef.current) {
-          clearTimeout(reactionPickerCloseTimeoutRef.current);
-        }
-        if (reactionPickerLongPressTimeoutRef.current) {
-          clearTimeout(reactionPickerLongPressTimeoutRef.current);
-        }
-      };
-    }, []);
-
     const capitalize = (value = "") => {
       const normalizedValue = typeof value === "string" ? value : "";
       return normalizedValue.charAt(0).toUpperCase() + normalizedValue.slice(1);
@@ -363,89 +312,10 @@ const Post = forwardRef(
       } catch (error) {
         setOptimisticReaction(undefined);
         console.error("Failed to update reaction:", error);
+        showError("Failed to update reaction. Please try again.");
       } finally {
         setIsReactionMutationPending(false);
       }
-    };
-
-    const handleLikeClick = () => {
-      if (didLongPressOpenReactionPickerRef.current) {
-        didLongPressOpenReactionPickerRef.current = false;
-        return;
-      }
-
-      const nextReaction = selectedReaction === "like" ? null : "like";
-      applyReaction(nextReaction);
-    };
-
-    const clearReactionPickerCloseTimeout = () => {
-      if (reactionPickerCloseTimeoutRef.current) {
-        clearTimeout(reactionPickerCloseTimeoutRef.current);
-        reactionPickerCloseTimeoutRef.current = null;
-      }
-    };
-
-    const scheduleReactionPickerClose = () => {
-      clearReactionPickerCloseTimeout();
-      reactionPickerCloseTimeoutRef.current = setTimeout(() => {
-        setIsReactionPickerOpen(false);
-        reactionPickerCloseTimeoutRef.current = null;
-      }, 120);
-    };
-
-    const clearReactionPickerLongPressTimeout = () => {
-      if (reactionPickerLongPressTimeoutRef.current) {
-        clearTimeout(reactionPickerLongPressTimeoutRef.current);
-        reactionPickerLongPressTimeoutRef.current = null;
-      }
-    };
-
-    const handleReactionActionMouseEnter = () => {
-      if (!canInteract) {
-        return;
-      }
-
-      clearReactionPickerCloseTimeout();
-      setIsReactionPickerOpen(true);
-    };
-
-    const handleReactionActionMouseLeave = () => {
-      if (!canInteract) {
-        return;
-      }
-
-      scheduleReactionPickerClose();
-    };
-
-    const handleReactionActionTouchStart = () => {
-      if (!canReact) {
-        return;
-      }
-
-      didLongPressOpenReactionPickerRef.current = false;
-      clearReactionPickerLongPressTimeout();
-      reactionPickerLongPressTimeoutRef.current = setTimeout(() => {
-        didLongPressOpenReactionPickerRef.current = true;
-        setIsReactionPickerOpen(true);
-        reactionPickerLongPressTimeoutRef.current = null;
-      }, 350);
-    };
-
-    const handleReactionActionTouchEnd = () => {
-      clearReactionPickerLongPressTimeout();
-    };
-
-    const handleReactionActionTouchCancel = () => {
-      clearReactionPickerLongPressTimeout();
-    };
-
-    const handleReactionSelect = (reactionType) => {
-      const nextReaction = selectedReaction === reactionType ? null : reactionType;
-      clearReactionPickerCloseTimeout();
-      clearReactionPickerLongPressTimeout();
-      didLongPressOpenReactionPickerRef.current = false;
-      setIsReactionPickerOpen(false);
-      applyReaction(nextReaction);
     };
 
     const handleCommentSubmit = async (event) => {
@@ -464,6 +334,7 @@ const Post = forwardRef(
         setCommentText("");
       } catch (error) {
         console.error("Failed to add comment:", error);
+        showError("Failed to save comment. Please try again.");
       }
     };
 
@@ -489,6 +360,7 @@ const Post = forwardRef(
       } catch (error) {
         setOptimisticBookmarked(undefined);
         console.error("Failed to update bookmark:", error);
+        showError("Failed to update saved post. Please try again.");
       } finally {
         setIsBookmarkMutationPending(false);
       }
@@ -521,6 +393,7 @@ const Post = forwardRef(
         setIsRepostDialogOpen(false);
       } catch (error) {
         console.error("Failed to repost:", error);
+        showError("Failed to repost. Please try again.");
       } finally {
         setIsRepostPending(false);
       }
@@ -547,6 +420,7 @@ const Post = forwardRef(
         await deletePost({ postId });
       } catch (error) {
         console.error("Failed to delete post:", error);
+        showError("Failed to delete post. Please try again.");
       }
     };
 
@@ -639,6 +513,7 @@ const Post = forwardRef(
         setIsEditing(false);
       } catch (error) {
         console.error("Failed to update post:", error);
+        showError("Failed to update post. Please try again.");
       }
     };
 
@@ -947,12 +822,15 @@ const Post = forwardRef(
             {isEditing && (
               <div className={classes.body__description}>
                 <div style={{ width: "100%" }}>
-                  <textarea
+                  <TextField
                     className={classes.editTextarea}
                     value={editText}
                     onChange={(event) => setEditText(event.target.value)}
+                    multiline
                     rows={3}
-                    aria-label="Edit post description"
+                    fullWidth
+                    variant="outlined"
+                    inputProps={{ "aria-label": "Edit post description" }}
                   />
                   <div className={classes.editActions}>
                     <button
@@ -1083,102 +961,21 @@ const Post = forwardRef(
             {!isRepost && renderMedia(fileType, fileData, postImages, postId)}
           </div>
           <div className={classes.post__footer}>
-          <Reactions />
-          <div className={classes.footer__actions}>
-            <div
-              className={classes.reactionActionWrapper}
-              onMouseEnter={canInteract ? handleReactionActionMouseEnter : undefined}
-              onMouseLeave={canInteract ? handleReactionActionMouseLeave : undefined}
-            >
-              {canInteract && isReactionPickerOpen && (
-                <div
-                  className={classes.reactionPicker}
-                  role="menu"
-                  aria-label="Select reaction"
-                  onMouseEnter={handleReactionActionMouseEnter}
-                  onMouseLeave={handleReactionActionMouseLeave}
-                >
-                  {REACTION_ITEMS.map((item) => {
-                    const IconComponent = item.Icon;
-                    const isSelected = selectedReaction === item.key;
-
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={`${classes.reactionPickerButton} ${isSelected ? classes.reactionPickerButtonActive : ""}`}
-                        onClick={() => handleReactionSelect(item.key)}
-                        aria-label={item.label}
-                      >
-                        <IconComponent
-                          className={classes.reactionPickerIcon}
-                          style={{ color: item.color }}
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div
-                className={classes.action__icons}
-                onClick={canInteract ? handleLikeClick : undefined}
-                onTouchStart={canInteract ? handleReactionActionTouchStart : undefined}
-                onTouchEnd={canInteract ? handleReactionActionTouchEnd : undefined}
-                onTouchCancel={canInteract ? handleReactionActionTouchCancel : undefined}
-                style={!canInteract ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
-              >
-                {canInteract && selectedReaction ? (
-                  <ThumbUpAltIcon
-                    style={{
-                      transform: "scaleX(-1)",
-                      color: selectedReactionItem?.color ?? "#2e7d32",
-                    }}
-                  />
-                ) : (
-                  <ThumbUpAltOutlinedIcon style={{ transform: "scaleX(-1)" }} />
-                )}
-                <h4
-                  style={
-                    canInteract && selectedReaction
-                      ? { color: selectedReactionItem?.color ?? "#2e7d32" }
-                      : undefined
-                  }
-                >
-                  {selectedReactionItem?.label ?? "Like"}
-                </h4>
-              </div>
-            </div>
-            <div
-              className={classes.action__icons}
-              onClick={() => setShowComments((prev) => !prev)}
-            >
-              <CommentOutlinedIcon style={showComments ? { color: "#2e7d32" } : undefined} />
-              <h4 style={showComments ? { color: "#2e7d32" } : undefined}>Comment</h4>
-            </div>
-            <div
-              className={classes.action__icons}
-              onClick={handleRepostClick}
-              style={!canInteract ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
-            >
-              <RepeatIcon />
-              <h4>Repost</h4>
-            </div>
-            <div
-              className={classes.action__icons}
-              onClick={canBookmark ? handleBookmarkClick : undefined}
-              style={!canInteract ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
-            >
-              {isBookmarked ? (
-                <BookmarkIcon style={{ color: "#2e7d32" }} />
-              ) : (
-                <BookmarkBorderOutlinedIcon />
-              )}
-              <h4 style={isBookmarked ? { color: "#2e7d32" } : undefined}>
-                {isBookmarked ? "Saved" : "Save"}
-              </h4>
-            </div>
-          </div>
+            <Reactions />
+            <PostActions
+              classes={classes}
+              canInteract={canInteract}
+              canReact={canReact}
+              selectedReaction={selectedReaction}
+              selectedReactionItem={selectedReactionItem}
+              onReactionChange={applyReaction}
+              showComments={showComments}
+              onToggleComments={() => setShowComments((prev) => !prev)}
+              onRepostClick={handleRepostClick}
+              canBookmark={canBookmark}
+              isBookmarked={isBookmarked}
+              onBookmarkClick={handleBookmarkClick}
+            />
 
           {showComments && (
             <div className={classes.comments__section}>
@@ -1280,7 +1077,7 @@ const Post = forwardRef(
           onClose={() => setIsEditHistoryDialogOpen(false)}
           postId={postId}
         />
-
+        <ErrorToast />
         <Snackbar
           open={reportSnackbarState.open}
           autoHideDuration={4000}

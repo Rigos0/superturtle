@@ -1,5 +1,5 @@
 ## Current Task
-Extract PostActions.js — like/reaction button, comment toggle, repost button, bookmark button, share. Include reaction picker logic.
+Extract PostComments.js — comment list + comment input form. Move comment state and handlers.
 
 ## End Goal with Specs
 Break Post.js and Profile.js into smaller, focused components. Post.js → 5-6 files. Profile.js sections → extracted components.
@@ -7,8 +7,8 @@ Break Post.js and Profile.js into smaller, focused components. Post.js → 5-6 f
 ## Backlog
 - [x] Read `linkedin-demo/src/components/posts/post/Post.js` and map all logical sections
 - [x] Extract PostHeader.js — author avatar, name, timestamp, "Edited" badge, overflow menu (report, delete, edit triggers)
-- [ ] Extract PostActions.js — like/reaction button, comment toggle, repost button, bookmark button, share. Include reaction picker logic. <- current
-- [ ] Extract PostComments.js — comment list + comment input form. Move comment state and handlers.
+- [x] Extract PostActions.js — like/reaction button, comment toggle, repost button, bookmark button, share. Include reaction picker logic.
+- [ ] Extract PostComments.js — comment list + comment input form. Move comment state and handlers. <- current
 - [ ] Extract RepostCard.js — the embedded original post display for reposts
 - [ ] Update Post.js to compose from extracted subcomponents — verify same behavior
 - [ ] Read `linkedin-demo/src/components/profile/Profile.js` (2162 lines) and map sections
