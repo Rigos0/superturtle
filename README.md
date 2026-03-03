@@ -20,19 +20,20 @@ For bigger tasks it spins up parallel workers (SubTurtles), each in their own gi
 ## Install
 
 ```bash
-npx superturtle init
-```
-
-This scaffolds config, walks you through Telegram bot setup, and installs dependencies. Agents and CI can run it non-interactively:
-
-```bash
-npx superturtle init --token <BOT_TOKEN> --user <TELEGRAM_USER_ID> --openai-key <KEY>
+npm install -g superturtle
+superturtle init
 ```
 
 Then start:
 
 ```bash
-npx superturtle start
+superturtle start
+```
+
+For agents and CI, init runs non-interactively with flags:
+
+```bash
+superturtle init --token <BOT_TOKEN> --user <TELEGRAM_USER_ID> --openai-key <KEY>
 ```
 
 ### Prerequisites
