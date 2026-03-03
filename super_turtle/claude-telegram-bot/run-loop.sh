@@ -7,12 +7,14 @@ set -uo pipefail
 
 cd "$(dirname "$0")"
 
-# Source environment variables — check project data dir first, then local .env
+# Source environment variables from unified location: $CLAUDE_WORKING_DIR/.superturtle/.env
+# Both dev (bun run start) and prod (superturtle start) use the same convention.
 if [ -n "${CLAUDE_WORKING_DIR:-}" ] && [ -f "${CLAUDE_WORKING_DIR}/.superturtle/.env" ]; then
     set -a
     source "${CLAUDE_WORKING_DIR}/.superturtle/.env"
     set +a
 elif [ -f .env ]; then
+    echo "[run-loop] WARNING: Using legacy .env in bot dir. Move it to \${CLAUDE_WORKING_DIR}/.superturtle/.env"
     set -a
     source .env
     set +a

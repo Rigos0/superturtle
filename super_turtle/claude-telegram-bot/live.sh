@@ -3,6 +3,9 @@ set -uo pipefail
 
 cd "$(dirname "$0")"
 
+# Default CLAUDE_WORKING_DIR to repo root (two levels up from claude-telegram-bot/)
+export CLAUDE_WORKING_DIR="${CLAUDE_WORKING_DIR:-$(cd ../.. && pwd)}"
+
 SESSION_NAME="${SUPERTURTLE_TMUX_SESSION:-superturtle-bot}"
 WINDOW_NAME="${SUPERTURTLE_TMUX_WINDOW:-bot}"
 TELEGRAM_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
