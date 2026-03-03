@@ -56,10 +56,10 @@ Fast-forward merges skip merge drivers entirely, so `--no-ff` is required. If CL
 ---
 
 ## Current task
-Improve stop behavior — make text "stop" and queued-message cancellation work reliably.
+None — multi-instance isolation complete. Ready for next priority.
 
 ## End goal with specs
-A rock-solid stop mechanism: any form of "stop" (voice, text, button) immediately halts all work — the current query, all queued messages, and any running SubTurtles. No stale work continues after the user says stop.
+Multiple Super Turtle instances (dev + prod, different projects) run on the same Mac with zero cross-instance interference. All shared `/tmp/` resources namespaced by bot token prefix.
 
 ## Roadmap (Completed)
 - ✅ Core bot: Telegram integration, Claude driver, streaming responses, voice transcription
@@ -72,18 +72,15 @@ A rock-solid stop mechanism: any form of "stop" (voice, text, button) immediatel
 - ✅ Deferred queue: voice message queuing when driver is busy, dedup, drain-on-complete
 - ✅ Tunnel support: cloudflared helper for frontend preview links
 - ✅ Screenshot support: Playwright-based browser screenshots for visual QA
+- ✅ Stop behavior: unified stop across text/voice/button, deferred queue clearing, `/stop` command
+- ✅ Multi-instance isolation: TOKEN_PREFIX namespacing for all /tmp files, MCP IPC directory, logs, tmux sessions
 
 ## Backlog
-- [ ] 1. Text "stop" parity with voice — audit text handler path to ensure `isStopIntent()` + `stopAllRunningWork()` fires reliably when typing "stop" (currently reported as inconsistent vs voice) <- current
-- [ ] 2. Stop clears deferred queue — `stopAllRunningWork()` must call a new `clearDeferredQueue(chatId)` to flush all queued messages, not just kill the current query
-- [ ] 3. Stop confirmation message for text — text "stop" should reply "Stopped." like voice does (currently swallows silently)
-- [ ] 4. Queue status visibility — show queued message count somewhere (or at least on stop: "Stopped. Cleared 3 queued messages.")
-- [ ] 5. `/stop` command — explicit slash command as fallback, in case intent detection misses edge cases
+(empty — waiting for next priority)
 
 ## Notes
-- `isStopIntent()` (utils.ts ~L302) handles both voice and text — same function, same patterns
-- `stopAllRunningWork()` (stop.ts) does 3 things: stop typing, kill driver process, stop SubTurtles
-- Deferred queue (deferred-queue.ts) has NO `clear` function — stop doesn't touch it, queued messages drain after stop
-- Voice handler queues when driver is busy; text handler does NOT queue (sends directly or waits)
+- Multi-instance audit: `docs/audits/multi-instance-isolation.md`
+- TOKEN_PREFIX lives in `src/token-prefix.ts` (standalone leaf module, no circular deps)
+- MCP IPC files isolated in `/tmp/superturtle-{tokenPrefix}/`, passed to MCP servers via `SUPERTURTLE_IPC_DIR` env var
 - The bot is the meta agent — system prompt is `super_turtle/meta/META_SHARED.md`, injected via `config.ts`
 - LinkedIn demo (Turtle In) lives in separate repo: `https://github.com/turtleagent/TurtleIn`

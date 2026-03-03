@@ -18,7 +18,7 @@ const readline = require("readline");
 const PACKAGE_ROOT = resolve(__dirname, "..");
 const BOT_DIR = resolve(PACKAGE_ROOT, "claude-telegram-bot");
 const TEMPLATES_DIR = resolve(PACKAGE_ROOT, "templates");
-const TMUX_SESSION = "superturtle";
+const TMUX_SESSION = process.env.SUPERTURTLE_TMUX_SESSION || "superturtle";
 
 function checkBun() {
   try {

@@ -67,10 +67,10 @@
     <key>RunAtLoad</key>
     <true/>
 
-    <!-- Log output -->
+    <!-- Log output (replace TOKEN_PREFIX with your bot token's numeric prefix, e.g. 123456) -->
     <key>StandardOutPath</key>
-    <string>/tmp/claude-telegram-bot.log</string>
+    <string>/tmp/claude-telegram-bot.TOKEN_PREFIX.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/claude-telegram-bot.err</string>
+    <string>/tmp/claude-telegram-bot.TOKEN_PREFIX.err</string>
 </dict>
 </plist>
