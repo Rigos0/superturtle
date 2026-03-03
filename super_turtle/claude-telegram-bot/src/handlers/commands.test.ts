@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { codexSession } from "../codex-session";
+import { SUPERTURTLE_DATA_DIR } from "../config";
 import { getAvailableModels, session } from "../session";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
@@ -83,7 +84,7 @@ function mockClaudeCredentialLookupFailure(): () => void {
   };
 }
 
-const superturtleDataDir = resolve(process.env.CLAUDE_WORKING_DIR || process.cwd(), ".superturtle");
+const superturtleDataDir = SUPERTURTLE_DATA_DIR;
 mkdirSync(superturtleDataDir, { recursive: true });
 const cronJobsPath = resolve(superturtleDataDir, "cron-jobs.json");
 const originalCronJobsText = existsSync(cronJobsPath) ? readFileSync(cronJobsPath, "utf-8") : null;
