@@ -1,5 +1,5 @@
 ## Current Task
-Review package.json fields.
+Write the review report to `docs/reviews/npm-package-review.md`.
 
 ## End Goal with Specs
 A markdown report at `docs/reviews/npm-package-review.md` covering:
@@ -20,8 +20,8 @@ Run `npm pack --dry-run` from `super_turtle/` to see the exact file list.
 - [x] Read `setup` script — audit the init/onboarding flow
 - [x] Check templates (.env.example, CLAUDE.md.template) for completeness
 - [x] Spot-check key source files for hardcoded paths or issues
-- [ ] Review package.json fields <- current
-- [ ] Write the review report to `docs/reviews/npm-package-review.md`
+- [x] Review package.json fields
+- [ ] Write the review report to `docs/reviews/npm-package-review.md` <- current
 - [ ] Commit the report
 
 ## Notes

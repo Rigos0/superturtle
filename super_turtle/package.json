@@ -1,8 +1,11 @@
 {
   "name": "superturtle",
   "version": "0.1.0",
-  "description": "Code from anywhere. Autonomous coding system controlled from Telegram.",
-  "author": "Richard Mladek",
+  "description": "Code from anywhere with your voice. Autonomous coding system controlled from Telegram.",
+  "author": {
+    "name": "Richard Mladek",
+    "url": "https://github.com/Rigos0"
+  },
   "bin": {
     "superturtle": "./bin/superturtle.js"
   },
@@ -41,7 +44,8 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=18",
+    "bun": ">=1.0.0"
   },
   "os": [
     "darwin",
@@ -55,9 +59,17 @@
     "agent",
     "autonomous",
     "voice",
-    "mobile"
+    "mobile",
+    "bun",
+    "tmux",
+    "claude-code",
+    "mcp"
   ],
   "license": "MIT",
+  "homepage": "https://www.superturtle.dev",
+  "bugs": {
+    "url": "https://github.com/Rigos0/superturtle/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Rigos0/superturtle.git"
