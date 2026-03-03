@@ -13,9 +13,9 @@
 
 ---
 
-An autonomous coding system controlled from Telegram. You talk to one Meta Agent — it decomposes work, spawns SubTurtles, supervises progress, and reports milestones.
+Send a voice message or text on Telegram. superturtle runs [Claude Code](https://claude.ai/code) on your machine, writes code, runs tests, and reports back — while you're on the couch, on a walk, or on a different machine entirely.
 
-You focus on outcomes, not orchestration. **Say what → get results.**
+For bigger tasks it spins up parallel workers (SubTurtles), each in their own git worktree, and supervises them to completion.
 
 ## Install
 
