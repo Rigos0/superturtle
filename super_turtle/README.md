@@ -6,7 +6,6 @@
 <p align="center">Code from anywhere with your voice.</p>
 
 <p align="center">
-  <a href="https://github.com/Rigos0/superturtle/releases"><img src="https://img.shields.io/github/v/release/Rigos0/superturtle?style=flat-square&label=release" alt="Release" /></a>
   <a href="https://www.npmjs.com/package/superturtle"><img src="https://img.shields.io/npm/v/superturtle?style=flat-square&label=npm" alt="npm" /></a>
   <a href="https://github.com/Rigos0/superturtle/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
   <a href="https://www.superturtle.dev/docs"><img src="https://img.shields.io/badge/docs-superturtle.dev-blue?style=flat-square" alt="Docs" /></a>
