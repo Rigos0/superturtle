@@ -352,6 +352,31 @@ This creates an autonomous conveyor belt: the human kicks off work once, and you
 
 When the full roadmap is complete, stop the last SubTurtle with `ctl stop` (cron cleanup is automatic), update root CLAUDE.md, and message the human: *"Everything on the roadmap is shipped. Here's what got done: …"*
 
+## Full-auto overnight mode (orchestrator cron)
+
+For autonomous overnight operation, use `--cron-mode orchestrator` when spawning. This replaces the default silent watchdog cron with a full orchestrator prompt that actively progresses the roadmap.
+
+**How to activate:**
+```bash
+{{CTL_PATH}} spawn <name> --type yolo --timeout 4h --cron-mode orchestrator --cron-interval 20m --state-file /tmp/<name>-state.md
+```
+
+**What changes vs silent mode:**
+- The cron job is **non-silent** (`"silent": false`) — it streams output to Telegram
+- Instead of a narrow "check status" prompt, the cron fires the full orchestrator prompt from `{{SUPER_TURTLE_DIR}}/meta/ORCHESTRATOR_PROMPT.md`
+- The orchestrator checks ALL SubTurtles (not just one), stops finished ones, spawns next work, and self-schedules its next wake-up
+
+**When to use it:**
+- Overnight or unattended runs where you want the roadmap to progress autonomously
+- The human kicks off work once, and the orchestrator keeps the pipeline moving until the roadmap is done
+
+**When NOT to use it:**
+- Interactive work sessions where the human is actively directing work — use default silent mode
+- Single-task SubTurtles that don't need roadmap progression — silent watchdog is sufficient
+
+**Self-scheduling pattern:**
+The orchestrator prompt instructs the agent to write its own next cron job to `{{DATA_DIR}}/cron-jobs.json` at the end of each cycle. If the roadmap is fully complete, it stops scheduling and reports completion. This creates a self-sustaining loop that winds down naturally when work is done.
+
 ## Commit hygiene
 
 When a SubTurtle completes a task, ensure the work is committed before reporting completion. If no commit exists, create a clear, scoped commit message. Avoid batching unrelated changes; each backlog item should map to one commit when practical.

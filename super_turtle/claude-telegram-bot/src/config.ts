@@ -254,6 +254,22 @@ try {
 
 export { META_PROMPT };
 
+// Load ORCHESTRATOR_PROMPT.md for full-auto overnight mode cron jobs
+let ORCHESTRATOR_PROMPT = "";
+try {
+  const orchPath = resolve(SUPER_TURTLE_DIR, "meta/ORCHESTRATOR_PROMPT.md");
+  ORCHESTRATOR_PROMPT = readFileSync(orchPath, "utf-8")
+    .replace(/\{\{CTL_PATH\}\}/g, CTL_PATH)
+    .replace(/\{\{DATA_DIR\}\}/g, SUPERTURTLE_DATA_DIR)
+    .replace(/\{\{SUPER_TURTLE_DIR\}\}/g, SUPER_TURTLE_DIR)
+    .trim();
+  configLog.info({ orchPath }, `Loaded orchestrator prompt from ${orchPath}`);
+} catch {
+  configLog.info("No ORCHESTRATOR_PROMPT.md found - orchestrator mode unavailable");
+}
+
+export { ORCHESTRATOR_PROMPT };
+
 // Dangerous command patterns to block.
 // Each entry is a regex string (case-insensitive match against the full command).
 // Use word-boundary / end-of-string anchors so "rm -rf /Users/..." doesn't match
