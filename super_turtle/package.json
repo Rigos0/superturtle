@@ -24,7 +24,7 @@
     "claude-telegram-bot/mcp-config.example.ts",
     "claude-telegram-bot/live.sh",
     "claude-telegram-bot/run-loop.sh",
-    "claude-telegram-bot/LICENSE",
+    "claude-telegram-bot/.env.example",
     "meta/*.md",
     "meta/claude-meta",
     "subturtle/__main__.py",
