@@ -13,18 +13,13 @@
 
 ---
 
-superturtle is an autonomous coding agent you control from Telegram. Send a voice message or text from your phone, and it runs [Claude Code](https://claude.ai/code) (or [Codex](https://openai.com/index/introducing-codex/), beta) on your machine to write code, run tests, fix bugs, and ship features. You can be on the couch, on a walk, or on a completely different machine. For bigger tasks it spins up parallel workers called SubTurtles and supervises them to completion. You get milestone updates as things land, not a wall of logs.
+SuperTurtle is an autonomous coding agent you control from Telegram. Send a voice message or text from your phone, and it runs [Claude Code](https://claude.ai/code) (or [Codex](https://openai.com/index/introducing-codex/), beta) on your machine to write code, run tests, fix bugs, and ship features. You can be on the couch, on a walk, or on a completely different machine. For bigger tasks it spins up parallel workers called SubTurtles and supervises them to completion. You get milestone updates as things land, not a wall of logs.
 
 ## Install
 
 ```bash
 npm install -g superturtle
 superturtle init
-```
-
-Then start:
-
-```bash
 superturtle start
 ```
 
@@ -52,20 +47,30 @@ superturtle init --token <BOT_TOKEN> --user <TELEGRAM_USER_ID> --openai-key <KEY
 4. **Milestone updates** — you get progress, not noise.
 5. **Works from anywhere** — phone, tablet, another machine.
 
+## SubTurtles
+
+SubTurtles are autonomous worker agents that run in loops. The Meta Agent spawns them for tasks, monitors progress, and reports back to you. Each SubTurtle gets its own working directory under `.subturtles/` with a task file, CLAUDE.md, and logs.
+
+Loop types:
+
+- **yolo** — single Claude Code call per iteration. Fast, autonomous ralph loop. The default for most tasks.
+- **slow** — plan, groom, execute, review. Four agent calls per iteration. More careful, better for complex or risky work.
+- **yolo-codex** — same as yolo but runs Codex instead of Claude. (beta)
+
 ## Architecture
 
 ```
-You (Telegram) → Meta Agent → SubTurtles (parallel workers)
+You (Telegram) → Meta Agent → SubTurtles (looped workers)
                      ↓
               plans, delegates, supervises
                      ↓
               CLAUDE.md · .subturtles/ · git history
 ```
 
-- **Meta Agent** — plans, delegates, supervises (the bot itself)
-- **SubTurtles** — autonomous worker agents with looped execution
-- **MCP servers** — stickers, bot control, inline buttons
-- **Drivers** — Claude Code (primary), Codex (optional)
+- **Meta Agent** — the bot itself. Plans, delegates, supervises.
+- **SubTurtles** — autonomous workers running in ralph loops (yolo, slow, yolo-codex).
+- **MCP servers** — stickers, bot control, inline buttons.
+- **Drivers** — Claude Code (primary), Codex (optional, beta).
 
 <p align="center">
   <img src="assets/readme-stickers/architecture-gear-turtle.png" width="108" alt="Architecture" />
