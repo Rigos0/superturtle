@@ -245,6 +245,7 @@ function buildCodexMcpConfig(): Record<string, unknown> {
   const mcpServers: Record<string, Record<string, unknown>> = {};
   const bunPath = Bun.which("bun") || "/opt/homebrew/bin/bun";
   const envPath = process.env.PATH || "";
+  const chatId = (process.env.TELEGRAM_CHAT_ID || "").trim();
 
   for (const [name, config] of Object.entries(MCP_SERVERS)) {
     if ("command" in config && "args" in config) {
@@ -252,6 +253,9 @@ function buildCodexMcpConfig(): Record<string, unknown> {
       const env = config.env ? { ...config.env } : {};
       if (envPath && !env.PATH) {
         env.PATH = envPath;
+      }
+      if (chatId) {
+        env.TELEGRAM_CHAT_ID = chatId;
       }
 
       mcpServers[name] = {
@@ -627,6 +631,7 @@ export class CodexSession {
   private abortController: AbortController | null = null;
   private stopRequested = false;
   private isQueryRunning = false;
+  private _isProcessing = false;
   private queryStarted: Date | null = null;
   lastActivity: Date | null = null;
   lastError: string | null = null;
@@ -702,15 +707,32 @@ export class CodexSession {
    * Returns: "stopped" if query was aborted, "pending" if will be cancelled, false if nothing running
    */
   async stop(): Promise<"stopped" | "pending" | false> {
-    // If a query is actively running, abort it
-    if (this.isQueryRunning && this.abortController) {
+    if (this.isQueryRunning) {
       this.stopRequested = true;
-      this.abortController.abort();
-      codexLog.info("Codex stop requested - aborting current query");
-      return "stopped";
+      if (this.abortController) {
+        this.abortController.abort();
+        codexLog.info("Codex stop requested - aborting current query");
+        return "stopped";
+      }
+      codexLog.info("Codex stop requested - will cancel before query starts");
+      return "pending";
+    }
+
+    if (this._isProcessing) {
+      this.stopRequested = true;
+      codexLog.info("Codex stop requested - will cancel before query starts");
+      return "pending";
     }
 
     return false;
+  }
+
+  clearStopRequested(): void {
+    this.stopRequested = false;
+  }
+
+  get isStopRequested(): boolean {
+    return this.stopRequested;
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -850,30 +872,27 @@ export class CodexSession {
     reasoningEffort?: CodexEffortLevel,
     mcpCompletionCallback?: McpCompletionCallback
   ): Promise<string> {
-    // Acquire query lock IMMEDIATELY to prevent TOCTOU races.
-    // Without this, two callers can both check isRunning (false), then both
-    // enter sendMessage concurrently — causing ghost responses or stalls.
-    this.isQueryRunning = true;
-
-    if (!this.thread) {
-      // Create thread if not already created
-      try {
-        await this.startNewThread(model, reasoningEffort);
-      } catch (error) {
-        this.isQueryRunning = false; // Release lock on thread creation failure
-        throw error;
-      }
-      if (!this.thread) {
-        this.isQueryRunning = false; // Release lock on thread creation failure
-        throw new Error("Failed to create Codex thread");
-      }
-    }
-
-    // Store for debugging
-    this.lastMessage = userMessage;
-    this.pushRecentMessage("user", userMessage);
-
     try {
+      // Acquire processing lock immediately to prevent TOCTOU races.
+      if (this._isProcessing || this.isQueryRunning) {
+        throw new Error("Codex session is already processing a query");
+      }
+
+      // Track pre-query lifecycle time so isRunning() remains true even before
+      // isQueryRunning flips on. This prevents premature deferred-queue drains.
+      this._isProcessing = true;
+
+      if (!this.thread) {
+        await this.startNewThread(model, reasoningEffort);
+        if (!this.thread) {
+          throw new Error("Failed to create Codex thread");
+        }
+      }
+
+      // Store for debugging
+      this.lastMessage = userMessage;
+      this.pushRecentMessage("user", userMessage);
+
       // Prepend system prompt and date/time prefix to first message in a new thread.
       let messageToSend = userMessage;
       if (!this.systemPromptPrepended) {
@@ -901,10 +920,17 @@ ${messageToSend}`;
         this.systemPromptPrepended = true;
       }
 
-      // Create abort controller for cancellation
+      // Check if stop was requested during processing phase.
+      if (this.stopRequested) {
+        codexLog.info("Codex query cancelled before starting (stop was requested during processing)");
+        this.stopRequested = false;
+        throw new Error("Query cancelled");
+      }
+
+      // Create abort controller for cancellation and mark query as running.
       this.abortController = new AbortController();
-      this.stopRequested = false;
       this.queryStarted = new Date();
+      this.isQueryRunning = true;
 
       // Run with streaming
       const streamedTurn = await this.thread.runStreamed(messageToSend, {
@@ -1201,6 +1227,7 @@ ${messageToSend}`;
       throw error;
     } finally {
       this.isQueryRunning = false;
+      this._isProcessing = false;
       this.queryStarted = null;
     }
   }
@@ -1391,7 +1418,7 @@ ${messageToSend}`;
    * Check if a Codex query is currently running.
    */
   get isRunning(): boolean {
-    return this.isQueryRunning;
+    return this.isQueryRunning || this._isProcessing;
   }
 
   /**

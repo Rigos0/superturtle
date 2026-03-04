@@ -18,6 +18,8 @@ afterEach(() => {
   codexSession.stop = originalCodexStop;
   codexSession.kill = originalCodexKill;
   (session as unknown as { isQueryRunning: boolean }).isQueryRunning = false;
+  (codexSession as unknown as { isQueryRunning: boolean }).isQueryRunning = false;
+  (codexSession as unknown as { _isProcessing: boolean })._isProcessing = false;
 });
 
 describe("driver registry", () => {
@@ -69,6 +71,7 @@ describe("driver registry", () => {
     let stopCalls = 0;
     let killCalls = 0;
 
+    (codexSession as unknown as { isQueryRunning: boolean }).isQueryRunning = true;
     codexSession.stop = async () => {
       stopCalls += 1;
       return "stopped";

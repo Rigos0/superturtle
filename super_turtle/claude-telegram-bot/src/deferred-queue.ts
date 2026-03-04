@@ -2,15 +2,32 @@ import type { Context } from "grammy";
 import { session } from "./session";
 import { auditLog, startTypingIndicator } from "./utils";
 import { isAnyDriverRunning, runMessageWithActiveDriver } from "./handlers/driver-routing";
-import { StreamingState, createStatusCallback } from "./handlers/streaming";
+import { StreamingState, createStatusCallback, getStreamingState } from "./handlers/streaming";
 
 export interface DeferredMessage {
   text: string;
   userId: number;
   username: string;
   chatId: number;
-  source: "voice";
+  source: "voice" | "text";
   enqueuedAt: number;
+}
+
+export function makeDrainItemNotifier(
+  ctx: Context,
+  chatId: number
+): (msg: DeferredMessage) => Promise<void> {
+  return async (msg: DeferredMessage): Promise<void> => {
+    const preview = msg.text.replace(/\s+/g, " ").trim();
+    const truncated = preview.length > 40 ? `${preview.slice(0, 40)}…` : preview;
+    const notice = await ctx.reply(
+      truncated ? `💬 Processing queued message…\n${truncated}` : "💬 Processing queued message…"
+    );
+    const state = getStreamingState(chatId);
+    if (state) {
+      state.toolMessages.push(notice);
+    }
+  };
 }
 
 const MAX_QUEUE_PER_CHAT = 10;
@@ -20,11 +37,11 @@ const queues = new Map<number, DeferredMessage[]>();
 const drainingChats = new Set<number>();
 
 /**
- * When true, drainDeferredQueue() bails immediately.
- * Set by stop handlers to prevent finally-block drains from processing
- * queued messages right after the user said stop.
+ * Drain suppression is per-chat.
+ * Used by stop handlers to prevent finally-block drains from processing
+ * queued messages right after the user said stop, without affecting other chats.
  */
-let drainSuppressed = false;
+const drainSuppressedChats = new Set<number>();
 
 /**
  * Clear all queued messages for a given chat. Returns the number cleared.
@@ -37,19 +54,18 @@ export function clearDeferredQueue(chatId: number): number {
 }
 
 /**
- * Suppress drain — prevents drainDeferredQueue() from processing items.
- * Called at the start of stop to win the race against finally-block drains.
+ * Suppress drain for a chat — prevents drainDeferredQueue() from processing items.
+ * Called at the start of stop to win the race against finally-block drains for that chat.
  */
-export function suppressDrain(): void {
-  drainSuppressed = true;
+export function suppressDrain(chatId: number): void {
+  drainSuppressedChats.add(chatId);
 }
 
 /**
- * Re-enable drain. Called when the next non-stop message starts processing,
- * so future drains work normally.
+ * Re-enable drain for a chat. Called when the next non-stop message starts processing.
  */
-export function unsuppressDrain(): void {
-  drainSuppressed = false;
+export function unsuppressDrain(chatId: number): void {
+  drainSuppressedChats.delete(chatId);
 }
 
 export function enqueueDeferredMessage(item: DeferredMessage): number {
@@ -102,14 +118,18 @@ export function getAllDeferredQueues(): Map<number, ReadonlyArray<DeferredMessag
   );
 }
 
-export async function drainDeferredQueue(ctx: Context, chatId: number): Promise<void> {
-  if (drainSuppressed || drainingChats.has(chatId) || isAnyDriverRunning()) {
+export async function drainDeferredQueue(
+  ctx: Context,
+  chatId: number,
+  onDrainItem?: (msg: DeferredMessage) => Promise<void>
+): Promise<void> {
+  if (drainSuppressedChats.has(chatId) || drainingChats.has(chatId) || isAnyDriverRunning()) {
     return;
   }
 
   drainingChats.add(chatId);
   try {
-    while (!isAnyDriverRunning() && !drainSuppressed) {
+    while (!isAnyDriverRunning() && !drainSuppressedChats.has(chatId)) {
       const next = dequeueDeferredMessage(chatId);
       if (!next) {
         break;
@@ -122,6 +142,11 @@ export async function drainDeferredQueue(ctx: Context, chatId: number): Promise<
       try {
         const state = new StreamingState();
         const statusCallback = createStatusCallback(ctx, state);
+        try {
+          await onDrainItem?.(next);
+        } catch {
+          // Ignore notification failures
+        }
         const response = await runMessageWithActiveDriver({
           message: next.text,
           username: next.username,

@@ -49,9 +49,14 @@ export class ClaudeDriver implements ChatDriver {
     }
 
     const result = await session.stop();
-    if (result) {
+    if (result === "stopped") {
       await Bun.sleep(100);
       session.clearStopRequested();
+    } else if (result === "pending") {
+      claudeLog.debug(
+        { driver: this.id },
+        "Claude stop returned pending; preserving stopRequested for pre-spawn cancellation"
+      );
     }
     claudeLog.info({ driver: this.id, stopped: Boolean(result) }, "Claude stop completed");
     return result;

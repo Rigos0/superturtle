@@ -191,6 +191,16 @@ async function pollForResult(filepath: string): Promise<string> {
   return "Timed out waiting for bot to process the request. The bot may be busy.";
 }
 
+function requireChatId(toolName: string): string {
+  const chatId = (process.env.TELEGRAM_CHAT_ID || "").trim();
+  if (!chatId) {
+    throw new Error(
+      `${toolName} requires TELEGRAM_CHAT_ID in MCP server env (missing chat context)`
+    );
+  }
+  return chatId;
+}
+
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === "ask_user") {
@@ -208,7 +218,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // Generate request ID and get chat context from environment
     const requestUuid = crypto.randomUUID().slice(0, 8);
-    const chatId = process.env.TELEGRAM_CHAT_ID || "";
+    const chatId = requireChatId("ask_user");
 
     // Write request file for the bot to pick up
     const requestData = {
@@ -257,7 +267,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     const requestUuid = crypto.randomUUID().slice(0, 8);
-    const chatId = process.env.TELEGRAM_CHAT_ID || "";
+    const chatId = requireChatId("pino_logs");
 
     const requestData = {
       request_id: requestUuid,
@@ -297,7 +307,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   const requestUuid = crypto.randomUUID().slice(0, 8);
-  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  const chatId = requireChatId("bot_control");
 
   const requestData = {
     request_id: requestUuid,

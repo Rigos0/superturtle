@@ -90,6 +90,16 @@ function lookupCombo(partnerCode: string): string | null {
   return null;
 }
 
+function requireChatId(): string {
+  const chatId = (process.env.TELEGRAM_CHAT_ID || "").trim();
+  if (!chatId) {
+    throw new Error(
+      "send_turtle requires TELEGRAM_CHAT_ID in MCP server env (missing chat context)"
+    );
+  }
+  return chatId;
+}
+
 // Create the MCP server
 const server = new Server(
   {
@@ -171,7 +181,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   // Generate request ID and get chat context from environment
   const requestUuid = crypto.randomUUID().slice(0, 8);
-  const chatId = process.env.TELEGRAM_CHAT_ID || "";
+  const chatId = requireChatId();
 
   // Write request file for the bot to pick up
   const requestData = {

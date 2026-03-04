@@ -23,7 +23,12 @@ import {
   runMessageWithActiveDriver,
 } from "./driver-routing";
 import { StreamingState, createStatusCallback } from "./streaming";
-import { drainDeferredQueue, enqueueDeferredMessage, unsuppressDrain } from "../deferred-queue";
+import {
+  drainDeferredQueue,
+  enqueueDeferredMessage,
+  makeDrainItemNotifier,
+  unsuppressDrain,
+} from "../deferred-queue";
 import { handleStop } from "./stop";
 import { eventLog, streamLog } from "../logger";
 
@@ -134,7 +139,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
     }
 
     // Clear drain suppression so this message's finally block can drain normally.
-    unsuppressDrain();
+    unsuppressDrain(chatId);
 
     // 10. If agent is already answering, queue transcript to run after completion.
     if (isBackgroundRunActive()) {
@@ -197,7 +202,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
   } finally {
     stopProcessing?.();
     typing.stop();
-    await drainDeferredQueue(ctx, chatId);
+    await drainDeferredQueue(ctx, chatId, makeDrainItemNotifier(ctx, chatId));
 
     // Clean up voice file
     if (voicePath) {

@@ -34,6 +34,7 @@ import { cmdLog } from "../logger";
 
 // Canonical main-loop log written by live.sh (tmux + caffeinate + run-loop).
 export const MAIN_LOOP_LOG_PATH = `/tmp/claude-telegram-${TOKEN_PREFIX}-bot-ts.log`;
+const LEGACY_MAIN_LOOP_LOG_PATH = "/tmp/claude-telegram-bot-ts.log";
 const LOOPLOGS_LINE_COUNT = 50;
 const RESUME_SESSIONS_LIMIT = 5;
 
@@ -418,15 +419,18 @@ export async function handleLooplogs(ctx: Context): Promise<void> {
   const result = readMainLoopLogTail();
   if (!result.ok) {
     const reason = truncateText(result.error, 160);
+    const tried = result.triedPaths.length > 1
+      ? `\nTried: ${result.triedPaths.join(", ")}`
+      : "";
     await ctx.reply(
-      `❌ Cannot read main loop log at ${MAIN_LOOP_LOG_PATH}. ` +
-        `Start the bot with 'bun run start' and retry.\n${reason}`
+      `❌ Cannot read main loop log at ${result.path}. ` +
+        `Start the bot with 'bun run start' and retry.\n${reason}${tried}`
     );
     return;
   }
 
   if (!result.text) {
-    await ctx.reply(`ℹ️ Main loop log is empty: ${MAIN_LOOP_LOG_PATH}`);
+    await ctx.reply(`ℹ️ Main loop log is empty: ${result.path}`);
     return;
   }
 
@@ -1295,18 +1299,45 @@ export function chunkText(text: string, chunkSize = TELEGRAM_SAFE_LIMIT): string
   return chunks;
 }
 
-export function readMainLoopLogTail(): { ok: true; text: string } | { ok: false; error: string } {
-  const proc = Bun.spawnSync(
-    ["tail", "-n", String(LOOPLOGS_LINE_COUNT), MAIN_LOOP_LOG_PATH],
-    { cwd: WORKING_DIR }
-  );
+function getMainLoopLogPathCandidates(): string[] {
+  const configured = process.env.SUPERTURTLE_LOOP_LOG_PATH?.trim();
+  const candidates: string[] = [];
+  if (configured) {
+    candidates.push(configured);
+  }
+  if (!candidates.includes(MAIN_LOOP_LOG_PATH)) {
+    candidates.push(MAIN_LOOP_LOG_PATH);
+  }
+  // Migration fallback when runtime path is not explicitly configured.
+  if (!configured && !candidates.includes(LEGACY_MAIN_LOOP_LOG_PATH)) {
+    candidates.push(LEGACY_MAIN_LOOP_LOG_PATH);
+  }
+  return candidates;
+}
 
-  if (proc.exitCode !== 0) {
-    const detail = proc.stderr.toString().trim() || proc.stdout.toString().trim() || "unknown error";
-    return { ok: false, error: detail };
+export function readMainLoopLogTail():
+  | { ok: true; text: string; path: string }
+  | { ok: false; error: string; path: string; triedPaths: string[] } {
+  const candidates = getMainLoopLogPathCandidates();
+  let lastError = "unknown error";
+
+  for (const path of candidates) {
+    const proc = Bun.spawnSync(
+      ["tail", "-n", String(LOOPLOGS_LINE_COUNT), path],
+      { cwd: WORKING_DIR }
+    );
+    if (proc.exitCode === 0) {
+      return { ok: true, text: proc.stdout.toString(), path };
+    }
+    lastError = proc.stderr.toString().trim() || proc.stdout.toString().trim() || "unknown error";
   }
 
-  return { ok: true, text: proc.stdout.toString() };
+  return {
+    ok: false,
+    error: lastError,
+    path: candidates[0] ?? MAIN_LOOP_LOG_PATH,
+    triedPaths: candidates,
+  };
 }
 
 function parseMarkdownTable(

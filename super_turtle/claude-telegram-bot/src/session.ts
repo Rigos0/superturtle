@@ -62,15 +62,36 @@ interface StreamJsonEvent {
 // Write MCP config to a temp JSON file for --mcp-config flag
 process.env.SUPERTURTLE_IPC_DIR = IPC_DIR;
 const MCP_CONFIG_FILE = `/tmp/superturtle-${TOKEN_PREFIX}-mcp-config.json`;
-if (Object.keys(MCP_SERVERS).length > 0) {
+function writeMcpConfig(chatId?: number): void {
+  if (Object.keys(MCP_SERVERS).length === 0) return;
+
+  const scopedServers = Object.fromEntries(
+    Object.entries(MCP_SERVERS).map(([name, config]) => {
+      if (!("command" in config)) {
+        return [name, config];
+      }
+
+      const env: Record<string, string> = {
+        ...(config.env || {}),
+        SUPERTURTLE_IPC_DIR: IPC_DIR,
+      };
+      if (chatId !== undefined) {
+        env.TELEGRAM_CHAT_ID = String(chatId);
+      }
+
+      return [name, { ...config, env }];
+    })
+  );
+
   try {
     mkdirSync("/tmp", { recursive: true });
-    const mcpConfig = { mcpServers: MCP_SERVERS };
+    const mcpConfig = { mcpServers: scopedServers };
     writeFileSync(MCP_CONFIG_FILE, JSON.stringify(mcpConfig, null, 2));
   } catch {
     claudeLog.warn("Failed to write MCP config file");
   }
 }
+writeMcpConfig();
 
 /**
  * Determine thinking token budget based on message keywords.
@@ -305,6 +326,10 @@ export class ClaudeSession {
     return this.isQueryRunning || this._isProcessing;
   }
 
+  get isStopRequested(): boolean {
+    return this.stopRequested;
+  }
+
   /**
    * Check if the last stop was triggered by a new message interrupt (! prefix).
    * Resets the flag when called. Also clears stopRequested so new messages can proceed.
@@ -389,6 +414,7 @@ export class ClaudeSession {
     // Set chat context for ask_user MCP tool
     if (chatId) {
       process.env.TELEGRAM_CHAT_ID = String(chatId);
+      writeMcpConfig(chatId);
     }
 
     const isNewSession = !this.isActive;
@@ -486,6 +512,12 @@ export class ClaudeSession {
       stderr: "pipe",
     });
     this.activeProcess = proc;
+
+    // Emit thinking placeholder immediately so the user sees feedback
+    // before any CLI events arrive (thinking creates a silent gap).
+    if (thinkingTokens > 0) {
+      await statusCallback("thinking_start", "");
+    }
 
     // Response tracking
     const responseParts: string[] = [];
@@ -633,19 +665,38 @@ export class ClaudeSession {
               this.currentTool = toolDisplay;
               this.lastTool = toolDisplay;
               claudeLog.info({ tool: toolName }, `Tool: ${toolDisplay}`);
+              const normalizedToolName = toolName.toLowerCase().replace(/-/g, "_");
+              const isAskUserTool =
+                normalizedToolName === "mcp__ask_user" ||
+                normalizedToolName.endsWith("__ask_user");
+              const isSendTurtleTool =
+                normalizedToolName === "mcp__send_turtle" ||
+                normalizedToolName.endsWith("__send_turtle");
+              const isBotControlActionTool =
+                normalizedToolName === "mcp__bot_control" ||
+                normalizedToolName.endsWith("__bot_control");
+              const isPinoLogsTool =
+                normalizedToolName === "mcp__pino_logs" ||
+                normalizedToolName.endsWith("__pino_logs");
+              const isBotControlServerTool =
+                normalizedToolName.startsWith("mcp__bot_control");
 
               // Don't show tool status for MCP tools that handle their own output
               if (
-                !toolName.startsWith("mcp__ask-user") &&
-                !toolName.startsWith("mcp__send-turtle") &&
-                !toolName.startsWith("mcp__bot-control") &&
-                !toolName.startsWith("mcp__pino-logs")
+                !isAskUserTool &&
+                !isSendTurtleTool &&
+                !isBotControlServerTool &&
+                !isPinoLogsTool
               ) {
                 await statusCallback("tool", toolDisplay);
               }
 
               // Check for pending ask_user requests after ask-user MCP tool
-              if (toolName.startsWith("mcp__ask-user") && ctx && chatId) {
+              if (isAskUserTool && ctx && chatId) {
+                claudeLog.info(
+                  { tool: toolName, chatId },
+                  "Ask-user tool completed, checking for pending requests"
+                );
                 // Small delay to let MCP server write the file
                 await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -657,6 +708,10 @@ export class ClaudeSession {
                   );
                   if (buttonsSent) {
                     askUserTriggered = true;
+                    claudeLog.info(
+                      { tool: toolName, chatId, attempt: attempt + 1 },
+                      "Ask-user buttons sent, ask_user triggered"
+                    );
                     break;
                   }
                   if (attempt < 2) {
@@ -666,7 +721,7 @@ export class ClaudeSession {
               }
 
               // Check for pending send_turtle requests after send-turtle MCP tool
-              if (toolName.startsWith("mcp__send-turtle") && ctx && chatId) {
+              if (isSendTurtleTool && ctx && chatId) {
                 // Small delay to let MCP server write the file
                 await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -685,7 +740,7 @@ export class ClaudeSession {
 
               // Fulfil bot-control requests (usage, model switch, sessions)
               // The MCP server is polling the request file — we execute and write the result back.
-              if (toolName.startsWith("mcp__bot-control") && chatId) {
+              if (isBotControlActionTool && chatId) {
                 await new Promise((resolve) => setTimeout(resolve, 200));
 
                 for (let attempt = 0; attempt < 3; attempt++) {
@@ -701,7 +756,7 @@ export class ClaudeSession {
               }
 
               // Fulfil pino-logs requests (read recent pino log entries).
-              if (toolName.startsWith("mcp__pino-logs") && chatId) {
+              if (isPinoLogsTool && chatId) {
                 await new Promise((resolve) => setTimeout(resolve, 200));
 
                 for (let attempt = 0; attempt < 3; attempt++) {

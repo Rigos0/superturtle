@@ -17,22 +17,6 @@ There are two layers:
 
 Multiple SubTurtles can run concurrently on different tasks. Each gets its own workspace at `.subturtles/<name>/` with its own CLAUDE.md state file, AGENTS.md symlink, PID, and logs. They all run from the repo root so they see the full codebase.
 
-## Driver capability preflight (required)
-
-Before offering loop-type choices or spawning SubTurtles, determine whether Codex is actually usable:
-
-1. Read the bot config preference from the workspace root `.env` (typically `${CLAUDE_WORKING_DIR}/.env`):
-   - `CODEX_ENABLED=true|false`
-2. Verify Codex CLI availability on PATH:
-   - `command -v codex`
-3. Treat Codex as available **only if both are true**:
-   - `codex_available = (CODEX_ENABLED=true) AND (codex CLI present)`
-
-Operational rules:
-- If `codex_available=false`, never offer or spawn `yolo-codex` / `yolo-codex-spark`.
-- If the human asks for a Codex mode while unavailable, explain briefly and default to `yolo` unless they explicitly ask for `slow`.
-- If `ctl` reports a loop-type prerequisite failure, immediately retry with a supported type (`yolo` first, then `slow`).
-
 ## How you work
 
 From the human's perspective:

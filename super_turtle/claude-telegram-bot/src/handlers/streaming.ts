@@ -24,17 +24,36 @@ import {
 import { session, type ClaudeSession } from "../session";
 import { codexSession, type CodexSession } from "../codex-session";
 import { bot } from "../bot";
-import {
-  buildSessionOverviewLines,
-  getUsageLines,
-  formatUnifiedUsage,
-  getCodexQuotaLines,
-  resetAllDriverSessions,
-} from "./commands";
 import { PINO_LOG_PATH, streamLog } from "../logger";
+import {
+  clamp,
+  readPinoLogLines,
+  buildLevelFilter,
+  formatPinoEntry,
+} from "../log-reader";
 
 // Union type for bot control to work with both Claude and Codex sessions
 type BotControlSession = ClaudeSession | CodexSession;
+const PENDING_REQUEST_MAX_AGE_MS = 5 * 60 * 1000;
+
+function getRequestChatId(data: Record<string, unknown>): string {
+  const raw = data.chat_id;
+  if (typeof raw === "number") return String(raw);
+  if (typeof raw === "string") return raw.trim();
+  return "";
+}
+
+function isPendingRequestStale(data: Record<string, unknown>): boolean {
+  const createdAtRaw = data.created_at;
+  if (typeof createdAtRaw !== "string" || createdAtRaw.trim().length === 0) {
+    return false;
+  }
+  const createdAtMs = Date.parse(createdAtRaw);
+  if (!Number.isFinite(createdAtMs)) {
+    return false;
+  }
+  return Date.now() - createdAtMs > PENDING_REQUEST_MAX_AGE_MS;
+}
 
 function codexUnavailableBotControlMessage(): string {
   if (!CODEX_USER_ENABLED) {
@@ -97,7 +116,20 @@ export async function checkPendingAskUserRequests(
 
       // Only process pending requests for this chat
       if (data.status !== "pending") continue;
-      if (data.chat_id && String(data.chat_id) !== String(chatId)) continue;
+      const targetChatId = getRequestChatId(data);
+      if (!targetChatId) {
+        data.status = "error";
+        data.error = "Missing chat_id on pending ask-user request";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
+      if (targetChatId !== String(chatId)) continue;
+      if (isPendingRequestStale(data)) {
+        data.status = "expired";
+        data.error = "Pending ask-user request expired before delivery";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
 
       const question = data.question || "Please choose:";
       const options = data.options || [];
@@ -141,7 +173,20 @@ export async function checkPendingSendTurtleRequests(
 
       // Only process pending requests for this chat
       if (data.status !== "pending") continue;
-      if (data.chat_id && String(data.chat_id) !== String(chatId)) continue;
+      const targetChatId = getRequestChatId(data);
+      if (!targetChatId) {
+        data.status = "error";
+        data.error = "Missing chat_id on pending send-turtle request";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
+      if (targetChatId !== String(chatId)) continue;
+      if (isPendingRequestStale(data)) {
+        data.status = "expired";
+        data.error = "Pending send-turtle request expired before delivery";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
 
       const url = data.url || "";
       const caption = data.caption || undefined;
@@ -199,7 +244,20 @@ export async function checkPendingBotControlRequests(
 
       // Only process pending requests for this chat
       if (data.status !== "pending") continue;
-      if (data.chat_id && String(data.chat_id) !== String(chatId)) continue;
+      const targetChatId = getRequestChatId(data);
+      if (!targetChatId) {
+        data.status = "error";
+        data.error = "Missing chat_id on pending bot-control request";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
+      if (targetChatId !== String(chatId)) continue;
+      if (isPendingRequestStale(data)) {
+        data.status = "expired";
+        data.error = "Pending bot-control request expired before delivery";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
 
       const action: string = data.action;
       const params: Record<string, string> = data.params || {};
@@ -228,84 +286,6 @@ export async function checkPendingBotControlRequests(
   return handled;
 }
 
-type PinoLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
-
-const PINO_LEVELS: Record<PinoLevel, number> = {
-  trace: 10,
-  debug: 20,
-  info: 30,
-  warn: 40,
-  error: 50,
-  fatal: 60,
-};
-
-const PINO_LEVEL_LABELS: Record<number, string> = {
-  10: "TRACE",
-  20: "DEBUG",
-  30: "INFO",
-  40: "WARN",
-  50: "ERROR",
-  60: "FATAL",
-};
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
-
-function formatPinoTimestamp(value: unknown): string {
-  const asNumber = Number(value);
-  if (!Number.isFinite(asNumber)) return "";
-  return new Date(asNumber).toISOString().replace("T", " ").replace("Z", "Z");
-}
-
-function formatPinoEntry(entry: Record<string, unknown>): string {
-  const time = formatPinoTimestamp(entry.time);
-  const levelValue = Number(entry.level);
-  const level = PINO_LEVEL_LABELS[levelValue] || "INFO";
-  const module = entry.module ? String(entry.module) : "unknown";
-  const msg = entry.msg ? String(entry.msg) : "";
-  const err = entry.err as Record<string, unknown> | undefined;
-  const errMessage = err?.message ? String(err.message) : "";
-  const suffix = errMessage ? ` (${errMessage})` : "";
-  return `${time} ${level} [${module}] ${msg}${suffix}`.trim();
-}
-
-async function readPinoLogLines(scanLines: number): Promise<string[]> {
-  try {
-    const file = Bun.file(PINO_LOG_PATH);
-    if (!(await file.exists())) return [];
-
-    const result = Bun.spawnSync({
-      cmd: ["tail", "-n", String(scanLines), PINO_LOG_PATH],
-    });
-    const text = result.stdout.toString().trim();
-    if (!text) return [];
-    return text.split("\n").filter(Boolean);
-  } catch (error) {
-    streamLog.warn({ err: error }, "Failed to read pino log file");
-    return [];
-  }
-}
-
-function buildLevelFilter(level?: string, levels?: string[]): Set<number> | null {
-  if (levels && levels.length > 0) {
-    const exact = new Set<number>();
-    for (const item of levels) {
-      const value = (PINO_LEVELS as Record<string, number>)[item] ?? null;
-      if (value !== null) exact.add(value);
-    }
-    return exact.size > 0 ? exact : null;
-  }
-
-  if (!level || level === "all") return null;
-  const normalizedLevel = level in PINO_LEVELS ? (level as PinoLevel) : "error";
-  const min = PINO_LEVELS[normalizedLevel];
-  const minSet = new Set<number>();
-  for (const value of Object.values(PINO_LEVELS)) {
-    if (value >= min) minSet.add(value);
-  }
-  return minSet;
-}
 
 /**
  * Check for pending pino-logs requests, read log file, and write
@@ -325,7 +305,20 @@ export async function checkPendingPinoLogsRequests(
       const data = JSON.parse(text);
 
       if (data.status !== "pending") continue;
-      if (data.chat_id && String(data.chat_id) !== String(chatId)) continue;
+      const targetChatId = getRequestChatId(data);
+      if (!targetChatId) {
+        data.status = "error";
+        data.error = "Missing chat_id on pending pino-logs request";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
+      if (targetChatId !== String(chatId)) continue;
+      if (isPendingRequestStale(data)) {
+        data.status = "expired";
+        data.error = "Pending pino-logs request expired before delivery";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
 
       const level = typeof data.level === "string" ? data.level : "error";
       const levels = Array.isArray(data.levels)
@@ -394,8 +387,10 @@ async function executeBotControlAction(
   params: Record<string, string>,
   chatId?: number,
 ): Promise<string> {
-  switch (action) {
+  try {
+    switch (action) {
     case "usage": {
+      const { formatUnifiedUsage, getCodexQuotaLines, getUsageLines } = await import("./commands");
       const [usageLines, codexLines] = await Promise.all([
         getUsageLines(),
         CODEX_ENABLED ? getCodexQuotaLines() : Promise.resolve<string[]>([]),
@@ -482,6 +477,7 @@ async function executeBotControlAction(
     }
 
     case "switch_driver": {
+      const { buildSessionOverviewLines, resetAllDriverSessions } = await import("./commands");
       const driver = params.driver?.toLowerCase();
       if (driver !== "claude" && driver !== "codex") {
         return `Invalid driver "${params.driver ?? ""}". Use: claude or codex`;
@@ -526,6 +522,7 @@ async function executeBotControlAction(
     }
 
     case "new_session": {
+      const { buildSessionOverviewLines } = await import("./commands");
       await sessionObj.stop();
       await sessionObj.kill();
 
@@ -591,6 +588,7 @@ async function executeBotControlAction(
     }
 
     case "restart": {
+      const { resetAllDriverSessions } = await import("./commands");
       // Stop any active work before restarting
       await resetAllDriverSessions({ stopRunning: true });
 
@@ -619,6 +617,10 @@ async function executeBotControlAction(
 
     default:
       return `Unknown action: ${action}`;
+    }
+  } catch (error) {
+    streamLog.warn({ err: error, action, chatId }, "Bot-control action failed");
+    return `Bot-control error: ${String(error).slice(0, 200)}`;
   }
 }
 
@@ -633,6 +635,7 @@ export class StreamingState {
   silentSegments = new Map<number, string>(); // segment_id -> captured text for silent mode
   sawToolUse = false; // used to avoid replaying side-effectful tool runs on retries
   sawSpawnOrchestration = false; // true when streamed tool activity indicates `ctl spawn` orchestration
+  thinkingPlaceholder: Message | null = null; // ephemeral "Thinking..." indicator
 
   getSilentCapturedText(): string {
     return [...this.silentSegments.entries()]
@@ -640,6 +643,42 @@ export class StreamingState {
       .map(([, text]) => text)
       .join("");
   }
+}
+
+const activeStreamingStates = new Map<number, StreamingState>();
+
+export function getStreamingState(chatId: number): StreamingState | undefined {
+  return activeStreamingStates.get(chatId);
+}
+
+export function clearStreamingState(chatId: number): void {
+  activeStreamingStates.delete(chatId);
+}
+
+/** Delete the thinking placeholder if it exists. */
+async function deleteThinkingPlaceholder(ctx: Context, state: StreamingState): Promise<void> {
+  if (!state.thinkingPlaceholder) return;
+  const msg = state.thinkingPlaceholder;
+  state.thinkingPlaceholder = null;
+  try {
+    await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
+  } catch (error) {
+    console.debug("Failed to delete thinking placeholder:", error);
+  }
+}
+
+export async function cleanupToolMessages(ctx: Context, state: StreamingState): Promise<void> {
+  for (const toolMsg of state.toolMessages) {
+    if (isAskUserPromptMessage(toolMsg)) {
+      continue;
+    }
+    try {
+      await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
+    } catch (error) {
+      console.debug("Failed to delete tool message:", error);
+    }
+  }
+  state.toolMessages = [];
 }
 
 function decodeBasicHtmlEntities(text: string): string {
@@ -720,14 +759,26 @@ export function createStatusCallback(
   ctx: Context,
   state: StreamingState
 ): StatusCallback {
+  const chatId = ctx.chat?.id;
+  if (typeof chatId === "number") {
+    activeStreamingStates.set(chatId, state);
+  }
   return async (statusType: string, content: string, segmentId?: number) => {
     try {
-      if (statusType === "thinking") {
+      if (statusType === "thinking_start") {
+        // Immediate placeholder shown before any CLI events arrive
+        const msg = await ctx.reply("<i>Thinking\u2026</i>", {
+          parse_mode: "HTML",
+        });
+        state.thinkingPlaceholder = msg;
+      } else if (statusType === "thinking") {
+        // Thinking block arrived — remove the placeholder first
+        await deleteThinkingPlaceholder(ctx, state);
         // Show thinking inline, compact (first 500 chars)
         const preview =
           content.length > 500 ? content.slice(0, 500) + "..." : content;
         const escaped = escapeHtml(preview);
-        const thinkingMsg = await ctx.reply(`🧠 <i>${escaped}</i>`, {
+        const thinkingMsg = await ctx.reply(`<i>${escaped}</i>`, {
           parse_mode: "HTML",
         });
         state.toolMessages.push(thinkingMsg);
@@ -751,6 +802,8 @@ export function createStatusCallback(
           state.toolMessages.push(toolMsg);
         }
       } else if (statusType === "text" && segmentId !== undefined) {
+        // First real text content — remove the thinking placeholder if still showing
+        await deleteThinkingPlaceholder(ctx, state);
         const now = Date.now();
         const lastEdit = state.lastEditTimes.get(segmentId) || 0;
 
@@ -874,16 +927,11 @@ export function createStatusCallback(
           }
         }
       } else if (statusType === "done") {
-        // Delete tool messages - text messages stay
-        for (const toolMsg of state.toolMessages) {
-          if (isAskUserPromptMessage(toolMsg)) {
-            continue;
-          }
-          try {
-            await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
-          } catch (error) {
-            console.debug("Failed to delete tool message:", error);
-          }
+        // Crash safety: always clean up thinking placeholder on done
+        await deleteThinkingPlaceholder(ctx, state);
+        await cleanupToolMessages(ctx, state);
+        if (typeof chatId === "number") {
+          clearStreamingState(chatId);
         }
       }
     } catch (error) {
