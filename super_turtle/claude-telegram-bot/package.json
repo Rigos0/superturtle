@@ -15,10 +15,12 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
     "@grammyjs/runner": "^2.0.3",
+    "@grammyjs/stream": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@openai/codex-sdk": "0.105.0",
-    "grammy": "^1.38.4",
+    "grammy": "^1.39.0",
     "openai": "^6.15.0",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",

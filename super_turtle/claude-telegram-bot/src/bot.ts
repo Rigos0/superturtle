@@ -6,6 +6,13 @@
  */
 
 import { Bot } from "grammy";
+import { autoRetry } from "@grammyjs/auto-retry";
 import { TELEGRAM_TOKEN } from "./config";
+import type { BotContext } from "./types";
 
-export const bot = new Bot(TELEGRAM_TOKEN);
+export const bot = new Bot<BotContext>(TELEGRAM_TOKEN);
+
+// Auto-retry must be installed before the stream plugin middleware.
+// It converts Telegram rate-limit errors (429) into delayed retries,
+// which prevents sendMessageDraft calls from failing under load.
+bot.api.config.use(autoRetry());

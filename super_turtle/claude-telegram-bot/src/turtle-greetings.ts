@@ -163,7 +163,7 @@ function msUntilNextScheduledHour(targetHour: number, timeZone: string, now = ne
   return Math.max(0, targetUtcMs - now.getTime());
 }
 
-async function sendGreeting(bot: Bot, chatId: number, definition: GreetingDefinition): Promise<void> {
+async function sendGreeting(bot: Bot<any>, chatId: number, definition: GreetingDefinition): Promise<void> {
   const message = pickRandom(definition.messages);
 
   try {
@@ -193,7 +193,7 @@ async function sendGreeting(bot: Bot, chatId: number, definition: GreetingDefini
   }
 }
 
-function scheduleGreeting(bot: Bot, chatId: number, definition: GreetingDefinition, timeZone: string): void {
+function scheduleGreeting(bot: Bot<any>, chatId: number, definition: GreetingDefinition, timeZone: string): void {
   const initialDelayMs = msUntilNextScheduledHour(definition.hour, timeZone);
 
   setTimeout(() => {
@@ -205,7 +205,8 @@ function scheduleGreeting(bot: Bot, chatId: number, definition: GreetingDefiniti
   }, initialDelayMs);
 }
 
-export function startTurtleGreetings(bot: Bot, chatId: number, timeZone = DEFAULT_TIME_ZONE): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Bot<BotContext> is a superset of Bot<Context>; only bot.api is used here.
+export function startTurtleGreetings(bot: Bot<any>, chatId: number, timeZone = DEFAULT_TIME_ZONE): void {
   const definitions: GreetingDefinition[] = [
     {
       type: "morning",

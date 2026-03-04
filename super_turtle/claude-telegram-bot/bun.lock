@@ -5,10 +5,12 @@
     "": {
       "name": "claude-telegram-bot-ts",
       "dependencies": {
+        "@grammyjs/auto-retry": "^2.0.2",
         "@grammyjs/runner": "^2.0.3",
+        "@grammyjs/stream": "^1.0.0",
         "@modelcontextprotocol/sdk": "^1.25.1",
         "@openai/codex-sdk": "0.105.0",
-        "grammy": "^1.38.4",
+        "grammy": "^1.39.0",
         "openai": "^6.15.0",
         "pino": "^10.3.1",
         "pino-pretty": "^13.1.3",
@@ -23,7 +25,11 @@
     },
   },
   "packages": {
+    "@grammyjs/auto-retry": ["@grammyjs/auto-retry@2.0.2", "", { "dependencies": { "debug": "^4.3.4" }, "peerDependencies": { "grammy": "^1.10.0" } }, "sha512-b4A4p5jlYDiQtW0c0FXYe11WMkYoiW+5rvOaDMCOk1h7Pu2SDl7B7gmFF8cthWCx2+M2nWLOsBxAgbBG4kKWYg=="],
+
     "@grammyjs/runner": ["@grammyjs/runner@2.0.3", "", { "dependencies": { "abort-controller": "^3.0.0" }, "peerDependencies": { "grammy": "^1.13.1" } }, "sha512-nckmTs1dPWfVQteK9cxqxzE+0m1VRvluLWB8UgFzsjg62w3qthPJt0TYtJBEdG7OedvfQq4vnFAyE6iaMkR42A=="],
+
+    "@grammyjs/stream": ["@grammyjs/stream@1.0.0", "", { "dependencies": { "abort-controller": "^3.0.0" }, "peerDependencies": { "grammy": "^1.39.0" } }, "sha512-2VClaPdVhrl65vluYwhaKZitUac6Avfp6FUoFmaJVxxgTo8yDSYXncbbdISS9SRA3/edn2iI3Od+c/4gctQBRQ=="],
 
     "@grammyjs/types": ["@grammyjs/types@3.23.0", "", {}, "sha512-D3jQ4UWERPsyR3op/YFudMMIPNTU47vy7L51uO9/73tMELmjO/+LX5N36/Y0CG5IQfIsz43MxiHI5rgsK0/k+g=="],
 
