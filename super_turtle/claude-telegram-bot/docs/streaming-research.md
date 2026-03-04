@@ -93,3 +93,29 @@ When a stall triggers, the process is killed and the partial response is flushed
 - The queue is capped at **10** items per chat, with 5s dedupe for identical consecutive messages.
 - The “queued” acknowledgment is sent by handlers (not by a `QUEUE_NOTIFICATION` constant).
 
+## Codex driver parity audit
+
+### Streaming callback parity
+
+- Codex uses the same `StatusCallback` signature and event types (`text`, `thinking`, `tool`, `segment_end`, `done`); no intentional divergence.
+
+### Stop behavior gaps fixed
+
+- Clear `stopRequested` after a stop completes (`clearStopRequested()` parity with Claude).
+- Add `isRunning` guard to driver `stop()` so STOP is a no-op when nothing is running.
+- Add `_isProcessing` lifecycle tracking to cover Codex’s pre-stream initialization window.
+- Return `"pending"` from `CodexSession.stop()` when processing but not yet streaming, matching the Claude three-state stop semantics.
+
+### Deferred queue
+
+- Deferred queue logic is driver-agnostic (`isAnyDriverRunning()` checks both drivers).
+- With `_isProcessing`, Codex now reports `isRunning=true` during initialization, preventing premature drain while a turn is still being set up.
+
+### Codex-unique patterns (intentional)
+
+- Codex uses an MCP completion callback to detect `ask_user` and break out of the event loop when inline buttons are ready.
+- Codex keeps a pending “pump loop” during the run, plus a final flush after turn completion, to catch late MCP writes (Codex SDK thread streaming vs Claude CLI subprocess model).
+
+### Typing controller
+
+- Codex has no typing controller; `stopTyping()` in the stop handler is effectively a no-op for Codex today. This is acceptable given Codex’s different runtime path, but could be polished later.

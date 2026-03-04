@@ -170,10 +170,17 @@ export class CodexDriver implements ChatDriver {
   }
 
   async stop() {
+    if (!codexSession.isRunning) {
+      codexLog.info({ driver: this.id }, "Codex stop requested with no active query");
+      return false;
+    }
+
     const result = await codexSession.stop();
     if (result) {
       await Bun.sleep(100);
+      codexSession.clearStopRequested();
     }
+    codexLog.info({ driver: this.id, stopped: Boolean(result) }, "Codex stop completed");
     return result;
   }
 
