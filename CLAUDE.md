@@ -77,7 +77,9 @@ Multiple Super Turtle instances (dev + prod, different projects) run on the same
 - ✅ npm release safety gates: CI runs on PR + main push with Bun typecheck/tests, Python tests, npm tarball smoke check, and non-destructive `superturtle init` test (preserves existing `.claude`, `CLAUDE.md`, `AGENTS.md`)
 
 ## Backlog
-(empty — waiting for next priority)
+- [ ] Run overnight orchestrator spawn drill for cron reliability <- current
+- [ ] Validate pre-existing cron jobs remain after orchestrator-triggered SubTurtle spawn
+- [ ] Report spawned SubTurtles and first progress checkpoint
 
 ## Notes
 - Multi-instance audit: `docs/audits/multi-instance-isolation.md`

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CTL="${ROOT_DIR}/super_turtle/subturtle/ctl"
-CRON_JOBS_FILE="${ROOT_DIR}/super_turtle/claude-telegram-bot/cron-jobs.json"
+CRON_JOBS_FILE="${ROOT_DIR}/.superturtle/cron-jobs.json"
 SUBTURTLES_DIR="${ROOT_DIR}/.subturtles"
 ARCHIVE_DIR="${SUBTURTLES_DIR}/.archive"
 
@@ -78,6 +78,11 @@ setup_harness() {
   TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/test-ctl-integration.XXXXXX")"
   FAKE_BIN_DIR="${TMP_DIR}/bin"
   CRON_BACKUP_FILE="${TMP_DIR}/cron-jobs.json.bak"
+
+  mkdir -p "$(dirname "$CRON_JOBS_FILE")"
+  if [[ ! -f "$CRON_JOBS_FILE" ]]; then
+    printf '%s\n' "[]" > "$CRON_JOBS_FILE"
+  fi
 
   backup_cron_jobs
   setup_fake_bins
@@ -920,6 +925,108 @@ STATE
   return 0
 }
 
+test_spawn_preserves_existing_cron_jobs() {
+  local name state_path cron_job_id
+  name="$(make_test_name "spawn-preserves-existing-cron")"
+  state_path="${TMP_DIR}/${name}.md"
+
+  cat > "$state_path" <<'STATE'
+# Current Task
+spawn preserves existing cron jobs
+STATE
+
+  cat > "$CRON_JOBS_FILE" <<'JOBS'
+[
+  {
+    "id": "existing01",
+    "prompt": "BOT_MESSAGE_ONLY:existing reminder",
+    "type": "recurring",
+    "fire_at": 4102444800000,
+    "interval_ms": 1200000,
+    "created_at": "2099-01-01T00:00:00Z"
+  }
+]
+JOBS
+
+  if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
+    fail "spawn failed for ${name}"
+    return 1
+  fi
+  track_subturtle "$name"
+
+  cron_job_id="$(meta_value "$name" "CRON_JOB_ID")"
+  assert_not_empty "$cron_job_id" "CRON_JOB_ID" || return 1
+  assert_cron_job_exists "existing01" || return 1
+  assert_cron_job_exists "$cron_job_id" || return 1
+
+  if ! "$CTL" stop "$name" >/dev/null; then
+    fail "stop failed for ${name}"
+    return 1
+  fi
+
+  assert_cron_job_exists "existing01" || return 1
+  assert_cron_job_missing "$cron_job_id" || return 1
+  return 0
+}
+
+test_spawn_orchestrator_cron_mode() {
+  local name state_path cron_job_id
+  name="$(make_test_name "spawn-orchestrator-cron")"
+  state_path="${TMP_DIR}/${name}.md"
+
+  cat > "$state_path" <<'STATE'
+# Current Task
+spawn orchestrator cron mode
+STATE
+
+  if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --cron-mode orchestrator --cron-interval 20m --state-file "$state_path" >/dev/null; then
+    fail "spawn failed for ${name}"
+    return 1
+  fi
+  track_subturtle "$name"
+
+  cron_job_id="$(meta_value "$name" "CRON_JOB_ID")"
+  assert_not_empty "$cron_job_id" "CRON_JOB_ID" || return 1
+
+  if ! python3 - "$CRON_JOBS_FILE" "$cron_job_id" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+cron_jobs_path = Path(sys.argv[1])
+cron_job_id = sys.argv[2]
+
+raw = cron_jobs_path.read_text(encoding="utf-8").strip() if cron_jobs_path.exists() else ""
+jobs = json.loads(raw) if raw else []
+if not isinstance(jobs, list):
+    raise SystemExit(2)
+
+match = None
+for job in jobs:
+    if isinstance(job, dict) and str(job.get("id")) == cron_job_id:
+        match = job
+        break
+
+if not isinstance(match, dict):
+    raise SystemExit(1)
+
+checks = [
+    match.get("type") == "recurring",
+    int(match.get("interval_ms", -1)) == 1200000,
+    match.get("silent") is False,
+    "Orchestrator Wake-Up" in str(match.get("prompt", "")),
+]
+raise SystemExit(0 if all(checks) else 1)
+PY
+  then
+    fail "expected orchestrator cron job settings for ${name}"
+    return 1
+  fi
+
+  stop_subturtle_if_running "$name"
+  return 0
+}
+
 run_test() {
   local test_name="$1"
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
@@ -971,6 +1078,8 @@ register_test test_watchdog_timeout
 register_test test_gc_archives_old
 register_test test_reschedule_cron
 register_test test_spawn_validates_cli
+register_test test_spawn_preserves_existing_cron_jobs
+register_test test_spawn_orchestrator_cron_mode
 
 run_all_tests() {
   local test_name
