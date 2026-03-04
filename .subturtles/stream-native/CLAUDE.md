@@ -1,5 +1,5 @@
 ## Current Task
-Test: send a message, verify draft bubble appears and streams progressively (requires running bot — manual/live test).
+Keep tool/thinking/done/silent handlers unchanged — verify no regressions in non-text status types.
 
 ## End Goal with Specs
 When the bot streams a response, the user sees a **live draft bubble** (native Telegram typing UX) that progressively grows with text — NOT a message that gets edited every 500ms. The final message is sent via `sendMessage` when the segment is complete.
@@ -73,8 +73,8 @@ This is actually fine UX — ChatGPT does the same (plain text while streaming, 
 - [x] Register stream() middleware in bot.ts + update context types with StreamFlavor
 - [x] Implement TextSegmentStream adapter (push→pull bridge for StatusCallback→AsyncIterable)
 - [x] Refactor createStatusCallback: text/segment_end handling to use replyWithStream via the adapter
-- [x] Keep tool/thinking/done/silent handlers unchanged (verified: code review + typecheck pass, all non-text handlers intact)
-- [ ] Test: send a message, verify draft bubble appears and streams progressively <- current
+- [ ] Keep tool/thinking/done/silent handlers unchanged <- current
+- [ ] Test: send a message, verify draft bubble appears and streams progressively
 - [ ] Test: verify long messages (>4096) still chunk correctly
 - [ ] Test: verify tool status messages still appear as separate ephemeral messages
 - [ ] Commit with clear message
