@@ -182,4 +182,141 @@ describe("drainDeferredQueue", () => {
     expect(replies[0]).toContain("❌ Error: Error: boom");
     expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(1);
   });
+
+  it("preserves queued text messages while driver is running, then drains in FIFO order", async () => {
+    isAnyDriverRunningMock = mock(() => true);
+
+    const deferredQueue = await loadDeferredQueueModule();
+    const { ctx } = makeCtx();
+    const chatId = 31004;
+
+    deferredQueue.enqueueDeferredMessage({
+      text: "text one",
+      userId: 7,
+      username: "text-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 1000,
+    });
+
+    deferredQueue.enqueueDeferredMessage({
+      text: "text two",
+      userId: 7,
+      username: "text-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 2000,
+    });
+
+    await deferredQueue.drainDeferredQueue(ctx, chatId);
+
+    expect(runMessageWithActiveDriverMock).not.toHaveBeenCalled();
+    expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(2);
+
+    isAnyDriverRunningMock = mock(() => false);
+
+    await deferredQueue.drainDeferredQueue(ctx, chatId);
+
+    expect(runMessageWithActiveDriverMock).toHaveBeenCalledTimes(2);
+    expect(runMessageWithActiveDriverMock.mock.calls[0]?.[0]).toMatchObject({
+      message: "text one",
+      userId: 7,
+      username: "text-user",
+      chatId,
+      ctx,
+    });
+    expect(runMessageWithActiveDriverMock.mock.calls[1]?.[0]).toMatchObject({
+      message: "text two",
+      userId: 7,
+      username: "text-user",
+      chatId,
+      ctx,
+    });
+    expect(auditLogMock).toHaveBeenCalledWith(
+      7,
+      "text-user",
+      "TEXT_QUEUED",
+      "text one",
+      "queued response"
+    );
+    expect(auditLogMock).toHaveBeenCalledWith(
+      7,
+      "text-user",
+      "TEXT_QUEUED",
+      "text two",
+      "queued response"
+    );
+    expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(0);
+    expect(typingStopMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("drains after suppression is cleared and the queue is reset", async () => {
+    const deferredQueue = await loadDeferredQueueModule();
+    const { ctx } = makeCtx();
+    const chatId = 31005;
+
+    deferredQueue.enqueueDeferredMessage({
+      text: "first",
+      userId: 8,
+      username: "suppressed-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 1000,
+    });
+
+    deferredQueue.enqueueDeferredMessage({
+      text: "second",
+      userId: 8,
+      username: "suppressed-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 2000,
+    });
+
+    deferredQueue.enqueueDeferredMessage({
+      text: "third",
+      userId: 8,
+      username: "suppressed-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 3000,
+    });
+
+    deferredQueue.suppressDrain(chatId);
+    await deferredQueue.drainDeferredQueue(ctx, chatId);
+
+    expect(runMessageWithActiveDriverMock).not.toHaveBeenCalled();
+    expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(3);
+
+    expect(deferredQueue.clearDeferredQueue(chatId)).toBe(3);
+    deferredQueue.unsuppressDrain(chatId);
+
+    deferredQueue.enqueueDeferredMessage({
+      text: "post-stop",
+      userId: 8,
+      username: "suppressed-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 4000,
+    });
+
+    await deferredQueue.drainDeferredQueue(ctx, chatId);
+
+    expect(runMessageWithActiveDriverMock).toHaveBeenCalledTimes(1);
+    expect(runMessageWithActiveDriverMock.mock.calls[0]?.[0]).toMatchObject({
+      message: "post-stop",
+      userId: 8,
+      username: "suppressed-user",
+      chatId,
+      ctx,
+    });
+    expect(auditLogMock).toHaveBeenCalledWith(
+      8,
+      "suppressed-user",
+      "TEXT_QUEUED",
+      "post-stop",
+      "queued response"
+    );
+    expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(0);
+  });
 });
