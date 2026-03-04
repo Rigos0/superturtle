@@ -305,6 +305,10 @@ export class ClaudeSession {
     return this.isQueryRunning || this._isProcessing;
   }
 
+  get isStopRequested(): boolean {
+    return this.stopRequested;
+  }
+
   /**
    * Check if the last stop was triggered by a new message interrupt (! prefix).
    * Resets the flag when called. Also clears stopRequested so new messages can proceed.

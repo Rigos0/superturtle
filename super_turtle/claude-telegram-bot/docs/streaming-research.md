@@ -106,6 +106,12 @@ When a stall triggers, the process is killed and the partial response is flushed
 - Add `_isProcessing` lifecycle tracking to cover Codex’s pre-stream initialization window.
 - Return `"pending"` from `CodexSession.stop()` when processing but not yet streaming, matching the Claude three-state stop semantics.
 
+### `clearStopRequested()` timing race (pending stops)
+
+- **Race:** if the driver clears `stopRequested` after a `"pending"` stop, it can silently discard STOP during the pre-spawn window (thread creation / MCP init / etc). When the upcoming `sendMessageStreaming()` / `sendMessage()` finally checks `stopRequested`, it may see `false` and proceed to run the query anyway.
+- **Fix:** only call `clearStopRequested()` when `stop()` returns `"stopped"` (i.e., we actually killed an active process/stream). For `"pending"`, preserve the flag so the pre-spawn `stopRequested` checks can reliably bail.
+- **Why safe:** once the send path reaches the actual spawn/run phase, it already clears `stopRequested = false` (Claude before spawning the CLI subprocess; Codex after creating the abort controller and marking the query as running), so there’s no long-lived stale flag risk.
+
 ### Deferred queue
 
 - Deferred queue logic is driver-agnostic (`isAnyDriverRunning()` checks both drivers).

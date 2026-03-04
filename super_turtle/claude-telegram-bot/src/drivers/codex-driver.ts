@@ -176,9 +176,14 @@ export class CodexDriver implements ChatDriver {
     }
 
     const result = await codexSession.stop();
-    if (result) {
+    if (result === "stopped") {
       await Bun.sleep(100);
       codexSession.clearStopRequested();
+    } else if (result === "pending") {
+      codexLog.debug(
+        { driver: this.id },
+        "Codex stop returned pending; preserving stopRequested for pre-run cancellation"
+      );
     }
     codexLog.info({ driver: this.id, stopped: Boolean(result) }, "Codex stop completed");
     return result;

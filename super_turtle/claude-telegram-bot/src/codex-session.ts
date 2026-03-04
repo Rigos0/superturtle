@@ -727,6 +727,10 @@ export class CodexSession {
     this.stopRequested = false;
   }
 
+  get isStopRequested(): boolean {
+    return this.stopRequested;
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (this.codex) {
       return;

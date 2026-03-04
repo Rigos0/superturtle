@@ -155,4 +155,94 @@ describe("stop handlers", () => {
     expect(claudeStops).toBe(1);
     expect(codexStops).toBe(0);
   });
+
+  it("does not clear stopRequested when Claude stop returns pending", async () => {
+    const restoreProcessing = session.startProcessing();
+    session.activeDriver = "claude";
+    session.stopTyping = () => {};
+
+    Bun.spawnSync = ((cmd: unknown, _opts?: unknown) => {
+      if (!Array.isArray(cmd)) {
+        return originalSpawnSync(cmd as Parameters<typeof Bun.spawnSync>[0]);
+      }
+      const args = cmd.map((part) => String(part));
+      if (args[1] === "list") {
+        return {
+          stdout: Buffer.from(""),
+          stderr: Buffer.from(""),
+          success: true,
+          exitCode: 0,
+        } as ReturnType<typeof Bun.spawnSync>;
+      }
+      return {
+        stdout: Buffer.from(""),
+        stderr: Buffer.from("unexpected command"),
+        success: false,
+        exitCode: 1,
+      } as ReturnType<typeof Bun.spawnSync>;
+    }) as typeof Bun.spawnSync;
+
+    try {
+      const result = await stopAllRunningWork();
+      expect(result.driverStopResult).toBe("pending");
+      expect(session.isStopRequested).toBe(true);
+    } finally {
+      session.clearStopRequested();
+      restoreProcessing();
+    }
+  });
+
+  it("clears stopRequested when Claude stop returns stopped", async () => {
+    session.activeDriver = "claude";
+    session.stopTyping = () => {};
+
+    let clearCalls = 0;
+    const originalClearStopRequested = session.clearStopRequested.bind(session);
+    session.clearStopRequested = () => {
+      clearCalls += 1;
+      originalClearStopRequested();
+    };
+
+    let killed = false;
+    (session as unknown as { isQueryRunning: boolean }).isQueryRunning = true;
+    (session as unknown as { activeProcess: { kill: () => void } | null }).activeProcess = {
+      kill: () => {
+        killed = true;
+      },
+    };
+
+    Bun.spawnSync = ((cmd: unknown, _opts?: unknown) => {
+      if (!Array.isArray(cmd)) {
+        return originalSpawnSync(cmd as Parameters<typeof Bun.spawnSync>[0]);
+      }
+      const args = cmd.map((part) => String(part));
+      if (args[1] === "list") {
+        return {
+          stdout: Buffer.from(""),
+          stderr: Buffer.from(""),
+          success: true,
+          exitCode: 0,
+        } as ReturnType<typeof Bun.spawnSync>;
+      }
+      return {
+        stdout: Buffer.from(""),
+        stderr: Buffer.from("unexpected command"),
+        success: false,
+        exitCode: 1,
+      } as ReturnType<typeof Bun.spawnSync>;
+    }) as typeof Bun.spawnSync;
+
+    try {
+      const result = await stopAllRunningWork();
+      expect(result.driverStopResult).toBe("stopped");
+      expect(killed).toBe(true);
+      expect(clearCalls).toBe(1);
+      expect(session.isStopRequested).toBe(false);
+    } finally {
+      session.clearStopRequested = originalClearStopRequested;
+      (session as unknown as { isQueryRunning: boolean }).isQueryRunning = false;
+      (session as unknown as { activeProcess: null }).activeProcess = null;
+      session.clearStopRequested();
+    }
+  });
 });
