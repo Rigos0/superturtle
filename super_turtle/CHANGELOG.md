@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-03-04
+
+### Fixed
+- npm global install: include bot runtime dependencies in root package so `superturtle start` does not crash with missing modules
+- npm package smoke test: verify root `dependencies` include `claude-telegram-bot` runtime dependencies with matching versions
+
 ## [0.1.1] - 2026-03-04
 
 ### Fixed

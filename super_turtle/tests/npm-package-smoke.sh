@@ -42,4 +42,37 @@ fi
 
 node "${PACKAGE_DIR}/bin/superturtle.js" --help >/dev/null
 
+node -e '
+const fs = require("fs");
+const [rootPath, botPath] = process.argv.slice(1);
+const root = JSON.parse(fs.readFileSync(rootPath, "utf-8"));
+const bot = JSON.parse(fs.readFileSync(botPath, "utf-8"));
+const rootDeps = root.dependencies || {};
+const botDeps = bot.dependencies || {};
+const missing = [];
+const mismatched = [];
+
+for (const [name, version] of Object.entries(botDeps)) {
+  if (!(name in rootDeps)) {
+    missing.push(`${name}@${version}`);
+    continue;
+  }
+  if (rootDeps[name] !== version) {
+    mismatched.push(`${name}: root=${rootDeps[name]} bot=${version}`);
+  }
+}
+
+if (missing.length || mismatched.length) {
+  if (missing.length) {
+    console.error("Root package.json is missing bot runtime deps:");
+    for (const dep of missing) console.error(`  - ${dep}`);
+  }
+  if (mismatched.length) {
+    console.error("Root/package bot dependency versions diverged:");
+    for (const item of mismatched) console.error(`  - ${item}`);
+  }
+  process.exit(1);
+}
+' "${PACKAGE_DIR}/package.json" "${PACKAGE_DIR}/claude-telegram-bot/package.json"
+
 echo "npm package smoke test passed (${TARBALL})"
