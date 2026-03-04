@@ -2,6 +2,10 @@
   "name": "superturtle",
   "version": "0.1.1",
   "description": "Code from anywhere with your voice. Autonomous coding system controlled from Telegram.",
+  "scripts": {
+    "test:pack": "bash tests/npm-package-smoke.sh",
+    "test:init-safe": "bash tests/init-non-destructive.sh"
+  },
   "author": {
     "name": "Richard Mladek",
     "url": "https://github.com/Rigos0"

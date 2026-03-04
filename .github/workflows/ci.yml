@@ -2,8 +2,10 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   typecheck:
@@ -29,6 +31,41 @@ jobs:
       # Runs all tests. Tests gated behind CODEX_INTEGRATION=1 are
       # automatically skipped (see mcp-transport.test.ts).
       - run: bun test
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip pytest
+      - run: PYTHONPATH=. python -m pytest -q super_turtle/subturtle/tests
+      - run: PYTHONPATH=. python -m unittest super_turtle/state/test_run_state_writer.py -v
+
+  npm-package-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: super_turtle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: bash tests/npm-package-smoke.sh
+
+  init-non-destructive:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: super_turtle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: bash tests/init-non-destructive.sh
 
   # ---------------------------------------------------------------------------
   # Codex integration tests (expensive — needs CLI + API key)
