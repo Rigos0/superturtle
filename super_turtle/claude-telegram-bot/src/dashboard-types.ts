@@ -185,3 +185,69 @@ export type RunsResponse = {
     supervisionQueue: number;
   };
 };
+
+// ── Process + Job detail API types ──────────────────────────────────
+
+export type ProcessDetailView = ProcessView & {
+  detailLink: string;
+};
+
+export type ProcessDetailResponse = {
+  generatedAt: string;
+  process: ProcessDetailView;
+  /** Extra context depending on kind */
+  extra: DriverExtra | SubturtleExtra | BackgroundExtra;
+};
+
+export type DriverExtra = {
+  kind: "driver";
+  sessionId: string | null;
+  model: string;
+  effort: string;
+  isActive: boolean;
+  currentTool: string | null;
+  lastTool: string | null;
+  lastError: string | null;
+  queryStarted: string | null;
+  lastActivity: string | null;
+};
+
+export type SubturtleExtra = {
+  kind: "subturtle";
+  backlogSummary: BacklogSummary;
+  logsLink: string;
+  detailLink: string;
+};
+
+export type BackgroundExtra = {
+  kind: "background";
+  runActive: boolean;
+  runPreempted: boolean;
+  supervisionQueue: number;
+};
+
+export type CurrentJobView = {
+  id: string;
+  name: string;
+  ownerType: "subturtle" | "driver";
+  ownerId: string;
+  detailLink: string;
+};
+
+export type CurrentJobsResponse = {
+  generatedAt: string;
+  jobs: CurrentJobView[];
+};
+
+export type JobDetailResponse = {
+  generatedAt: string;
+  job: CurrentJobView;
+  ownerLink: string;
+  logsLink: string | null;
+  extra: {
+    backlogSummary?: BacklogSummary;
+    elapsed?: string;
+    currentTool?: string | null;
+    lastTool?: string | null;
+  };
+};

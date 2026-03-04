@@ -9,7 +9,7 @@ import { codexSession } from "./codex-session";
 import { getPreparedSnapshotCount } from "./cron-supervision-queue";
 import { isBackgroundRunActive, wasBackgroundRunPreempted } from "./handlers/driver-routing";
 import { logger } from "./logger";
-import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, ContextResponse } from "./dashboard-types";
+import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse } from "./dashboard-types";
 
 const dashboardLog = logger.child({ module: "dashboard" });
 
@@ -681,6 +681,117 @@ function renderDashboardHtml(): string {
 </html>`;
 }
 
+/* ── Process + Job detail helpers ──────────────────────────────────── */
+
+function addDetailLink(p: ProcessView): ProcessDetailView {
+  return { ...p, detailLink: `/api/processes/${encodeURIComponent(p.id)}` };
+}
+
+async function buildProcessExtra(p: ProcessView): Promise<DriverExtra | SubturtleExtra | BackgroundExtra> {
+  if (p.kind === "driver" && p.id === "driver-claude") {
+    return {
+      kind: "driver",
+      sessionId: session.sessionId,
+      model: session.model,
+      effort: session.effort,
+      isActive: session.isActive,
+      currentTool: session.currentTool,
+      lastTool: session.lastTool,
+      lastError: session.lastError,
+      queryStarted: session.queryStarted?.toISOString() || null,
+      lastActivity: session.lastActivity?.toISOString() || null,
+    };
+  }
+  if (p.kind === "driver" && p.id === "driver-codex") {
+    return {
+      kind: "driver",
+      sessionId: null,
+      model: "codex",
+      effort: "n/a",
+      isActive: codexSession.isActive,
+      currentTool: null,
+      lastTool: null,
+      lastError: null,
+      queryStarted: codexSession.runningSince?.toISOString() || null,
+      lastActivity: null,
+    };
+  }
+  if (p.kind === "background") {
+    return {
+      kind: "background",
+      runActive: isBackgroundRunActive(),
+      runPreempted: wasBackgroundRunPreempted(),
+      supervisionQueue: getPreparedSnapshotCount(),
+    };
+  }
+  // subturtle
+  const name = p.id.replace(/^subturtle-/, "");
+  const statePath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
+  const backlog = await readClaudeBacklogItems(statePath);
+  const backlogDone = backlog.filter((item) => item.done).length;
+  const backlogCurrent =
+    backlog.find((item) => item.current && !item.done)?.text ||
+    backlog.find((item) => !item.done)?.text ||
+    "";
+  return {
+    kind: "subturtle",
+    backlogSummary: {
+      done: backlogDone,
+      total: backlog.length,
+      current: backlogCurrent,
+      progressPct: computeProgressPct(backlogDone, backlog.length),
+    },
+    logsLink: `/api/subturtles/${encodeURIComponent(name)}/logs`,
+    detailLink: `/api/subturtles/${encodeURIComponent(name)}`,
+  };
+}
+
+async function buildCurrentJobs(): Promise<CurrentJobView[]> {
+  const jobs: CurrentJobView[] = [];
+
+  // Driver activity
+  if (session.isRunning) {
+    jobs.push({
+      id: "driver:claude:active",
+      name: session.currentTool || session.lastTool || "query running",
+      ownerType: "driver",
+      ownerId: "driver-claude",
+      detailLink: "/api/jobs/driver:claude:active",
+    });
+  }
+  if (codexSession.isRunning) {
+    jobs.push({
+      id: "driver:codex:active",
+      name: "codex query running",
+      ownerType: "driver",
+      ownerId: "driver-codex",
+      detailLink: "/api/jobs/driver:codex:active",
+    });
+  }
+
+  // SubTurtle current items
+  const turtles = await readSubturtles();
+  for (const turtle of turtles) {
+    if (turtle.status !== "running") continue;
+    const statePath = `${WORKING_DIR}/.subturtles/${turtle.name}/CLAUDE.md`;
+    const backlog = await readClaudeBacklogItems(statePath);
+    const current =
+      backlog.find((item) => item.current && !item.done)?.text ||
+      backlog.find((item) => !item.done)?.text ||
+      turtle.task ||
+      "";
+    if (!current) continue;
+    jobs.push({
+      id: `subturtle:${turtle.name}:current`,
+      name: current,
+      ownerType: "subturtle",
+      ownerId: `subturtle-${turtle.name}`,
+      detailLink: `/api/jobs/${encodeURIComponent(`subturtle:${turtle.name}:current`)}`,
+    });
+  }
+  return jobs;
+}
+
 /* ── Route table ──────────────────────────────────────────────────── */
 
 type RouteHandler = (req: Request, url: URL, match: RegExpMatchArray) => Promise<Response>;
@@ -864,6 +975,94 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
         metaPromptSource: metaPromptPath,
         metaPromptExists: META_PROMPT.length > 0,
         agentsMdExists: existsSync(agentsMdPath),
+      };
+      return jsonResponse(response);
+    },
+  },
+  {
+    pattern: /^\/api\/processes$/,
+    handler: async () => {
+      const state = await buildDashboardState();
+      const processes = state.processes.map(addDetailLink);
+      return jsonResponse({
+        generatedAt: new Date().toISOString(),
+        processes,
+      });
+    },
+  },
+  {
+    pattern: /^\/api\/processes\/([^/]+)$/,
+    handler: async (_req, _url, match) => {
+      const id = decodeURIComponent(match[1] ?? "");
+      if (!id) return notFoundResponse("Invalid process ID");
+      const state = await buildDashboardState();
+      const process = state.processes.find((p) => p.id === id);
+      if (!process) return notFoundResponse("Process not found");
+      const extra = await buildProcessExtra(process);
+      const response: ProcessDetailResponse = {
+        generatedAt: new Date().toISOString(),
+        process: addDetailLink(process),
+        extra,
+      };
+      return jsonResponse(response);
+    },
+  },
+  {
+    pattern: /^\/api\/jobs\/current$/,
+    handler: async () => {
+      const jobs = await buildCurrentJobs();
+      const response: CurrentJobsResponse = {
+        generatedAt: new Date().toISOString(),
+        jobs,
+      };
+      return jsonResponse(response);
+    },
+  },
+  {
+    pattern: /^\/api\/jobs\/([^/]+)$/,
+    handler: async (_req, _url, match) => {
+      const id = decodeURIComponent(match[1] ?? "");
+      if (!id) return notFoundResponse("Invalid job ID");
+      const jobs = await buildCurrentJobs();
+      const job = jobs.find((j) => j.id === id);
+      if (!job) return notFoundResponse("Job not found");
+
+      const ownerLink = `/api/processes/${encodeURIComponent(job.ownerId)}`;
+      let logsLink: string | null = null;
+      const extra: JobDetailResponse["extra"] = {};
+
+      if (job.ownerType === "subturtle") {
+        const name = job.ownerId.replace(/^subturtle-/, "");
+        logsLink = `/api/subturtles/${encodeURIComponent(name)}/logs`;
+        const statePath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
+        const backlog = await readClaudeBacklogItems(statePath);
+        const backlogDone = backlog.filter((item) => item.done).length;
+        const backlogCurrent =
+          backlog.find((item) => item.current && !item.done)?.text ||
+          backlog.find((item) => !item.done)?.text ||
+          "";
+        extra.backlogSummary = {
+          done: backlogDone,
+          total: backlog.length,
+          current: backlogCurrent,
+          progressPct: computeProgressPct(backlogDone, backlog.length),
+        };
+        const elapsed = await getSubTurtleElapsed(name);
+        extra.elapsed = elapsed;
+      } else if (job.ownerId === "driver-claude") {
+        extra.elapsed = session.isRunning ? elapsedFrom(session.queryStarted) : "0s";
+        extra.currentTool = session.currentTool;
+        extra.lastTool = session.lastTool;
+      } else if (job.ownerId === "driver-codex") {
+        extra.elapsed = codexSession.isRunning ? elapsedFrom(codexSession.runningSince) : "0s";
+      }
+
+      const response: JobDetailResponse = {
+        generatedAt: new Date().toISOString(),
+        job,
+        ownerLink,
+        logsLink,
+        extra,
       };
       return jsonResponse(response);
     },

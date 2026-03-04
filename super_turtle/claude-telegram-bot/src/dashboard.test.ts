@@ -334,6 +334,127 @@ describe("GET /api/cron/:id", () => {
   });
 });
 
+/* ── Route table tests for /api/processes ─────────────────────────── */
+
+describe("GET /api/processes", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/processes");
+    expect(result).not.toBeNull();
+  });
+
+  it("returns 200 with processes array containing detailLink", async () => {
+    const result = findRoute("/api/processes");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/processes");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.generatedAt).toBeDefined();
+    expect(body.processes).toBeInstanceOf(Array);
+    const processes = body.processes as Array<Record<string, unknown>>;
+    // Should always have at least the built-in driver + background processes
+    expect(processes.length).toBeGreaterThanOrEqual(3);
+    for (const p of processes) {
+      expect(typeof p.id).toBe("string");
+      expect(typeof p.detailLink).toBe("string");
+      expect((p.detailLink as string)).toContain("/api/processes/");
+    }
+  });
+});
+
+describe("GET /api/processes/:id", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/processes/driver-claude");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("driver-claude");
+  });
+
+  it("returns 200 with detail for driver-claude", async () => {
+    const result = findRoute("/api/processes/driver-claude");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/processes/driver-claude");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.generatedAt).toBeDefined();
+    const process = body.process as Record<string, unknown>;
+    expect(process.id).toBe("driver-claude");
+    expect(process.kind).toBe("driver");
+    expect(process.detailLink).toBe("/api/processes/driver-claude");
+    const extra = body.extra as Record<string, unknown>;
+    expect(extra.kind).toBe("driver");
+    expect(typeof extra.model).toBe("string");
+  });
+
+  it("returns 200 with detail for background-check", async () => {
+    const result = findRoute("/api/processes/background-check");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/processes/background-check");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    const extra = body.extra as Record<string, unknown>;
+    expect(extra.kind).toBe("background");
+    expect(typeof extra.runActive).toBe("boolean");
+  });
+
+  it("returns 404 for non-existent process", async () => {
+    const result = findRoute("/api/processes/__nonexistent__");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/processes/__nonexistent__");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(404);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe("Process not found");
+  });
+});
+
+/* ── Route table tests for /api/jobs ─────────────────────────────── */
+
+describe("GET /api/jobs/current", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/jobs/current");
+    expect(result).not.toBeNull();
+  });
+
+  it("returns 200 with jobs array", async () => {
+    const result = findRoute("/api/jobs/current");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/jobs/current");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.generatedAt).toBeDefined();
+    expect(body.jobs).toBeInstanceOf(Array);
+  });
+});
+
+describe("GET /api/jobs/:id", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/jobs/driver:claude:active");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("driver:claude:active");
+  });
+
+  it("does not match /api/jobs/current as a job ID", () => {
+    // /api/jobs/current should match the current-jobs route, not job detail
+    const result = findRoute("/api/jobs/current");
+    expect(result).not.toBeNull();
+    // The match should be the /current route (no capture group)
+    expect(result!.match[1]).toBeUndefined();
+  });
+
+  it("returns 404 for non-existent job", async () => {
+    const result = findRoute("/api/jobs/__nonexistent_job__");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/jobs/__nonexistent_job__");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(404);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe("Job not found");
+  });
+});
+
 /* ── Route table tests for /api/session ───────────────────────────── */
 
 describe("GET /api/session", () => {
