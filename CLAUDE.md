@@ -74,6 +74,7 @@ Multiple Super Turtle instances (dev + prod, different projects) run on the same
 - ✅ Screenshot support: Playwright-based browser screenshots for visual QA
 - ✅ Stop behavior: unified stop across text/voice/button, deferred queue clearing, `/stop` command
 - ✅ Multi-instance isolation: TOKEN_PREFIX namespacing for all /tmp files, MCP IPC directory, logs, tmux sessions
+- ✅ npm release safety gates: CI runs on PR + main push with Bun typecheck/tests, Python tests, npm tarball smoke check, and non-destructive `superturtle init` test (preserves existing `.claude`, `CLAUDE.md`, `AGENTS.md`)
 
 ## Backlog
 (empty — waiting for next priority)
@@ -84,3 +85,8 @@ Multiple Super Turtle instances (dev + prod, different projects) run on the same
 - MCP IPC files isolated in `/tmp/superturtle-{tokenPrefix}/`, passed to MCP servers via `SUPERTURTLE_IPC_DIR` env var
 - The bot is the meta agent — system prompt is `super_turtle/meta/META_SHARED.md`, injected via `config.ts`
 - LinkedIn demo (Turtle In) lives in separate repo: `https://github.com/turtleagent/TurtleIn`
+- npm/CI hardening shipped in commit `8f6b29e`:
+  - `.github/workflows/ci.yml` (PR + push + workflow_dispatch; Python + package smoke + init safety jobs)
+  - `super_turtle/tests/npm-package-smoke.sh`
+  - `super_turtle/tests/init-non-destructive.sh`
+  - `super_turtle/package.json` scripts: `test:pack`, `test:init-safe`
