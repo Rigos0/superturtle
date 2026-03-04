@@ -11,11 +11,107 @@ import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, Dash
 
 const dashboardLog = logger.child({ module: "dashboard" });
 
+/* ── Shared response helpers ────────────────────────────────────────── */
+
+export function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+export function notFoundResponse(msg = "Not found"): Response {
+  return new Response(JSON.stringify({ error: msg }), {
+    status: 404,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
 function unauthorizedResponse(): Response {
   return new Response("Unauthorized", {
     status: 401,
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
+}
+
+/* ── File / meta helpers ────────────────────────────────────────────── */
+
+export async function readFileOr(path: string, fallback: string): Promise<string> {
+  try {
+    const file = Bun.file(path);
+    return await file.text();
+  } catch {
+    return fallback;
+  }
+}
+
+export interface MetaFileData {
+  spawnedAt: number | null;
+  timeoutSeconds: number | null;
+  loopType: string | null;
+  skills: string[];
+  watchdogPid: number | null;
+  cronJobId: string | null;
+  [key: string]: unknown;
+}
+
+export function parseMetaFile(content: string): MetaFileData {
+  const result: MetaFileData = {
+    spawnedAt: null,
+    timeoutSeconds: null,
+    loopType: null,
+    skills: [],
+    watchdogPid: null,
+    cronJobId: null,
+  };
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx < 0) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1).trim();
+
+    switch (key) {
+      case "SPAWNED_AT":
+        result.spawnedAt = parseInt(value, 10) || null;
+        break;
+      case "TIMEOUT_SECONDS":
+        result.timeoutSeconds = parseInt(value, 10) || null;
+        break;
+      case "LOOP_TYPE":
+        result.loopType = value || null;
+        break;
+      case "SKILLS":
+        try {
+          const parsed = JSON.parse(value);
+          result.skills = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          result.skills = [];
+        }
+        break;
+      case "WATCHDOG_PID":
+        result.watchdogPid = parseInt(value, 10) || null;
+        break;
+      case "CRON_JOB_ID":
+        result.cronJobId = value || null;
+        break;
+      default:
+        result[key] = value;
+        break;
+    }
+  }
+  return result;
+}
+
+/* ── Validation helpers ─────────────────────────────────────────────── */
+
+const INVALID_NAME_RE = /(?:^\.)|[\/\\]|\.\./;
+
+export function validateSubturtleName(name: string): boolean {
+  if (!name || name.length > 128) return false;
+  return !INVALID_NAME_RE.test(name);
 }
 
 export function isAuthorized(request: Request): boolean {
@@ -589,15 +685,11 @@ export function startDashboardServer(): void {
       const url = new URL(req.url);
       if (url.pathname === "/api/subturtles") {
         const data = await buildDashboardState();
-        return new Response(JSON.stringify(data), {
-          headers: { "content-type": "application/json; charset=utf-8" },
-        });
+        return jsonResponse(data);
       }
       if (url.pathname === "/api/dashboard") {
         const data = await buildDashboardState();
-        return new Response(JSON.stringify(data), {
-          headers: { "content-type": "application/json; charset=utf-8" },
-        });
+        return jsonResponse(data);
       }
 
       if (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/index.html") {
@@ -606,10 +698,7 @@ export function startDashboardServer(): void {
         });
       }
 
-      return new Response("Not found", {
-        status: 404,
-        headers: { "content-type": "text/plain; charset=utf-8" },
-      });
+      return notFoundResponse();
     },
   });
 }
