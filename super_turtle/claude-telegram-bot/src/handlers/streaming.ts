@@ -24,13 +24,6 @@ import {
 import { session, type ClaudeSession } from "../session";
 import { codexSession, type CodexSession } from "../codex-session";
 import { bot } from "../bot";
-import {
-  buildSessionOverviewLines,
-  getUsageLines,
-  formatUnifiedUsage,
-  getCodexQuotaLines,
-  resetAllDriverSessions,
-} from "./commands";
 import { PINO_LOG_PATH, streamLog } from "../logger";
 
 // Union type for bot control to work with both Claude and Codex sessions
@@ -396,6 +389,7 @@ async function executeBotControlAction(
 ): Promise<string> {
   switch (action) {
     case "usage": {
+      const { formatUnifiedUsage, getCodexQuotaLines, getUsageLines } = await import("./commands");
       const [usageLines, codexLines] = await Promise.all([
         getUsageLines(),
         CODEX_ENABLED ? getCodexQuotaLines() : Promise.resolve<string[]>([]),
@@ -482,6 +476,7 @@ async function executeBotControlAction(
     }
 
     case "switch_driver": {
+      const { buildSessionOverviewLines, resetAllDriverSessions } = await import("./commands");
       const driver = params.driver?.toLowerCase();
       if (driver !== "claude" && driver !== "codex") {
         return `Invalid driver "${params.driver ?? ""}". Use: claude or codex`;
@@ -526,6 +521,7 @@ async function executeBotControlAction(
     }
 
     case "new_session": {
+      const { buildSessionOverviewLines } = await import("./commands");
       await sessionObj.stop();
       await sessionObj.kill();
 
@@ -591,6 +587,7 @@ async function executeBotControlAction(
     }
 
     case "restart": {
+      const { resetAllDriverSessions } = await import("./commands");
       // Stop any active work before restarting
       await resetAllDriverSessions({ stopRunning: true });
 
@@ -639,6 +636,29 @@ export class StreamingState {
       .sort(([a], [b]) => a - b)
       .map(([, text]) => text)
       .join("");
+  }
+}
+
+const activeStreamingStates = new Map<number, StreamingState>();
+
+export function getStreamingState(chatId: number): StreamingState | undefined {
+  return activeStreamingStates.get(chatId);
+}
+
+export function clearStreamingState(chatId: number): void {
+  activeStreamingStates.delete(chatId);
+}
+
+export async function cleanupToolMessages(ctx: Context, state: StreamingState): Promise<void> {
+  for (const toolMsg of state.toolMessages) {
+    if (isAskUserPromptMessage(toolMsg)) {
+      continue;
+    }
+    try {
+      await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
+    } catch (error) {
+      console.debug("Failed to delete tool message:", error);
+    }
   }
 }
 
@@ -720,6 +740,10 @@ export function createStatusCallback(
   ctx: Context,
   state: StreamingState
 ): StatusCallback {
+  const chatId = ctx.chat?.id;
+  if (typeof chatId === "number") {
+    activeStreamingStates.set(chatId, state);
+  }
   return async (statusType: string, content: string, segmentId?: number) => {
     try {
       if (statusType === "thinking") {
@@ -874,16 +898,9 @@ export function createStatusCallback(
           }
         }
       } else if (statusType === "done") {
-        // Delete tool messages - text messages stay
-        for (const toolMsg of state.toolMessages) {
-          if (isAskUserPromptMessage(toolMsg)) {
-            continue;
-          }
-          try {
-            await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
-          } catch (error) {
-            console.debug("Failed to delete tool message:", error);
-          }
+        await cleanupToolMessages(ctx, state);
+        if (typeof chatId === "number") {
+          clearStreamingState(chatId);
         }
       }
     } catch (error) {

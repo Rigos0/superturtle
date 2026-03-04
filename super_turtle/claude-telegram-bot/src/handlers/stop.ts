@@ -3,6 +3,7 @@ import { WORKING_DIR, CTL_PATH } from "../config";
 import { session } from "../session";
 import { stopActiveDriverQuery } from "./driver-routing";
 import { clearDeferredQueue, suppressDrain } from "../deferred-queue";
+import { cleanupToolMessages, clearStreamingState, getStreamingState } from "./streaming";
 import { streamLog } from "../logger";
 const stopLog = streamLog.child({ handler: "stop" });
 
@@ -96,6 +97,39 @@ export async function stopAllRunningWork(chatId?: number): Promise<StopAllRunnin
  */
 export async function handleStop(ctx: Context, chatId: number): Promise<void> {
   const result = await stopAllRunningWork(chatId);
+
+  const state = getStreamingState(chatId);
+  if (state) {
+    await cleanupToolMessages(ctx, state);
+
+    // Append an explicit stopped indicator to the last streamed text segment, if any.
+    const segmentIds = [...state.textMessages.keys()];
+    if (segmentIds.length > 0) {
+      const lastSegmentId = Math.max(...segmentIds);
+      const lastMsg = state.textMessages.get(lastSegmentId);
+      const lastContent = state.lastContent.get(lastSegmentId);
+      const suffix = "\n\n⏹ <i>Stopped</i>";
+
+      if (
+        lastMsg &&
+        lastContent &&
+        lastContent.trim().length > 0 &&
+        !lastContent.includes("⏹ <i>Stopped</i>")
+      ) {
+        try {
+          await ctx.api.editMessageText(
+            lastMsg.chat.id,
+            lastMsg.message_id,
+            `${lastContent}${suffix}`,
+            { parse_mode: "HTML" }
+          );
+        } catch {
+          // Ignore edit failures (message deleted, unchanged, or invalid HTML)
+        }
+      }
+    }
+  }
+  clearStreamingState(chatId);
 
   let message = "🛑 Stopped.";
   if (result.queueCleared > 0) {

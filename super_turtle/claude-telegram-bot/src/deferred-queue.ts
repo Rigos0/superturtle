@@ -101,7 +101,11 @@ export function getAllDeferredQueues(): Map<number, ReadonlyArray<DeferredMessag
   );
 }
 
-export async function drainDeferredQueue(ctx: Context, chatId: number): Promise<void> {
+export async function drainDeferredQueue(
+  ctx: Context,
+  chatId: number,
+  onDrainItem?: (msg: DeferredMessage) => Promise<void>
+): Promise<void> {
   if (drainSuppressedChats.has(chatId) || drainingChats.has(chatId) || isAnyDriverRunning()) {
     return;
   }
@@ -121,6 +125,11 @@ export async function drainDeferredQueue(ctx: Context, chatId: number): Promise<
       try {
         const state = new StreamingState();
         const statusCallback = createStatusCallback(ctx, state);
+        try {
+          await onDrainItem?.(next);
+        } catch {
+          // Ignore notification failures
+        }
         const response = await runMessageWithActiveDriver({
           message: next.text,
           username: next.username,

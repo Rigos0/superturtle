@@ -22,7 +22,7 @@ import {
   preemptBackgroundRunForUserPriority,
   runMessageWithActiveDriver,
 } from "./driver-routing";
-import { StreamingState, createStatusCallback } from "./streaming";
+import { StreamingState, createStatusCallback, getStreamingState } from "./streaming";
 import { drainDeferredQueue, enqueueDeferredMessage, unsuppressDrain } from "../deferred-queue";
 import { handleStop } from "./stop";
 import { eventLog, streamLog } from "../logger";
@@ -197,7 +197,17 @@ export async function handleVoice(ctx: Context): Promise<void> {
   } finally {
     stopProcessing?.();
     typing.stop();
-    await drainDeferredQueue(ctx, chatId);
+    await drainDeferredQueue(ctx, chatId, async (msg) => {
+      const preview = msg.text.replace(/\s+/g, " ").trim();
+      const truncated = preview.length > 40 ? `${preview.slice(0, 40)}…` : preview;
+      const notice = await ctx.reply(
+        truncated ? `💬 Processing queued message…\n${truncated}` : "💬 Processing queued message…"
+      );
+      const state = getStreamingState(chatId);
+      if (state) {
+        state.toolMessages.push(notice);
+      }
+    });
 
     // Clean up voice file
     if (voicePath) {
