@@ -925,6 +925,7 @@ export function createStatusCallback(
               await sendChunkedMessages(ctx, formatted);
             }
           }
+        }
       } else if (statusType === "done") {
         // Crash safety: always clean up thinking placeholder on done
         await deleteThinkingPlaceholder(ctx, state);
