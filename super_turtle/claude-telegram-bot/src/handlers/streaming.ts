@@ -625,6 +625,86 @@ async function executeBotControlAction(
 }
 
 /**
+ * Push→pull bridge that converts accumulated StatusCallback "text" events into
+ * an AsyncIterable<string> of incremental deltas for @grammyjs/stream.
+ *
+ * The StatusCallback receives the full accumulated segment text on each "text"
+ * event.  This adapter computes the delta since the last push and yields it to
+ * the async iterator that `ctx.replyWithStream()` consumes.
+ *
+ * Usage:
+ *   const stream = new TextSegmentStream();
+ *   ctx.replyWithStream(stream);        // consumer (pull)
+ *   stream.pushAccumulated("Hello");    // yields "Hello"
+ *   stream.pushAccumulated("Hello w");  // yields " w"
+ *   stream.close();                     // end-of-segment
+ */
+export class TextSegmentStream implements AsyncIterable<string> {
+  private buffer: string[] = [];
+  private waiting: ((result: IteratorResult<string, undefined>) => void) | null = null;
+  private closed = false;
+  private lastLength = 0;
+
+  /** True once close() has been called. */
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  /**
+   * Push the full accumulated text for this segment.
+   * Internally computes the delta since the last push and enqueues it.
+   */
+  pushAccumulated(accumulated: string): void {
+    if (this.closed) return;
+    const delta = accumulated.slice(this.lastLength);
+    if (delta.length === 0) return;
+    this.lastLength = accumulated.length;
+
+    if (this.waiting) {
+      const resolve = this.waiting;
+      this.waiting = null;
+      resolve({ value: delta, done: false });
+    } else {
+      this.buffer.push(delta);
+    }
+  }
+
+  /**
+   * Signal end-of-segment.  The async iterator completes after all buffered
+   * deltas have been consumed.
+   */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    // If the consumer is already waiting and the buffer is empty, resolve now.
+    if (this.waiting && this.buffer.length === 0) {
+      const resolve = this.waiting;
+      this.waiting = null;
+      resolve({ value: undefined, done: true });
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<string, undefined> {
+    return {
+      next: (): Promise<IteratorResult<string, undefined>> => {
+        // Drain buffered deltas first.
+        if (this.buffer.length > 0) {
+          return Promise.resolve({ value: this.buffer.shift()!, done: false });
+        }
+        // No more data coming — signal completion.
+        if (this.closed) {
+          return Promise.resolve({ value: undefined, done: true });
+        }
+        // Park until the next push or close.
+        return new Promise((resolve) => {
+          this.waiting = resolve;
+        });
+      },
+    };
+  }
+}
+
+/**
  * Tracks state for streaming message updates.
  */
 export class StreamingState {

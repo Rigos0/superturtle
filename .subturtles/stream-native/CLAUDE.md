@@ -1,5 +1,5 @@
 ## Current Task
-Implement TextSegmentStream adapter (push→pull bridge for StatusCallback→AsyncIterable) as the core building block for streaming refactor.
+Refactor createStatusCallback: text/segment_end handling to use replyWithStream via the TextSegmentStream adapter.
 
 ## End Goal with Specs
 When the bot streams a response, the user sees a **live draft bubble** (native Telegram typing UX) that progressively grows with text — NOT a message that gets edited every 500ms. The final message is sent via `sendMessage` when the segment is complete.
@@ -71,8 +71,8 @@ This is actually fine UX — ChatGPT does the same (plain text while streaming, 
 - [x] Read and understand current streaming.ts architecture fully
 - [x] Install deps: bump grammy to ^1.39.0, add @grammyjs/stream, add @grammyjs/auto-retry
 - [x] Register stream() middleware in bot.ts + update context types with StreamFlavor
-- [ ] Implement TextSegmentStream adapter (push→pull bridge for StatusCallback→AsyncIterable) <- current
-- [ ] Refactor createStatusCallback: text/segment_end handling to use replyWithStream via the adapter
+- [x] Implement TextSegmentStream adapter (push→pull bridge for StatusCallback→AsyncIterable)
+- [ ] Refactor createStatusCallback: text/segment_end handling to use replyWithStream via the adapter <- current
 - [ ] Keep tool/thinking/done/silent handlers unchanged
 - [ ] Test: send a message, verify draft bubble appears and streams progressively
 - [ ] Test: verify long messages (>4096) still chunk correctly

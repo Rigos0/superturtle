@@ -16,6 +16,7 @@ const {
   getStreamingState,
   isAskUserPromptMessage,
   StreamingState,
+  TextSegmentStream,
 } = await import("./streaming");
 const { PINO_LOG_PATH } = await import("../logger");
 const { IPC_DIR } = await import("../config");
@@ -272,5 +273,101 @@ describe("bot-control dynamic import", () => {
         /* best-effort cleanup */
       }
     }
+  });
+});
+
+describe("TextSegmentStream", () => {
+  it("yields incremental deltas from accumulated pushes", async () => {
+    const stream = new TextSegmentStream();
+    stream.pushAccumulated("Hello");
+    stream.pushAccumulated("Hello world");
+    stream.close();
+
+    const chunks: string[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual(["Hello", " world"]);
+  });
+
+  it("resolves waiting consumer immediately on push", async () => {
+    const stream = new TextSegmentStream();
+    const iter = stream[Symbol.asyncIterator]();
+
+    // Consumer waits before producer pushes
+    const pending = iter.next();
+    stream.pushAccumulated("hi");
+    const result = await pending;
+    expect(result).toEqual({ value: "hi", done: false });
+
+    stream.close();
+    const end = await iter.next();
+    expect(end.done).toBe(true);
+  });
+
+  it("signals done when close is called with a waiting consumer", async () => {
+    const stream = new TextSegmentStream();
+    const iter = stream[Symbol.asyncIterator]();
+
+    const pending = iter.next();
+    stream.close();
+
+    const result = await pending;
+    expect(result.done).toBe(true);
+  });
+
+  it("drains buffered items before signaling done", async () => {
+    const stream = new TextSegmentStream();
+    stream.pushAccumulated("A");
+    stream.pushAccumulated("AB");
+    stream.pushAccumulated("ABC");
+    stream.close();
+
+    const iter = stream[Symbol.asyncIterator]();
+    expect(await iter.next()).toEqual({ value: "A", done: false });
+    expect(await iter.next()).toEqual({ value: "B", done: false });
+    expect(await iter.next()).toEqual({ value: "C", done: false });
+    expect((await iter.next()).done).toBe(true);
+  });
+
+  it("ignores pushes after close", async () => {
+    const stream = new TextSegmentStream();
+    stream.pushAccumulated("before");
+    stream.close();
+    stream.pushAccumulated("before after"); // should be ignored
+
+    const chunks: string[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual(["before"]);
+  });
+
+  it("skips no-op pushes with unchanged accumulated content", async () => {
+    const stream = new TextSegmentStream();
+    stream.pushAccumulated("same");
+    stream.pushAccumulated("same"); // no delta
+    stream.pushAccumulated("same"); // no delta
+    stream.close();
+
+    const chunks: string[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual(["same"]);
+  });
+
+  it("isClosed reflects stream state", () => {
+    const stream = new TextSegmentStream();
+    expect(stream.isClosed).toBe(false);
+    stream.close();
+    expect(stream.isClosed).toBe(true);
+  });
+
+  it("double close is safe", () => {
+    const stream = new TextSegmentStream();
+    stream.close();
+    stream.close(); // should not throw
+    expect(stream.isClosed).toBe(true);
   });
 });
