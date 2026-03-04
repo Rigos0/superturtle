@@ -455,6 +455,54 @@ describe("GET /api/jobs/:id", () => {
   });
 });
 
+describe("GET /dashboard", () => {
+  it("matches the route pattern and renders plain HTML", async () => {
+    const result = findRoute("/dashboard");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/dashboard");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html.toLowerCase()).toContain("<html");
+    expect(html.toLowerCase()).not.toContain("<style>");
+  });
+});
+
+describe("GET /dashboard/subturtles/:name", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/dashboard/subturtles/my-turtle");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("my-turtle");
+  });
+
+  it("returns 404 for invalid name with path traversal", async () => {
+    const result = findRoute("/dashboard/subturtles/..%2Fevil");
+    if (result) {
+      const { req, url } = makeReq("/dashboard/subturtles/..%2Fevil");
+      const res = await result.handler(req, url, result.match);
+      expect(res.status).toBe(404);
+      const body = await res.text();
+      expect(body).toContain("Invalid SubTurtle name");
+    }
+  });
+});
+
+describe("GET /dashboard/processes/:id", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/dashboard/processes/driver-claude");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("driver-claude");
+  });
+});
+
+describe("GET /dashboard/jobs/:id", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/dashboard/jobs/driver:claude:active");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("driver:claude:active");
+  });
+});
+
 /* ── Route table tests for /api/session ───────────────────────────── */
 
 describe("GET /api/session", () => {

@@ -147,6 +147,17 @@ export function safeSubstring(input: string, max: number): string {
   return input.length <= max ? input : `${input.slice(0, max)}...`;
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderJsonPre(value: unknown): string {
+  return `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+}
+
 export function computeProgressPct(done: number, total: number): number {
   if (total <= 0) return 0;
   const pct = Math.round((done / total) * 100);
@@ -321,217 +332,83 @@ function renderDashboardHtml(): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Super Turtle Dashboard</title>
-    <style>
-      :root {
-        --bg: #0b1220;
-        --panel: #111a2d;
-        --edge: rgba(255, 255, 255, 0.12);
-        --text: #e6eefb;
-        --muted: #9bb0d1;
-        --good: #5bd18b;
-        --warn: #f1c05a;
-        --bad: #e77777;
-        --lane: #1c2840;
-      }
-      html, body {
-        margin: 0;
-        font-family: "Trebuchet MS", "Verdana", "Segoe UI", sans-serif;
-        background: radial-gradient(circle at 10% 15%, #17305f, var(--bg));
-        color: var(--text);
-      }
-      .wrap {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 24px;
-      }
-      h1 {
-        margin: 0 0 12px;
-        letter-spacing: 0.02em;
-        animation: title-pop 260ms cubic-bezier(0.2, 1, 0.3, 1);
-      }
-      .row {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 14px;
-        align-items: center;
-      }
-      .pill {
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: var(--panel);
-        border: 1px solid var(--edge);
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-        gap: 12px;
-      }
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--edge);
-        border-radius: 14px;
-        padding: 14px;
-        min-height: 180px;
-        animation: slide-up 260ms cubic-bezier(0.2, 1, 0.3, 1);
-      }
-      .lane-card {
-        margin-bottom: 12px;
-      }
-      .lane-row {
-        margin: 10px 0;
-        border: 1px solid var(--edge);
-        border-radius: 10px;
-        padding: 10px;
-        background: rgba(255, 255, 255, 0.02);
-      }
-      .lane-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 6px;
-      }
-      .lane-title {
-        font-size: 14px;
-      }
-      .lane-sub {
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .track {
-        width: 100%;
-        background: var(--lane);
-        border-radius: 999px;
-        height: 10px;
-        overflow: hidden;
-      }
-      .bar {
-        height: 100%;
-        background: linear-gradient(90deg, #53c987, #8ce6a8);
-        transition: width 240ms ease;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      thead th {
-        font-size: 12px;
-        color: var(--muted);
-        text-align: left;
-        border-bottom: 1px dashed var(--edge);
-        padding-bottom: 8px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      td {
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        vertical-align: top;
-        font-size: 14px;
-      }
-      .dot {
-        font-size: 10px;
-      }
-      .dot-ok { color: var(--good); }
-      .dot-bad { color: var(--bad); }
-      .dot-warn { color: var(--warn); }
-      .small {
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .status-running { color: var(--good); }
-      .status-queued { color: var(--warn); }
-      .status-idle { color: var(--muted); }
-      a { color: #92c4ff; }
-      .empty {
-        color: var(--muted);
-        text-align: center;
-        padding: 20px 0;
-      }
-      .status {
-        margin-top: 14px;
-        color: var(--muted);
-        font-size: 12px;
-      }
-      @keyframes title-pop {
-        from { transform: translateY(-4px); opacity: .8; }
-        to { transform: translateY(0); opacity: 1; }
-      }
-      @keyframes slide-up {
-        from { transform: translateY(6px); opacity: .8; }
-        to { transform: translateY(0); opacity: 1; }
-      }
-      @media (max-width: 700px) {
-        .wrap { padding: 16px; }
-        h1 { font-size: 24px; }
-      }
-    </style>
   </head>
   <body>
-    <main class="wrap">
+    <main>
       <h1>Super Turtle Dashboard</h1>
-      <div class="row">
-        <span class="pill" id="updateBadge">Loading…</span>
-        <span class="pill" id="countBadge">SubTurtles: 0</span>
-        <span class="pill" id="processBadge">Processes: 0</span>
-        <span class="pill" id="queueBadge">Queued messages: 0</span>
-        <span class="pill" id="cronBadge">Cron jobs: 0</span>
-        <span class="pill" id="bgBadge">Background checks: 0</span>
-      </div>
-      <section class="card lane-card">
+      <p>
+        <span id="updateBadge">Loading…</span> |
+        <span id="countBadge">SubTurtles: 0</span> |
+        <span id="processBadge">Processes: 0</span> |
+        <span id="queueBadge">Queued messages: 0</span> |
+        <span id="cronBadge">Cron jobs: 0</span> |
+        <span id="bgBadge">Background checks: 0</span> |
+        <span id="jobBadge">Current jobs: 0</span>
+      </p>
+      <section>
         <h2>SubTurtle Race Lanes</h2>
-        <div id="laneRows">
-          <p class="empty">No SubTurtle lanes yet.</p>
-        </div>
+        <ul id="laneRows">
+          <li>No SubTurtle lanes yet.</li>
+        </ul>
       </section>
-      <div class="grid">
-        <section class="card">
-          <h2>Running Processes</h2>
-          <table>
-            <thead>
-              <tr><th>Name</th><th>Kind</th><th>Status</th><th>Time</th><th>Detail</th></tr>
-            </thead>
-            <tbody id="processRows">
-              <tr><td class="empty" colspan="5">No processes found.</td></tr>
-            </tbody>
-          </table>
-        </section>
-        <section class="card">
-          <h2>Queued Messages</h2>
-          <table>
-            <thead>
-              <tr><th>Chat</th><th>Count</th><th>Oldest</th><th>Preview</th></tr>
-            </thead>
-            <tbody id="queueRows">
-              <tr><td class="empty" colspan="4">No queued messages.</td></tr>
-            </tbody>
-          </table>
-        </section>
-        <section class="card">
-          <h2>Upcoming Cron Jobs</h2>
-          <table>
-            <thead>
-              <tr><th>Type</th><th>Next in</th><th>Prompt</th></tr>
-            </thead>
-            <tbody id="cronRows">
-              <tr><td class="empty" colspan="3">No jobs scheduled.</td></tr>
-            </tbody>
-          </table>
-        </section>
-      </div>
-      <p class="status" id="statusLine">Status: waiting for first sync…</p>
+      <section>
+        <h2>Running Processes</h2>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Kind</th><th>Status</th><th>Time</th><th>Detail</th></tr>
+          </thead>
+          <tbody id="processRows">
+            <tr><td colspan="5">No processes found.</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Queued Messages</h2>
+        <table>
+          <thead>
+            <tr><th>Chat</th><th>Count</th><th>Oldest</th><th>Preview</th></tr>
+          </thead>
+          <tbody id="queueRows">
+            <tr><td colspan="4">No queued messages.</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Current Jobs</h2>
+        <table>
+          <thead>
+            <tr><th>Job</th><th>Owner</th><th>Owner type</th></tr>
+          </thead>
+          <tbody id="jobRows">
+            <tr><td colspan="3">No active jobs.</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Upcoming Cron Jobs</h2>
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Next in</th><th>Prompt</th></tr>
+          </thead>
+          <tbody id="cronRows">
+            <tr><td colspan="3">No jobs scheduled.</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <p id="statusLine">Status: waiting for first sync…</p>
     </main>
     <script>
       const laneRows = document.getElementById("laneRows");
       const processRows = document.getElementById("processRows");
       const queueRows = document.getElementById("queueRows");
       const cronRows = document.getElementById("cronRows");
+      const jobRows = document.getElementById("jobRows");
       const updateBadge = document.getElementById("updateBadge");
       const countBadge = document.getElementById("countBadge");
       const processBadge = document.getElementById("processBadge");
       const queueBadge = document.getElementById("queueBadge");
       const cronBadge = document.getElementById("cronBadge");
+      const jobBadge = document.getElementById("jobBadge");
       const bgBadge = document.getElementById("bgBadge");
       const statusLine = document.getElementById("statusLine");
 
@@ -549,6 +426,10 @@ function renderDashboardHtml(): string {
 
       function setCronBadge(value) {
         cronBadge.textContent = "Cron jobs: " + value;
+      }
+
+      function setJobBadge(value) {
+        jobBadge.textContent = "Current jobs: " + value;
       }
 
       function setBackgroundBadge(isActive, queueSize) {
@@ -581,82 +462,111 @@ function renderDashboardHtml(): string {
 
       async function loadData() {
         try {
-          const res = await fetch("/api/dashboard", { cache: "no-store" });
-          if (!res.ok) throw new Error("Failed request");
-          const data = await res.json();
+          const [dashboardRes, jobsRes] = await Promise.all([
+            fetch("/api/dashboard", { cache: "no-store" }),
+            fetch("/api/jobs/current", { cache: "no-store" }),
+          ]);
+          if (!dashboardRes.ok) throw new Error("Failed dashboard request");
+          if (!jobsRes.ok) throw new Error("Failed jobs request");
+          const data = await dashboardRes.json();
+          const jobsData = await jobsRes.json();
 
           updateBadge.textContent = "Updated " + new Date(data.generatedAt).toLocaleTimeString();
           setSubturtleBadge(data.turtles.length);
           setProcessBadge(data.processes.length);
           setQueueBadge(data.deferredQueue.totalMessages);
           setCronBadge(data.cronJobs.length);
+          setJobBadge(jobsData.jobs.length);
           setBackgroundBadge(data.background.runActive, data.background.supervisionQueue);
 
           if (!data.lanes.length) {
-            laneRows.innerHTML = '<p class="empty">No SubTurtle lanes yet.</p>';
+            laneRows.innerHTML = "<li>No SubTurtle lanes yet.</li>";
           } else {
-            laneRows.innerHTML = "";
-            for (const lane of data.lanes) {
-              const row = document.createElement("div");
-              row.className = "lane-row";
+            const rows = data.lanes.map((lane) => {
               const progressLabel = lane.backlogTotal > 0
-                ? (lane.backlogDone + "/" + lane.backlogTotal + " (" + lane.progressPct + "%)")
+                ? lane.backlogDone + "/" + lane.backlogTotal + " (" + lane.progressPct + "%)"
                 : "No backlog";
-              row.innerHTML =
-                '<div class="lane-head">' +
-                '<div class="lane-title">' + escapeHtml(lane.name) + " · " + escapeHtml(lane.type) + '</div>' +
-                '<div class="lane-sub">' + escapeHtml(lane.status) + " · " + escapeHtml(lane.elapsed) + '</div>' +
-                "</div>" +
-                '<div class="track"><div class="bar" style="width:' + lane.progressPct + '%;"></div></div>' +
-                '<div class="lane-sub">' + escapeHtml(progressLabel) + (lane.backlogCurrent ? " · Current: " + escapeHtml(lane.backlogCurrent) : "") + '</div>' +
-                (lane.task ? '<div class="lane-sub">Task: ' + escapeHtml(lane.task) + "</div>" : "");
-              laneRows.appendChild(row);
-            }
+              const task = lane.task ? " · Task: " + lane.task : "";
+              return "<li>" +
+                '<a href="/dashboard/subturtles/' + encodeURIComponent(lane.name) + '">' +
+                escapeHtml(lane.name) +
+                "</a> " +
+                escapeHtml(lane.type) +
+                " · " +
+                escapeHtml(lane.status) +
+                " · " +
+                escapeHtml(lane.elapsed) +
+                " · " +
+                progressLabel +
+                (lane.backlogCurrent ? " · Current: " + escapeHtml(lane.backlogCurrent) : "") +
+                escapeHtml(task) +
+                "</li>";
+            });
+            laneRows.innerHTML = rows.join("");
           }
 
           if (!data.processes.length) {
-            processRows.innerHTML = '<tr><td class="empty" colspan="5">No processes found.</td></tr>';
+            processRows.innerHTML = "<tr><td colspan='5'>No processes found.</td></tr>";
           } else {
-            processRows.innerHTML = "";
-            for (const p of data.processes) {
-              const tr = document.createElement("tr");
-              tr.innerHTML =
-                "<td>" + escapeHtml(p.label) + (p.pid && p.pid !== "-" ? ' <span class="small">(pid ' + escapeHtml(p.pid) + ")</span>" : "") + "</td>" +
+            const rows = data.processes.map((p) => {
+              return "<tr>" +
+                "<td><a href=\"/dashboard/processes/" + encodeURIComponent(p.id) + "\">" +
+                escapeHtml(p.label) +
+                "</a>" +
+                (p.pid && p.pid !== "-" ? " (pid " + escapeHtml(p.pid) + ")" : "") +
+                "</td>" +
                 "<td>" + escapeHtml(p.kind) + "</td>" +
-                '<td><span class="' + statusClass(p.status) + '">' + escapeHtml(p.status) + "</span></td>" +
+                "<td>" + escapeHtml(p.status) + "</td>" +
                 "<td>" + escapeHtml(p.elapsed) + "</td>" +
-                "<td>" + escapeHtml(p.detail || "") + "</td>";
-              processRows.appendChild(tr);
-            }
+                "<td>" + escapeHtml(p.detail || "") + "</td>" +
+                "</tr>";
+            });
+            processRows.innerHTML = rows.join("");
           }
 
           if (!data.deferredQueue.chats.length) {
-            queueRows.innerHTML = '<tr><td class="empty" colspan="4">No queued messages.</td></tr>';
+            queueRows.innerHTML = "<tr><td colspan='4'>No queued messages.</td></tr>";
           } else {
-            queueRows.innerHTML = "";
-            for (const q of data.deferredQueue.chats) {
-              const tr = document.createElement("tr");
-              tr.innerHTML =
+            const rows = data.deferredQueue.chats.map((q) => {
+              return "<tr>" +
                 "<td>" + q.chatId + "</td>" +
                 "<td>" + q.size + "</td>" +
                 "<td>" + q.oldestAgeSec + "s</td>" +
-                "<td>" + escapeHtml((q.preview || []).join(" | ")) + "</td>";
-              queueRows.appendChild(tr);
-            }
+                "<td>" + escapeHtml((q.preview || []).join(" | ")) + "</td>" +
+                "</tr>";
+            });
+            queueRows.innerHTML = rows.join("");
           }
 
           if (!data.cronJobs.length) {
-            cronRows.innerHTML = '<tr><td class="empty" colspan="3">No jobs scheduled.</td></tr>';
+            cronRows.innerHTML = "<tr><td colspan='3'>No jobs scheduled.</td></tr>";
           } else {
-            cronRows.innerHTML = "";
-            for (const j of data.cronJobs) {
-              const tr = document.createElement("tr");
-              tr.innerHTML =
+            const rows = data.cronJobs.map((j) => {
+              return "<tr>" +
                 "<td>" + j.type + "</td>" +
                 "<td>" + humanMs(j.fireInMs) + "</td>" +
-                "<td>" + j.promptPreview + "</td>";
-              cronRows.appendChild(tr);
-            }
+                "<td>" + escapeHtml(j.promptPreview) + "</td>" +
+                "</tr>";
+            });
+            cronRows.innerHTML = rows.join("");
+          }
+
+          if (!jobsData.jobs.length) {
+            jobRows.innerHTML = "<tr><td colspan='3'>No current jobs.</td></tr>";
+          } else {
+            const rows = jobsData.jobs.map((job) => {
+              const ownerLink = "/dashboard/processes/" + encodeURIComponent(job.ownerId);
+              return "<tr>" +
+                "<td><a href=\"/dashboard/jobs/" + encodeURIComponent(job.id) + "\">" +
+                escapeHtml(job.id) +
+                "</a></td>" +
+                "<td><a href=\"" + ownerLink + "\">" +
+                escapeHtml(job.ownerId) +
+                "</a></td>" +
+                "<td>" + escapeHtml(job.ownerType) + "</td>" +
+                "</tr>";
+            });
+            jobRows.innerHTML = rows.join("");
           }
 
           statusLine.textContent =
@@ -668,7 +578,9 @@ function renderDashboardHtml(): string {
             data.deferredQueue.totalMessages +
             " queued msgs, " +
             data.cronJobs.length +
-            " cron jobs";
+            " cron jobs, " +
+            jobsData.jobs.length +
+            " current jobs";
         } catch (error) {
           statusLine.textContent = "Status: failed to fetch data";
         }
@@ -677,6 +589,225 @@ function renderDashboardHtml(): string {
       loadData();
       setInterval(loadData, 5000);
     </script>
+  </body>
+</html>`;
+}
+
+async function buildSubturtleDetail(name: string): Promise<SubturtleDetailResponse | null> {
+  const turtles = await readSubturtles();
+  const turtle = turtles.find((t) => t.name === name);
+  if (!turtle) return null;
+
+  const elapsed = turtle.status === "running" ? await getSubTurtleElapsed(name) : "0";
+
+  const claudeMdPath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
+  const metaPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.meta`;
+  const tunnelPath = `${WORKING_DIR}/.subturtles/${name}/.tunnel-url`;
+
+  const [claudeMd, metaContent, tunnelUrl] = await Promise.all([
+    readFileOr(claudeMdPath, ""),
+    readFileOr(metaPath, ""),
+    readFileOr(tunnelPath, ""),
+  ]);
+
+  const meta = parseMetaFile(metaContent);
+  const backlog = await readClaudeBacklogItems(claudeMdPath);
+  const backlogDone = backlog.filter((item) => item.done).length;
+  const backlogCurrent =
+    backlog.find((item) => item.current && !item.done)?.text ||
+    backlog.find((item) => !item.done)?.text ||
+    "";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    name,
+    status: turtle.status,
+    type: turtle.type || "unknown",
+    pid: turtle.pid || "",
+    elapsed,
+    timeRemaining: turtle.timeRemaining || "",
+    task: turtle.task || "",
+    tunnelUrl: tunnelUrl.trim(),
+    claudeMd,
+    meta,
+    backlog,
+    backlogSummary: {
+      done: backlogDone,
+      total: backlog.length,
+      current: backlogCurrent,
+      progressPct: computeProgressPct(backlogDone, backlog.length),
+    },
+  };
+}
+
+async function buildSubturtleLogs(name: string, lineCount?: number): Promise<SubturtleLogsResponse | null> {
+  const logPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.log`;
+  const pidPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.pid`;
+
+  const pidExists = await Bun.file(pidPath).exists();
+  const logExists = await Bun.file(logPath).exists();
+  if (!pidExists && !logExists) return null;
+
+  const safeLineCount = Math.max(1, Math.min(500, lineCount ?? 100));
+  let lines: string[] = [];
+  let totalLines = 0;
+
+  if (logExists) {
+    const proc = Bun.spawnSync(["tail", "-n", String(safeLineCount), logPath]);
+    const output = proc.stdout.toString();
+    lines = output ? output.split("\n").filter((l) => l.length > 0) : [];
+
+    const wcProc = Bun.spawnSync(["wc", "-l", logPath]);
+    const wcOut = wcProc.stdout.toString().trim();
+    totalLines = parseInt(wcOut, 10) || 0;
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    name,
+    lines,
+    totalLines,
+  };
+}
+
+async function buildProcessDetail(id: string): Promise<ProcessDetailResponse | null> {
+  const state = await buildDashboardState();
+  const process = state.processes.find((p) => p.id === id);
+  if (!process) return null;
+
+  const extra = await buildProcessExtra(process);
+  return {
+    generatedAt: new Date().toISOString(),
+    process: addDetailLink(process),
+    extra,
+  };
+}
+
+async function buildCurrentJobDetail(id: string): Promise<JobDetailResponse | null> {
+  const jobs = await buildCurrentJobs();
+  const job = jobs.find((j) => j.id === id);
+  if (!job) return null;
+
+  const ownerLink = `/api/processes/${encodeURIComponent(job.ownerId)}`;
+  let logsLink: string | null = null;
+  const extra: JobDetailResponse["extra"] = {};
+
+  if (job.ownerType === "subturtle") {
+    const name = job.ownerId.replace(/^subturtle-/, "");
+    logsLink = `/api/subturtles/${encodeURIComponent(name)}/logs`;
+    const statePath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
+    const backlog = await readClaudeBacklogItems(statePath);
+    const backlogDone = backlog.filter((item) => item.done).length;
+    const backlogCurrent =
+      backlog.find((item) => item.current && !item.done)?.text ||
+      backlog.find((item) => !item.done)?.text ||
+      "";
+    extra.backlogSummary = {
+      done: backlogDone,
+      total: backlog.length,
+      current: backlogCurrent,
+      progressPct: computeProgressPct(backlogDone, backlog.length),
+    };
+    extra.elapsed = await getSubTurtleElapsed(name);
+  } else if (job.ownerId === "driver-claude") {
+    extra.elapsed = session.isRunning ? elapsedFrom(session.queryStarted) : "0s";
+    extra.currentTool = session.currentTool;
+    extra.lastTool = session.lastTool;
+  } else if (job.ownerId === "driver-codex") {
+    extra.elapsed = codexSession.isRunning ? elapsedFrom(codexSession.runningSince) : "0s";
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    job,
+    ownerLink,
+    logsLink,
+    extra,
+  };
+}
+
+function renderSubturtleDetailHtml(detail: SubturtleDetailResponse, logs: SubturtleLogsResponse | null): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SubTurtle ${escapeHtml(detail.name)} detail</title>
+  </head>
+  <body>
+    <h1>SubTurtle ${escapeHtml(detail.name)} detail</h1>
+    <p><a href="/dashboard">← Back to dashboard</a></p>
+    <h2>Core fields</h2>
+    <ul>
+      <li>Status: ${escapeHtml(detail.status)}</li>
+      <li>Type: ${escapeHtml(detail.type)}</li>
+      <li>PID: ${escapeHtml(detail.pid || "n/a")}</li>
+      <li>Elapsed: ${escapeHtml(detail.elapsed)}</li>
+      <li>Task: ${escapeHtml(detail.task || "none")}</li>
+      <li>Backlog: ${detail.backlogSummary.done}/${detail.backlogSummary.total} (${detail.backlogSummary.progressPct}%)</li>
+      <li>Current backlog item: ${escapeHtml(detail.backlogSummary.current || "none")}</li>
+    </ul>
+    <h2>Backlog (JSON)</h2>
+    ${renderJsonPre(detail.backlog)}
+    <h2>subturtle.meta (JSON)</h2>
+    ${renderJsonPre(detail.meta)}
+    <h2>Claude.md</h2>
+    <pre>${escapeHtml(detail.claudeMd || "(empty)")}</pre>
+    <h2>Logs</h2>
+    <pre>${escapeHtml(logs?.lines.join("\\n") || "No logs")}</pre>
+  </body>
+</html>`;
+}
+
+function renderProcessDetailHtml(detail: ProcessDetailResponse, logs: SubturtleLogsResponse | null): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Process ${escapeHtml(detail.process.id)} detail</title>
+  </head>
+  <body>
+    <h1>Process ${escapeHtml(detail.process.id)} detail</h1>
+    <p><a href="/dashboard">← Back to dashboard</a></p>
+    <h2>Core fields</h2>
+    <ul>
+      <li>Name: ${escapeHtml(detail.process.label)}</li>
+      <li>Kind: ${escapeHtml(detail.process.kind)}</li>
+      <li>Status: ${escapeHtml(detail.process.status)}</li>
+      <li>PID: ${escapeHtml(detail.process.pid)}</li>
+      <li>Elapsed: ${escapeHtml(detail.process.elapsed)}</li>
+      <li>Detail: ${escapeHtml(detail.process.detail || "n/a")}</li>
+    </ul>
+    <h2>Detail JSON</h2>
+    ${renderJsonPre(detail)}
+    ${logs ? `<h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre>` : ""}
+  </body>
+</html>`;
+}
+
+function renderJobDetailHtml(detail: JobDetailResponse, logs: SubturtleLogsResponse | null): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job ${escapeHtml(detail.job.id)} detail</title>
+  </head>
+  <body>
+    <h1>Job ${escapeHtml(detail.job.id)} detail</h1>
+    <p><a href="/dashboard">← Back to dashboard</a></p>
+    <h2>Core fields</h2>
+    <ul>
+      <li>Name: ${escapeHtml(detail.job.name)}</li>
+      <li>Owner: <a href="/dashboard/processes/${encodeURIComponent(detail.job.ownerId)}">${escapeHtml(detail.job.ownerId)}</a></li>
+      <li>Owner API link: <a href="${escapeHtml(detail.ownerLink)}">${escapeHtml(detail.ownerLink)}</a></li>
+      <li>Owner type: ${escapeHtml(detail.job.ownerType)}</li>
+      <li>Elapsed: ${escapeHtml(detail.extra.elapsed || "n/a")}</li>
+    </ul>
+    <h2>Detail JSON</h2>
+    ${renderJsonPre(detail)}
+    ${logs ? `<h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre>` : ""}
   </body>
 </html>`;
 }
@@ -825,37 +956,10 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     handler: async (_req, url, match) => {
       const name = decodeURIComponent(match[1] ?? "");
       if (!validateSubturtleName(name)) return notFoundResponse("Invalid SubTurtle name");
-
-      const logPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.log`;
-      const pidPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.pid`;
-
-      // Check existence via pid or log file
-      const pidExists = await Bun.file(pidPath).exists();
-      const logExists = await Bun.file(logPath).exists();
-      if (!pidExists && !logExists) return notFoundResponse("SubTurtle not found");
-
       const linesParam = url.searchParams.get("lines");
       const lineCount = Math.max(1, Math.min(500, parseInt(linesParam || "100", 10) || 100));
-
-      let lines: string[] = [];
-      let totalLines = 0;
-      if (logExists) {
-        const proc = Bun.spawnSync(["tail", "-n", String(lineCount), logPath]);
-        const output = proc.stdout.toString();
-        lines = output ? output.split("\n").filter((l) => l.length > 0) : [];
-
-        // Approximate total lines via wc -l
-        const wcProc = Bun.spawnSync(["wc", "-l", logPath]);
-        const wcOut = wcProc.stdout.toString().trim();
-        totalLines = parseInt(wcOut, 10) || 0;
-      }
-
-      const response: SubturtleLogsResponse = {
-        generatedAt: new Date().toISOString(),
-        name,
-        lines,
-        totalLines,
-      };
+      const response = await buildSubturtleLogs(name, lineCount);
+      if (!response) return notFoundResponse("SubTurtle not found");
       return jsonResponse(response);
     },
   },
@@ -864,52 +968,8 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     handler: async (_req, _url, match) => {
       const name = decodeURIComponent(match[1] ?? "");
       if (!validateSubturtleName(name)) return notFoundResponse("Invalid SubTurtle name");
-
-      // Find this turtle in the ctl list output
-      const turtles = await readSubturtles();
-      const turtle = turtles.find((t) => t.name === name);
-      if (!turtle) return notFoundResponse("SubTurtle not found");
-
-      const elapsed = turtle.status === "running" ? await getSubTurtleElapsed(name) : "0";
-
-      const claudeMdPath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
-      const metaPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.meta`;
-      const tunnelPath = `${WORKING_DIR}/.subturtles/${name}/.tunnel-url`;
-
-      const [claudeMd, metaContent, tunnelUrl] = await Promise.all([
-        readFileOr(claudeMdPath, ""),
-        readFileOr(metaPath, ""),
-        readFileOr(tunnelPath, ""),
-      ]);
-
-      const meta = parseMetaFile(metaContent);
-      const backlog = await readClaudeBacklogItems(claudeMdPath);
-      const backlogDone = backlog.filter((item) => item.done).length;
-      const backlogCurrent =
-        backlog.find((item) => item.current && !item.done)?.text ||
-        backlog.find((item) => !item.done)?.text ||
-        "";
-
-      const response: SubturtleDetailResponse = {
-        generatedAt: new Date().toISOString(),
-        name,
-        status: turtle.status,
-        type: turtle.type || "unknown",
-        pid: turtle.pid || "",
-        elapsed,
-        timeRemaining: turtle.timeRemaining || "",
-        task: turtle.task || "",
-        tunnelUrl: tunnelUrl.trim(),
-        claudeMd,
-        meta,
-        backlog,
-        backlogSummary: {
-          done: backlogDone,
-          total: backlog.length,
-          current: backlogCurrent,
-          progressPct: computeProgressPct(backlogDone, backlog.length),
-        },
-      };
+      const response = await buildSubturtleDetail(name);
+      if (!response) return notFoundResponse("SubTurtle not found");
       return jsonResponse(response);
     },
   },
@@ -995,15 +1055,8 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     handler: async (_req, _url, match) => {
       const id = decodeURIComponent(match[1] ?? "");
       if (!id) return notFoundResponse("Invalid process ID");
-      const state = await buildDashboardState();
-      const process = state.processes.find((p) => p.id === id);
-      if (!process) return notFoundResponse("Process not found");
-      const extra = await buildProcessExtra(process);
-      const response: ProcessDetailResponse = {
-        generatedAt: new Date().toISOString(),
-        process: addDetailLink(process),
-        extra,
-      };
+      const response = await buildProcessDetail(id);
+      if (!response) return notFoundResponse("Process not found");
       return jsonResponse(response);
     },
   },
@@ -1023,47 +1076,8 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     handler: async (_req, _url, match) => {
       const id = decodeURIComponent(match[1] ?? "");
       if (!id) return notFoundResponse("Invalid job ID");
-      const jobs = await buildCurrentJobs();
-      const job = jobs.find((j) => j.id === id);
-      if (!job) return notFoundResponse("Job not found");
-
-      const ownerLink = `/api/processes/${encodeURIComponent(job.ownerId)}`;
-      let logsLink: string | null = null;
-      const extra: JobDetailResponse["extra"] = {};
-
-      if (job.ownerType === "subturtle") {
-        const name = job.ownerId.replace(/^subturtle-/, "");
-        logsLink = `/api/subturtles/${encodeURIComponent(name)}/logs`;
-        const statePath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
-        const backlog = await readClaudeBacklogItems(statePath);
-        const backlogDone = backlog.filter((item) => item.done).length;
-        const backlogCurrent =
-          backlog.find((item) => item.current && !item.done)?.text ||
-          backlog.find((item) => !item.done)?.text ||
-          "";
-        extra.backlogSummary = {
-          done: backlogDone,
-          total: backlog.length,
-          current: backlogCurrent,
-          progressPct: computeProgressPct(backlogDone, backlog.length),
-        };
-        const elapsed = await getSubTurtleElapsed(name);
-        extra.elapsed = elapsed;
-      } else if (job.ownerId === "driver-claude") {
-        extra.elapsed = session.isRunning ? elapsedFrom(session.queryStarted) : "0s";
-        extra.currentTool = session.currentTool;
-        extra.lastTool = session.lastTool;
-      } else if (job.ownerId === "driver-codex") {
-        extra.elapsed = codexSession.isRunning ? elapsedFrom(codexSession.runningSince) : "0s";
-      }
-
-      const response: JobDetailResponse = {
-        generatedAt: new Date().toISOString(),
-        job,
-        ownerLink,
-        logsLink,
-        extra,
-      };
+      const response = await buildCurrentJobDetail(id);
+      if (!response) return notFoundResponse("Job not found");
       return jsonResponse(response);
     },
   },
@@ -1072,6 +1086,47 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     handler: async () => {
       const data = await buildDashboardState();
       return jsonResponse(data);
+    },
+  },
+  {
+    pattern: /^\/dashboard\/subturtles\/([^/]+)$/,
+    handler: async (_req, _url, match) => {
+      const name = decodeURIComponent(match[1] ?? "");
+      if (!validateSubturtleName(name)) return notFoundResponse("Invalid SubTurtle name");
+      const detail = await buildSubturtleDetail(name);
+      if (!detail) return notFoundResponse("SubTurtle not found");
+      const logs = await buildSubturtleLogs(name, 200);
+      return new Response(renderSubturtleDetailHtml(detail, logs), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  },
+  {
+    pattern: /^\/dashboard\/processes\/([^/]+)$/,
+    handler: async (_req, _url, match) => {
+      const id = decodeURIComponent(match[1] ?? "");
+      const detail = await buildProcessDetail(id);
+      if (!detail) return notFoundResponse("Process not found");
+      const logs = detail.process.kind === "subturtle"
+        ? await buildSubturtleLogs(detail.process.id.replace(/^subturtle-/, ""), 200)
+        : null;
+      return new Response(renderProcessDetailHtml(detail, logs), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  },
+  {
+    pattern: /^\/dashboard\/jobs\/([^/]+)$/,
+    handler: async (_req, _url, match) => {
+      const id = decodeURIComponent(match[1] ?? "");
+      const detail = await buildCurrentJobDetail(id);
+      if (!detail) return notFoundResponse("Job not found");
+      const logs = detail.logsLink && detail.logsLink.startsWith("/api/subturtles/")
+        ? await buildSubturtleLogs(detail.logsLink.split("/")[3]!, 200)
+        : null;
+      return new Response(renderJobDetailHtml(detail, logs), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     },
   },
   {
