@@ -1,5 +1,24 @@
 # Retry Cleanup Review Notes
 
+## Ranked Findings (2026-03-05)
+
+1. **High: retry cleanup leaves orphaned heartbeat timers from failed attempts**
+ - `handleText()` retry catch only calls `cleanupToolMessages(ctx, state)` before creating a fresh `StreamingState` and callback (`text.ts:211`, `text.ts:227`), but this cleanup helper does not stop timers (`streaming.ts:696`, `streaming.ts:712`).
+ - Heartbeats are started per callback (`streaming.ts:846`, `streaming.ts:854`) and only stopped in `done` handling (`streaming.ts:1031`, `streaming.ts:1032`) or private `stopHeartbeat()` (`streaming.ts:766`), neither of which runs on stall-error retry paths that throw before `done` (`session.ts:865`).
+ - Because `activeStreamingStates` is replaced with the new retry state (`streaming.ts:852`), `/stop` cleanup only reaches the latest state (`stop.ts:99`) and cannot reliably stop an orphaned timer from an older state.
+
+2. **Medium: stale-session empty-response check can read prior-turn usage state**
+ - Both drivers detect stale sessions with `!response && this.lastUsage && in=0/out=0` (`session.ts:887`, `codex-session.ts:1183`) and set `lastUsage` when usage events arrive (`session.ts:807`, `codex-session.ts:1137`).
+ - Neither send path resets `lastUsage` at entry (`session.ts:400`, `codex-session.ts:868`), so empty responses can be classified using previous-turn usage metadata.
+
+3. **Low: ask-user prompt preservation in cleanup is working as intended**
+ - Ask-user prompt detection is inline-keyboard based (`streaming.ts:74`), and cleanup skips those messages (`streaming.ts:698`).
+ - Regression coverage confirms skip behavior (`streaming.test.ts:285`), and callback flow edits the same prompt message on selection (`callback.ts:381`), which matches persistence expectations.
+
+4. **Low: retry loop is bounded and cleanup is largely idempotent**
+ - Retry budget is fixed at one retry (`text.ts:193`, `text.ts:195`), and stale-session retry reinitializes streaming state/callback (`text.ts:227`).
+ - Cleanup is called from both retry catch and `done` paths (`text.ts:211`, `streaming.ts:1036`), and helper-side list reset (`streaming.ts:712`) prevents repeated delete loops on the same state object.
+
 ## 2026-03-05 - Item 1: handleText() flow vs old inline cleanup
 
 ### Summary
