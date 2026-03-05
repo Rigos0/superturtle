@@ -9,7 +9,7 @@ import { codexSession } from "./codex-session";
 import { getPreparedSnapshotCount } from "./cron-supervision-queue";
 import { isBackgroundRunActive, wasBackgroundRunPreempted } from "./handlers/driver-routing";
 import { logger } from "./logger";
-import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse } from "./dashboard-types";
+import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse, QueueResponse } from "./dashboard-types";
 
 const dashboardLog = logger.child({ module: "dashboard" });
 
@@ -1048,6 +1048,17 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
         generatedAt: new Date().toISOString(),
         processes,
       });
+    },
+  },
+  {
+    pattern: /^\/api\/queue$/,
+    handler: async () => {
+      const state = await buildDashboardState();
+      const response: QueueResponse = {
+        generatedAt: new Date().toISOString(),
+        ...state.deferredQueue,
+      };
+      return jsonResponse(response);
     },
   },
   {

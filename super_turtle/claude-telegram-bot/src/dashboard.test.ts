@@ -362,6 +362,26 @@ describe("GET /api/processes", () => {
   });
 });
 
+describe("GET /api/queue", () => {
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/queue");
+    expect(result).not.toBeNull();
+  });
+
+  it("returns 200 with queue-only payload", async () => {
+    const result = findRoute("/api/queue");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/queue");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.generatedAt).toBeDefined();
+    expect(typeof body.totalChats).toBe("number");
+    expect(typeof body.totalMessages).toBe("number");
+    expect(body.chats).toBeInstanceOf(Array);
+  });
+});
+
 describe("GET /api/processes/:id", () => {
   it("matches the route pattern", () => {
     const result = findRoute("/api/processes/driver-claude");
