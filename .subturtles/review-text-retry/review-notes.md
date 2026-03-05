@@ -35,3 +35,26 @@
 
 ### Residual Note
 - The preservation heuristic is broader than ask-user specifically (it preserves any inline-keyboard tool message). This is likely intentional but should be kept in mind when auditing non-ask-user inline controls.
+
+## 2026-03-05 - Item 3: Idempotency across repeated retries and stale sessions
+
+### Verification
+1. Retry budget is bounded and deterministic: `handleText()` allows one retry (`MAX_RETRIES = 1`) and uses the same request payload unless it intentionally switches to a recovery prompt for stall cases at [text.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/text.ts:193) and [text.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/text.ts:195).
+2. Stale-session retries are explicit and state-resetting: on `Empty response from stale session`, the handler recreates `StreamingState` + callback before retrying, preventing attempt-local state leakage at [text.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/text.ts:215) and [text.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/text.ts:227).
+3. Driver-side stale detection clears resumable session identifiers before bubbling the retryable error:
+ - Claude clears `sessionId` on empty `in=0 out=0` responses at [session.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/session.ts:887) and [session.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/session.ts:894).
+ - Codex clears `threadId` and `thread` for the same condition at [codex-session.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/codex-session.ts:1183) and [codex-session.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/codex-session.ts:1189).
+4. Cleanup is idempotent when retries repeat:
+ - `handleText()` does catch-path cleanup per failed attempt at [text.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/text.ts:211).
+ - status-callback `done` also triggers cleanup at [streaming.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/streaming.ts:1031).
+ - `cleanupToolMessages()` clears `state.toolMessages` after delete attempts, so repeated calls are safe/no-op after first pass at [streaming.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/streaming.ts:696) and [streaming.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/handlers/streaming.ts:712).
+5. Manual probe (`bun --no-env-file -e ...`) confirmed stale behavior is bounded:
+ - stale-then-success path ran exactly 2 attempts with same user message and final success.
+ - stale-twice path ran exactly 2 attempts and emitted one terminal error reply (`❌ Error: Empty response from stale session`).
+
+### Conclusion
+- No duplicate-side-effect regression identified in stale-session retry handling: retries are bounded, stale handles are cleared before retry, and cleanup functions are re-entrant.
+- No stale-session-specific automated test currently exists in `text.retry.test.ts` to lock this behavior, so coverage remains indirect via code-path inspection and manual probe.
+
+### Residual Risk
+- `lastUsage` is read during stale detection but not reset at the start of each new send for either driver (`session.ts` usage capture at [session.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/session.ts:807), `codex-session.ts` at [codex-session.ts](/Users/Richard.Mladek/Documents/projects/agentic/super_turtle/claude-telegram-bot/src/codex-session.ts:1137)). This can misclassify a later empty response using prior-turn usage state, which is a correctness risk in edge cases.
