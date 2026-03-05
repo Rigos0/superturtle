@@ -176,6 +176,48 @@ function elapsedFrom(startedAt: Date | null): string {
   return `${sec}s`;
 }
 
+function queuePressureSummary(totalMessages: number, totalChats: number): string {
+  const msgLabel = totalMessages === 1 ? "1 queued msg" : `${totalMessages} queued msgs`;
+  const chatLabel = totalChats === 1 ? "1 chat" : `${totalChats} chats`;
+  return `${msgLabel} across ${chatLabel}`;
+}
+
+function mapDriverStatus(
+  isRunning: boolean,
+  hasQueuePressure: boolean,
+  isActiveDriver: boolean
+): ProcessView["status"] {
+  if (hasQueuePressure && (isRunning || isActiveDriver)) return "queued";
+  return isRunning ? "running" : "idle";
+}
+
+function mapSubturtleStatus(rawStatus: string): ProcessView["status"] {
+  const status = rawStatus.trim().toLowerCase();
+  if (status === "running") return "running";
+  if (status === "queued") return "queued";
+  if (status === "stopped") return "stopped";
+  if (status === "error" || status === "failed" || status === "crashed") return "error";
+  return "idle";
+}
+
+function buildSubturtleProcessDetail(task: string, rawStatus: string): string {
+  const cleanTask = task.trim();
+  const status = rawStatus.trim().toLowerCase();
+  if (!rawStatus.trim()) return cleanTask;
+  if (
+    status === "running"
+    || status === "idle"
+    || status === "queued"
+    || status === "stopped"
+    || status === "error"
+    || status === "failed"
+    || status === "crashed"
+  ) {
+    return cleanTask;
+  }
+  return cleanTask ? `status=${rawStatus}; ${cleanTask}` : `status=${rawStatus}`;
+}
+
 function humanInterval(ms: number | null): string | null {
   if (ms === null || ms <= 0) return null;
   const sec = Math.floor(ms / 1000);
@@ -261,25 +303,39 @@ async function buildDashboardState(): Promise<DashboardState> {
   for (const [, messages] of deferredQueues) {
     totalMessages += messages.length;
   }
+  const hasQueuePressure = totalMessages > 0;
+  const queueSummary = queuePressureSummary(totalMessages, chats.length);
+  const claudeStatus = mapDriverStatus(
+    session.isRunning,
+    hasQueuePressure,
+    session.activeDriver === "claude"
+  );
+  const codexStatus = mapDriverStatus(
+    codexSession.isRunning,
+    hasQueuePressure,
+    session.activeDriver === "codex"
+  );
+  const claudeBaseDetail = session.currentTool || session.lastTool || "idle";
+  const codexBaseDetail = codexSession.isActive ? "thread active" : "idle";
 
   const processes: ProcessView[] = [
     {
       id: "driver-claude",
       kind: "driver",
       label: "Claude driver",
-      status: session.isRunning ? "running" : "idle",
+      status: claudeStatus,
       pid: session.isRunning ? "active" : "-",
       elapsed: session.isRunning ? elapsedFrom(session.queryStarted) : "0s",
-      detail: session.currentTool || session.lastTool || "idle",
+      detail: claudeStatus === "queued" ? `${claudeBaseDetail} · ${queueSummary}` : claudeBaseDetail,
     },
     {
       id: "driver-codex",
       kind: "driver",
       label: "Codex driver",
-      status: codexSession.isRunning ? "running" : "idle",
+      status: codexStatus,
       pid: codexSession.isRunning ? "active" : "-",
       elapsed: codexSession.isRunning ? elapsedFrom(codexSession.runningSince) : "0s",
-      detail: codexSession.isActive ? "thread active" : "idle",
+      detail: codexStatus === "queued" ? `${codexBaseDetail} · ${queueSummary}` : codexBaseDetail,
     },
     {
       id: "background-check",
@@ -294,10 +350,10 @@ async function buildDashboardState(): Promise<DashboardState> {
       id: `subturtle-${turtle.name}`,
       kind: "subturtle" as const,
       label: turtle.name,
-      status: (turtle.status === "running" ? "running" : "idle") as ProcessView["status"],
+      status: mapSubturtleStatus(turtle.status),
       pid: turtle.pid || "-",
       elapsed: turtle.elapsed,
-      detail: turtle.task || "",
+      detail: buildSubturtleProcessDetail(turtle.task || "", turtle.status),
     })),
   ];
 

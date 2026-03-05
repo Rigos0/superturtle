@@ -15,7 +15,7 @@ export type ProcessView = {
   id: string;
   kind: "driver" | "subturtle" | "background";
   label: string;
-  status: "running" | "idle" | "queued";
+  status: "running" | "idle" | "queued" | "stopped" | "error";
   pid: string;
   elapsed: string;
   detail: string;
