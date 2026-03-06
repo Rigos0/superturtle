@@ -14,6 +14,7 @@ import {
   CLAUDE_CLI_AVAILABLE,
   CLAUDE_CLI_PATH,
   CODEX_AVAILABLE,
+  HIDE_TOOL_STATUS,
   MCP_SERVERS,
   META_PROMPT,
   SESSION_FILE,
@@ -681,8 +682,10 @@ export class ClaudeSession {
               const isBotControlServerTool =
                 normalizedToolName.startsWith("mcp__bot_control");
 
-              // Don't show tool status for MCP tools that handle their own output
+              // Don't show tool status for MCP tools that handle their own output,
+              // or when HIDE_TOOL_STATUS is enabled (hide all tool calls)
               if (
+                !HIDE_TOOL_STATUS &&
                 !isAskUserTool &&
                 !isSendTurtleTool &&
                 !isBotControlServerTool &&

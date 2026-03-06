@@ -293,6 +293,10 @@ export const BLOCKED_PATTERNS: Array<{ regex: string; label: string }> = [
   { regex: "\\bdd\\s+if=", label: "raw disk operation" },
 ];
 
+// Hide tool call status messages from Telegram chat (only show final text)
+export const HIDE_TOOL_STATUS =
+  (process.env.HIDE_TOOL_STATUS || "true").toLowerCase() === "true";
+
 // Query timeout (3 minutes)
 export const QUERY_TIMEOUT_MS = 180_000;
 
