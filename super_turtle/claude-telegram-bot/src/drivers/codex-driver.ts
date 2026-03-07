@@ -146,7 +146,11 @@ export class CodexDriver implements ChatDriver {
         input.statusCallback,
         undefined,
         reasoningEffort,
-        mcpCompletionCallback
+        mcpCompletionCallback,
+        input.source,
+        input.userId,
+        input.username,
+        input.chatId
       );
     } finally {
       keepPolling = false;

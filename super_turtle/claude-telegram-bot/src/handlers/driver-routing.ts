@@ -1,14 +1,16 @@
 import type { Context } from "grammy";
 import { getCurrentDriver, getDriver } from "../drivers/registry";
-import type { DriverId } from "../drivers/types";
+import type { DriverId, DriverRunSource } from "../drivers/types";
 import { CTL_PATH } from "../config";
 import { session } from "../session";
 import { codexSession } from "../codex-session";
 import type { StatusCallback } from "../types";
 import { isSpawnOrchestrationToolStatus } from "./streaming";
+import { streamLog } from "../logger";
 
 export interface DriverMessageInput {
   message: string;
+  source: DriverRunSource;
   username: string;
   userId: number;
   chatId: number;
@@ -19,6 +21,7 @@ export interface DriverMessageInput {
 const MAX_RETRIES = 1;
 let backgroundRunDepth = 0;
 let backgroundRunPreempted = false;
+const routingLog = streamLog.child({ handler: "driver-routing" });
 
 function buildStallRecoveryPrompt(originalMessage: string): string {
   return `The previous response stream stalled before completion while handling this request.
@@ -116,25 +119,54 @@ export async function runMessageWithDriver(
         statusCallback: trackingStatusCallback,
       });
     } catch (error) {
+      routingLog.warn(
+        {
+          err: error,
+          driverId,
+          attempt: attempt + 1,
+          maxAttempts: MAX_RETRIES + 1,
+          sawToolUse,
+          sawSpawnOrchestration,
+          chatId: input.chatId,
+          userId: input.userId,
+        },
+        "Driver run attempt failed"
+      );
       if (attempt >= MAX_RETRIES) {
         throw error;
       }
 
       if (driver.isStallError(error)) {
         if (sawSpawnOrchestration) {
+          routingLog.info(
+            { driverId, attempt: attempt + 1, action: "stall_spawn_orchestration_recovery" },
+            "Applying spawn-orchestration recovery prompt"
+          );
           message = buildSpawnOrchestrationRecoveryPrompt(message);
           continue;
         }
 
         if (!sawToolUse) {
+          routingLog.info(
+            { driverId, attempt: attempt + 1, action: "stall_kill_session_retry" },
+            "Stall without tool use: killing driver session before retry"
+          );
           await driver.kill();
         } else {
+          routingLog.info(
+            { driverId, attempt: attempt + 1, action: "stall_continuation_retry" },
+            "Stall after tool use: continuing with recovery prompt"
+          );
           message = buildStallRecoveryPrompt(message);
         }
         continue;
       }
 
       if (driver.isCrashError(error) && !sawToolUse) {
+        routingLog.info(
+          { driverId, attempt: attempt + 1, action: "crash_kill_session_retry" },
+          "Crash without tool use: killing driver session before retry"
+        );
         await driver.kill();
         continue;
       }

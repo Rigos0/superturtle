@@ -20,6 +20,9 @@ import {
 import { formatCodexToolStatus } from "./formatting";
 import type { StatusCallback, McpCompletionCallback, RecentMessage, SavedSession, SessionHistory } from "./types";
 import { codexLog } from "./logger";
+import type { DriverRunSource } from "./drivers/types";
+import { appendTurnLogEntry, type TurnLogStatus, type TurnLogUsage } from "./turn-log";
+import { buildInjectedArtifacts, readClaudeMdSnapshot } from "./injected-artifacts";
 
 // Prefs file for Codex (separate from Claude)
 const CODEX_PREFS_FILE = `/tmp/codex-telegram-${TOKEN_PREFIX}-prefs.json`;
@@ -870,8 +873,26 @@ export class CodexSession {
     statusCallback?: StatusCallback,
     model?: string,
     reasoningEffort?: CodexEffortLevel,
-    mcpCompletionCallback?: McpCompletionCallback
+    mcpCompletionCallback?: McpCompletionCallback,
+    source: DriverRunSource = "text",
+    userId = 0,
+    username = "unknown",
+    chatId = 0
   ): Promise<string> {
+    const turnStartedAt = new Date();
+    const sessionIdAtStart = this.threadId;
+    const turnModel = model || this._model;
+    const turnEffort = reasoningEffort || this._reasoningEffort;
+    const claudeMdSnapshot = readClaudeMdSnapshot(WORKING_DIR);
+    const claudeMdLoaded = claudeMdSnapshot.loaded;
+    let messageToSend = userMessage;
+    let datePrefixApplied = false;
+    let metaPromptAppliedThisTurn = false;
+    let turnStatus: TurnLogStatus = "completed";
+    let turnError: string | null = null;
+    let turnResponse: string | null = null;
+    let turnUsage: CodexUsage | null = null;
+
     try {
       // Acquire processing lock immediately to prevent TOCTOU races.
       if (this._isProcessing || this.isQueryRunning) {
@@ -894,7 +915,6 @@ export class CodexSession {
       this.pushRecentMessage("user", userMessage);
 
       // Prepend system prompt and date/time prefix to first message in a new thread.
-      let messageToSend = userMessage;
       if (!this.systemPromptPrepended) {
         const now = new Date();
         const datePrefix = `[Current date/time: ${now.toLocaleDateString(
@@ -910,12 +930,14 @@ export class CodexSession {
           }
         )}]\n\n`;
         messageToSend = `${datePrefix}${userMessage}`;
+        datePrefixApplied = true;
         if (META_PROMPT) {
           messageToSend = `<system-instructions>
 ${META_PROMPT}
 </system-instructions>
 
 ${messageToSend}`;
+          metaPromptAppliedThisTurn = true;
         }
         this.systemPromptPrepended = true;
       }
@@ -1135,6 +1157,7 @@ ${messageToSend}`;
           event.usage
         ) {
           this.lastUsage = event.usage;
+          turnUsage = event.usage;
           codexLog.info(
             `Codex usage: in=${event.usage.input_tokens} out=${event.usage.output_tokens}`
           );
@@ -1180,8 +1203,8 @@ ${messageToSend}`;
       // Detect empty response (in=0 out=0) — typically means the resumed thread
       // is stale or expired. Throw so the caller can retry with a fresh session.
       const combinedResponse = getCombinedResponse().trim();
-      if (!combinedResponse && this.lastUsage) {
-        const u = this.lastUsage;
+      if (!combinedResponse && turnUsage) {
+        const u = turnUsage;
         if (u.input_tokens === 0 && u.output_tokens === 0) {
           codexLog.warn(
             "Empty Codex response detected (in=0 out=0) — thread likely stale, clearing for retry"
@@ -1210,25 +1233,78 @@ ${messageToSend}`;
       // Save session for resumption later (after updating rolling buffer).
       const title = userMessage.length > 50 ? userMessage.slice(0, 47) + "..." : userMessage;
       this.saveSession(title);
-      return combinedResponse || "No response from Codex.";
+      turnResponse = combinedResponse || "No response from Codex.";
+      return turnResponse;
     } catch (error) {
       const errorMessage = getErrorMessage(error);
+      turnError = errorMessage.slice(0, 4000);
       const errorLower = errorMessage.toLowerCase();
       const isCancellation =
         errorLower.includes("abort") || errorLower.includes("cancel");
 
       if (isCancellation && this.stopRequested) {
         codexLog.warn(`Suppressed Codex cancellation after stop request: ${errorMessage}`);
+        turnStatus = "cancelled";
       } else {
         codexLog.error({ err: error }, "Error sending message to Codex");
         this.lastError = errorMessage.slice(0, 100);
         this.lastErrorTime = new Date();
+        turnStatus = isCancellation ? "cancelled" : "error";
       }
       throw error;
     } finally {
       this.isQueryRunning = false;
       this._isProcessing = false;
       this.queryStarted = null;
+
+      const completedAt = new Date();
+      const usage: TurnLogUsage | null = turnUsage
+        ? {
+            inputTokens: turnUsage.input_tokens,
+            outputTokens: turnUsage.output_tokens,
+            cacheReadInputTokens: turnUsage.cached_input_tokens,
+          }
+        : null;
+
+      appendTurnLogEntry({
+        driver: "codex",
+        source,
+        sessionId: this.threadId || sessionIdAtStart,
+        userId,
+        username,
+        chatId,
+        model: turnModel,
+        effort: turnEffort,
+        originalMessage: userMessage,
+        effectivePrompt: messageToSend,
+        injectedArtifacts: buildInjectedArtifacts({
+          source,
+          effectivePrompt: messageToSend,
+          originalMessage: userMessage,
+          datePrefixApplied,
+          metaPromptApplied: metaPromptAppliedThisTurn,
+          claudeMdLoaded,
+          claudeMdText: claudeMdSnapshot.text,
+          metaPromptText: META_PROMPT,
+        }),
+        injections: {
+          datePrefixApplied,
+          metaPromptApplied: metaPromptAppliedThisTurn,
+          cronScheduledPromptApplied: source === "cron_scheduled",
+          backgroundSnapshotPromptApplied: source === "background_snapshot",
+        },
+        context: {
+          claudeMdLoaded,
+          metaSharedLoaded: META_PROMPT.length > 0,
+        },
+        startedAt: turnStartedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+        elapsedMs: Math.max(0, completedAt.getTime() - turnStartedAt.getTime()),
+        status: turnStatus,
+        response: turnResponse,
+        error: turnError,
+        usage,
+      });
     }
   }
 

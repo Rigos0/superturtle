@@ -9,8 +9,11 @@ import { getCurrentDriver } from "../drivers/registry";
 import { isAuthorized, rateLimiter } from "../security";
 import {
   auditLog,
+  auditLogAuth,
+  auditLogError,
   auditLogRateLimit,
   checkInterrupt,
+  generateRequestId,
   isStopIntent,
   startTypingIndicator,
 } from "../utils";
@@ -25,7 +28,7 @@ import {
   StreamingState,
   createSilentStatusCallback,
   createStatusCallback,
-  isAskUserPromptMessage,
+  teardownStreamingState,
 } from "./streaming";
 import { eventLog, streamLog } from "../logger";
 import {
@@ -90,6 +93,7 @@ export async function handleText(
   const userId = ctx.from?.id;
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
+  const requestId = generateRequestId("text");
   let message = ctx.message?.text;
 
   if (!userId || !message || !chatId) {
@@ -98,6 +102,11 @@ export async function handleText(
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: requestId,
+      source: "text",
+      chat_id: chatId,
+    });
     if (!silent) {
       await ctx.reply("Unauthorized. Contact the bot owner for access.");
     }
@@ -105,6 +114,7 @@ export async function handleText(
   }
   eventLog.info({
     event: "user.message.text",
+    requestId,
     userId,
     username,
     chatId,
@@ -134,7 +144,11 @@ export async function handleText(
   // 3. Rate limit check
   const [allowed, retryAfter] = rateLimiter.check(userId);
   if (!allowed) {
-    await auditLogRateLimit(userId, username, retryAfter!);
+    await auditLogRateLimit(userId, username, retryAfter!, {
+      request_id: requestId,
+      source: "text",
+      chat_id: chatId,
+    });
     if (!silent) {
       await ctx.reply(
         `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
@@ -196,6 +210,7 @@ export async function handleText(
       try {
         const response = await driver.runMessage({
           message,
+          source: "text",
           username,
           userId,
           chatId,
@@ -203,19 +218,20 @@ export async function handleText(
           statusCallback,
         });
 
-        await auditLog(userId, username, driver.auditEvent, message, response);
+        await auditLog(userId, username, driver.auditEvent, message, response, {
+          request_id: requestId,
+          chat_id: chatId,
+          driver: driver.id,
+          attempt: attempt + 1,
+        });
         break;
       } catch (error) {
         const errorSummary = summarizeErrorMessage(error);
-        // Clean up any partial messages from this attempt
-        for (const toolMsg of state.toolMessages) {
-          if (isAskUserPromptMessage(toolMsg)) continue;
-          try {
-            await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
-          } catch {
-            // Ignore cleanup errors
-          }
-        }
+        // Clean up all streaming artifacts from this attempt before retry/final exit.
+        await teardownStreamingState(ctx, state, {
+          chatId,
+          clearRegisteredState: true,
+        });
 
         // Empty response from stale session — session was already cleared,
         // so retry will start a fresh session transparently.
@@ -338,6 +354,7 @@ export async function handleText(
           {
             err: error,
             errorSummary,
+            requestId,
             userId,
             username,
             chatId,
@@ -352,6 +369,18 @@ export async function handleText(
             await ctx.reply("🛑 Query stopped.");
           }
         } else if (!silent) {
+          await auditLogError(
+            userId,
+            username,
+            errorSummary,
+            "handleText",
+            {
+              request_id: requestId,
+              chat_id: chatId,
+              driver: driver.id,
+              attempt: attempt + 1,
+            }
+          );
           await ctx.reply(`❌ Error: ${errorSummary.slice(0, 200)}`);
         }
         break;

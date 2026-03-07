@@ -11,6 +11,7 @@ export class ClaudeDriver implements ChatDriver {
     const startedAt = Date.now();
     const logContext = {
       driver: this.id,
+      source: input.source,
       userId: input.userId,
       username: input.username,
       chatId: input.chatId,
@@ -26,7 +27,8 @@ export class ClaudeDriver implements ChatDriver {
         input.userId,
         input.statusCallback,
         input.chatId,
-        input.ctx
+        input.ctx,
+        input.source
       );
       claudeLog.info(
         { ...logContext, elapsed: Date.now() - startedAt, sessionId: session.sessionId },

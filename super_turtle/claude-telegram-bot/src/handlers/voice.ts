@@ -9,7 +9,10 @@ import { ALLOWED_USERS, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import {
   auditLog,
+  auditLogAuth,
+  auditLogError,
   auditLogRateLimit,
+  generateRequestId,
   isStopIntent,
   transcribeVoice,
   startTypingIndicator,
@@ -41,6 +44,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
+  const requestId = generateRequestId("voice");
   const voice = ctx.message?.voice;
 
   if (!userId || !voice || !chatId) {
@@ -49,6 +53,11 @@ export async function handleVoice(ctx: Context): Promise<void> {
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: requestId,
+      source: "voice",
+      chat_id: chatId,
+    });
     await ctx.reply("Unauthorized. Contact the bot owner for access.");
     return;
   }
@@ -64,7 +73,11 @@ export async function handleVoice(ctx: Context): Promise<void> {
   // 3. Rate limit check
   const [allowed, retryAfter] = rateLimiter.check(userId);
   if (!allowed) {
-    await auditLogRateLimit(userId, username, retryAfter!);
+    await auditLogRateLimit(userId, username, retryAfter!, {
+      request_id: requestId,
+      source: "voice",
+      chat_id: chatId,
+    });
     await ctx.reply(
       `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
     );
@@ -107,6 +120,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
     }
     eventLog.info({
       event: "user.message.voice",
+      requestId,
       userId,
       username,
       chatId,
@@ -178,6 +192,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
     // 13. Send to active driver
     const response = await runMessageWithActiveDriver({
       message: transcript,
+      source: "voice",
       username,
       userId,
       chatId,
@@ -186,9 +201,22 @@ export async function handleVoice(ctx: Context): Promise<void> {
     });
 
     // 14. Audit log
-    await auditLog(userId, username, getDriverAuditType("VOICE"), transcript, response);
+    await auditLog(userId, username, getDriverAuditType("VOICE"), transcript, response, {
+      request_id: requestId,
+      chat_id: chatId,
+    });
   } catch (error) {
     voiceLog.error({ err: error, userId, username, chatId }, "Voice processing failed");
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "handleVoice",
+      {
+        request_id: requestId,
+        chat_id: chatId,
+      }
+    );
 
     if (String(error).includes("abort") || String(error).includes("cancel")) {
       // Only show "Query stopped" if it was an explicit stop, not an interrupt from a new message

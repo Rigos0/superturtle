@@ -8,6 +8,8 @@
  *   superturtle start   — launch the bot (requires Bun + tmux)
  *   superturtle stop    — stop bot + all SubTurtles
  *   superturtle status  — show bot and SubTurtle status
+ *   superturtle doctor  — full process + log observability snapshot
+ *   superturtle logs    — tail loop/pino/audit logs
  */
 
 const { execSync, spawnSync } = require("child_process");
@@ -61,6 +63,145 @@ function deriveTmuxSessionName(cwd, env) {
 
 function resolveTmuxSession(cwd, env) {
   return process.env.SUPERTURTLE_TMUX_SESSION || deriveTmuxSessionName(cwd, env);
+}
+
+function deriveTokenPrefix(env) {
+  const token = env.TELEGRAM_BOT_TOKEN || "";
+  return sanitizeName(token.split(":")[0], "default");
+}
+
+function getLogPaths(cwd, env) {
+  const tokenPrefix = deriveTokenPrefix(env);
+  return {
+    tokenPrefix,
+    loop: env.SUPERTURTLE_LOOP_LOG_PATH || `/tmp/claude-telegram-${tokenPrefix}-bot-ts.log`,
+    pino: env.SUPERTURTLE_PINO_LOG_PATH || `/tmp/claude-telegram-${tokenPrefix}-bot.log.jsonl`,
+    audit: env.AUDIT_LOG_PATH || `/tmp/claude-telegram-${tokenPrefix}-audit.log`,
+    cronJobs: resolve(cwd, ".superturtle", "cron-jobs.json"),
+  };
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / (1024 ** 2)).toFixed(1)} MB`;
+  return `${(bytes / (1024 ** 3)).toFixed(1)} GB`;
+}
+
+function describeFile(path) {
+  try {
+    const stats = fs.statSync(path);
+    return {
+      exists: true,
+      size: stats.size,
+      mtimeIso: stats.mtime.toISOString(),
+    };
+  } catch {
+    return {
+      exists: false,
+      size: 0,
+      mtimeIso: "",
+    };
+  }
+}
+
+function readCronSummary(cronJobsPath) {
+  if (!fs.existsSync(cronJobsPath)) {
+    return { exists: false, total: 0, overdue: 0, dueSoon: 0, parseError: null };
+  }
+
+  try {
+    const raw = fs.readFileSync(cronJobsPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    const jobs = Array.isArray(parsed) ? parsed : [];
+    const now = Date.now();
+    const inFiveMinutes = now + 5 * 60 * 1000;
+    let overdue = 0;
+    let dueSoon = 0;
+
+    for (const job of jobs) {
+      const fireAt = Number(job?.fire_at);
+      if (!Number.isFinite(fireAt)) continue;
+      if (fireAt < now) overdue += 1;
+      if (fireAt >= now && fireAt <= inFiveMinutes) dueSoon += 1;
+    }
+
+    return {
+      exists: true,
+      total: jobs.length,
+      overdue,
+      dueSoon,
+      parseError: null,
+    };
+  } catch (error) {
+    return {
+      exists: true,
+      total: 0,
+      overdue: 0,
+      dueSoon: 0,
+      parseError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function printLogSummary(label, path) {
+  const info = describeFile(path);
+  if (!info.exists) {
+    console.log(`${label}: missing`);
+    console.log(`  ${path}`);
+    return;
+  }
+  console.log(`${label}: ${formatBytes(info.size)}, updated ${info.mtimeIso}`);
+  console.log(`  ${path}`);
+}
+
+function printLoopLogErrorHints(loopPath) {
+  if (!fs.existsSync(loopPath)) return;
+  const tail = spawnSync("tail", ["-n", "120", loopPath], { stdio: "pipe" });
+  if (tail.status !== 0) return;
+  const lines = tail.stdout
+    .toString()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const hints = [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/error|fail|crash|panic|exit code|sigterm|sigkill|exception/i.test(lines[i])) {
+      hints.unshift(lines[i]);
+      if (hints.length >= 5) break;
+    }
+  }
+  if (hints.length === 0) return;
+  console.log("\nRecent loop failure hints:");
+  for (const hint of hints) {
+    const preview = hint.length > 180 ? `${hint.slice(0, 177)}...` : hint;
+    console.log(`  - ${preview}`);
+  }
+}
+
+function printSubturtleList(ctlPath, cwd) {
+  if (!fs.existsSync(ctlPath)) {
+    console.log("SubTurtles: ctl missing");
+    return;
+  }
+  const proc = spawnSync(ctlPath, ["list"], {
+    cwd,
+    env: { ...process.env, SUPER_TURTLE_PROJECT_DIR: cwd },
+    stdio: "pipe",
+  });
+  if (proc.status !== 0) {
+    const stderr = proc.stderr?.toString().trim();
+    console.log(`SubTurtles: failed to read list${stderr ? ` (${stderr})` : ""}`);
+    return;
+  }
+  const output = proc.stdout?.toString().trim();
+  if (!output) {
+    console.log("SubTurtles: none");
+    return;
+  }
+  console.log("SubTurtles:");
+  console.log(output);
 }
 
 function exitFromSpawn(result, context) {
@@ -358,6 +499,7 @@ function start() {
     CLAUDE_WORKING_DIR: cwd,
   };
   const tmuxSession = resolveTmuxSession(cwd, env);
+  const logPaths = getLogPaths(cwd, env);
 
   // Check if tmux session already exists
   const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
@@ -369,15 +511,14 @@ function start() {
   }
 
   // Start bot in a new tmux session
-  let bunPath;
-  try {
-    bunPath = execSync("which bun", { encoding: "utf-8" }).trim();
-  } catch (err) {
-    console.error("Error: unable to locate Bun on PATH.");
-    if (err?.message) console.error(err.message);
-    process.exit(1);
-  }
-  const cmd = `cd "${BOT_DIR}" && "${bunPath}" run src/index.ts`;
+  const cmd =
+    `cd "${BOT_DIR}"` +
+    ` && export CLAUDE_WORKING_DIR="${cwd}"` +
+    ` && export SUPER_TURTLE_DIR="${PACKAGE_ROOT}"` +
+    ` && export SUPERTURTLE_RUN_LOOP=1` +
+    ` && export SUPERTURTLE_LOOP_LOG_PATH="${logPaths.loop}"` +
+    ` && export SUPERTURTLE_TMUX_SESSION="${tmuxSession}"` +
+    ` && ./run-loop.sh 2>&1 | tee -a "${logPaths.loop}"`;
 
   console.log("Starting Super Turtle bot...");
 
@@ -412,8 +553,27 @@ function start() {
   ], { stdio: "pipe" });
   exitFromSpawn(startProc, "tmux new-session");
 
+  // Give tmux a moment; if the command crashes immediately, surface that now.
+  spawnSync("sleep", ["0.3"], { stdio: "pipe" });
+  const aliveCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
+  if (aliveCheck.status !== 0) {
+    console.error(`Bot session '${tmuxSession}' exited immediately.`);
+    if (fs.existsSync(logPaths.loop)) {
+      console.error(`Last log lines from ${logPaths.loop}:`);
+      const tail = spawnSync("tail", ["-n", "40", logPaths.loop], { stdio: "pipe" });
+      const out = tail.stdout?.toString().trim();
+      if (out) {
+        console.error(out);
+      }
+    } else {
+      console.error(`No loop log found at ${logPaths.loop}`);
+    }
+    process.exit(1);
+  }
+
   console.log(`Bot started in tmux session '${tmuxSession}'.`);
   console.log(`Attach: tmux attach -t ${tmuxSession}`);
+  console.log(`Loop log: ${logPaths.loop}`);
   console.log("Now message your bot in Telegram!");
 }
 
@@ -449,31 +609,187 @@ function stop() {
 function status() {
   const cwd = process.cwd();
   const projectEnv = loadProjectEnv(cwd) || {};
-  const tmuxSession = resolveTmuxSession(cwd, { ...process.env, ...projectEnv });
+  const env = { ...process.env, ...projectEnv };
+  const tmuxSession = resolveTmuxSession(cwd, env);
+  const logPaths = getLogPaths(cwd, env);
 
   // Check tmux session
   const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
   if (tmuxCheck.status === 0) {
-    console.log("Bot: running");
+    console.log(`Bot: running (${tmuxSession})`);
   } else {
-    console.log("Bot: stopped");
+    console.log(`Bot: stopped (${tmuxSession})`);
   }
 
   // Check SubTurtles
   const ctlPath = resolve(PACKAGE_ROOT, "subturtle", "ctl");
-  if (fs.existsSync(ctlPath)) {
-    const proc = spawnSync(ctlPath, ["list"], {
-      cwd: process.cwd(),
-      env: { ...process.env, SUPER_TURTLE_PROJECT_DIR: process.cwd() },
-      stdio: "pipe",
-    });
-    exitFromSpawn(proc, "subturtle ctl list");
-    const output = proc.stdout?.toString().trim();
-    if (output) {
-      console.log("\nSubTurtles:");
-      console.log(output);
-    }
+  printSubturtleList(ctlPath, cwd);
+
+  const cronSummary = readCronSummary(logPaths.cronJobs);
+  console.log("\nCron:");
+  if (!cronSummary.exists) {
+    console.log(`  missing (${logPaths.cronJobs})`);
+  } else if (cronSummary.parseError) {
+    console.log(`  parse error: ${cronSummary.parseError}`);
+    console.log(`  file: ${logPaths.cronJobs}`);
+  } else {
+    console.log(`  total=${cronSummary.total} due_soon_5m=${cronSummary.dueSoon} overdue=${cronSummary.overdue}`);
+    console.log(`  file: ${logPaths.cronJobs}`);
   }
+
+  console.log("\nLogs:");
+  printLogSummary("  loop", logPaths.loop);
+  printLogSummary("  pino", logPaths.pino);
+  printLogSummary("  audit", logPaths.audit);
+}
+
+function doctor() {
+  checkTmux();
+  const cwd = process.cwd();
+  const projectEnv = loadProjectEnv(cwd) || {};
+  const env = { ...process.env, ...projectEnv };
+  const tmuxSession = resolveTmuxSession(cwd, env);
+  const logPaths = getLogPaths(cwd, env);
+  const ctlPath = resolve(PACKAGE_ROOT, "subturtle", "ctl");
+
+  console.log(`Project: ${cwd}`);
+  console.log(`Token prefix: ${logPaths.tokenPrefix}`);
+  console.log(`Session: ${tmuxSession}`);
+
+  const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
+  if (tmuxCheck.status === 0) {
+    console.log("Bot process: running");
+    const details = spawnSync(
+      "tmux",
+      ["display-message", "-p", "-t", tmuxSession, "#{session_name} windows=#{session_windows} attached=#{session_attached}"],
+      { stdio: "pipe" }
+    );
+    const infoLine = details.stdout?.toString().trim();
+    if (infoLine) console.log(`  ${infoLine}`);
+  } else {
+    console.log("Bot process: stopped");
+  }
+
+  console.log("");
+  printSubturtleList(ctlPath, cwd);
+
+  const cronSummary = readCronSummary(logPaths.cronJobs);
+  console.log("\nCron jobs:");
+  if (!cronSummary.exists) {
+    console.log(`  missing (${logPaths.cronJobs})`);
+  } else if (cronSummary.parseError) {
+    console.log(`  parse error: ${cronSummary.parseError}`);
+    console.log(`  file: ${logPaths.cronJobs}`);
+  } else {
+    console.log(`  total=${cronSummary.total} due_soon_5m=${cronSummary.dueSoon} overdue=${cronSummary.overdue}`);
+    console.log(`  file: ${logPaths.cronJobs}`);
+  }
+
+  console.log("\nLogs:");
+  printLogSummary("  loop", logPaths.loop);
+  printLogSummary("  pino", logPaths.pino);
+  printLogSummary("  audit", logPaths.audit);
+  printLoopLogErrorHints(logPaths.loop);
+
+  console.log("\nQuick commands:");
+  console.log(`  superturtle logs loop`);
+  console.log(`  superturtle logs pino --pretty`);
+  console.log(`  superturtle logs audit`);
+  console.log(`  tmux attach -t ${tmuxSession}`);
+}
+
+function parseLogsArgs(args) {
+  const opts = {
+    target: "loop",
+    follow: true,
+    lines: 100,
+    pretty: false,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "loop" || arg === "pino" || arg === "audit") {
+      opts.target = arg;
+      continue;
+    }
+    if (arg === "--follow") {
+      opts.follow = true;
+      continue;
+    }
+    if (arg === "--no-follow") {
+      opts.follow = false;
+      continue;
+    }
+    if (arg === "--pretty") {
+      opts.pretty = true;
+      continue;
+    }
+    if (arg === "--lines" || arg === "-n") {
+      const next = args[i + 1];
+      if (!next || !/^\d+$/.test(next)) {
+        throw new Error(`Invalid value for ${arg}. Expected a positive integer.`);
+      }
+      opts.lines = Math.max(1, Number.parseInt(next, 10));
+      i += 1;
+      continue;
+    }
+    throw new Error(`Unknown logs argument: ${arg}`);
+  }
+
+  return opts;
+}
+
+function logs() {
+  const cwd = process.cwd();
+  const projectEnv = loadProjectEnv(cwd) || {};
+  const env = { ...process.env, ...projectEnv };
+  const logPaths = getLogPaths(cwd, env);
+  const args = process.argv.slice(3);
+  let opts;
+  try {
+    opts = parseLogsArgs(args);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error("Usage: superturtle logs [loop|pino|audit] [--pretty] [--lines N] [--follow|--no-follow]");
+    process.exit(1);
+  }
+
+  const path = logPaths[opts.target];
+  if (!fs.existsSync(path) && opts.follow) {
+    fs.mkdirSync(dirname(path), { recursive: true });
+    fs.closeSync(fs.openSync(path, "a"));
+  }
+  if (!fs.existsSync(path)) {
+    console.error(`Log file not found: ${path}`);
+    process.exit(1);
+  }
+
+  if (opts.pretty && opts.target !== "pino") {
+    console.error("--pretty is only supported for pino logs.");
+    process.exit(1);
+  }
+
+  if (opts.pretty) {
+    const followFlag = opts.follow ? "-F" : "";
+    const cmd = `tail -n ${opts.lines} ${followFlag} "${path}" | npx --yes pino-pretty -c`;
+    const proc = spawnSync("bash", ["-lc", cmd], {
+      cwd: BOT_DIR,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        FORCE_COLOR: process.env.FORCE_COLOR || "1",
+        NO_COLOR: "",
+      },
+    });
+    exitFromSpawn(proc, "pretty log tail");
+    return;
+  }
+
+  const tailArgs = ["-n", String(opts.lines)];
+  if (opts.follow) tailArgs.push("-F");
+  tailArgs.push(path);
+  const proc = spawnSync("tail", tailArgs, { stdio: "inherit" });
+  exitFromSpawn(proc, "tail");
 }
 
 // Dispatch command
@@ -491,6 +807,12 @@ switch (command) {
     break;
   case "status":
     status();
+    break;
+  case "doctor":
+    doctor();
+    break;
+  case "logs":
+    logs();
     break;
   case "--version":
   case "-v":
@@ -511,6 +833,8 @@ Commands:
   start     Launch the bot
   stop      Stop the bot and all SubTurtles
   status    Show bot and SubTurtle status
+  doctor    Full process + log observability snapshot
+  logs      Tail logs (loop|pino|audit)
 
 Init flags (for non-interactive / agent use):
   --token <token>       Telegram bot token
@@ -518,7 +842,12 @@ Init flags (for non-interactive / agent use):
   --openai-key <key>    OpenAI API key (optional)
 
 Options:
-  -v, --version  Show version`);
+  -v, --version  Show version
+
+Logs:
+  superturtle logs loop
+  superturtle logs pino --pretty
+  superturtle logs audit --no-follow -n 200`);
     if (command && command !== "help" && command !== "--help" && command !== "-h") {
       process.exit(1);
     }

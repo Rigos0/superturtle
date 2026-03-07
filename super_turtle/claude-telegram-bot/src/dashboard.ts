@@ -9,7 +9,9 @@ import { codexSession } from "./codex-session";
 import { getPreparedSnapshotCount } from "./cron-supervision-queue";
 import { isBackgroundRunActive, wasBackgroundRunPreempted } from "./handlers/driver-routing";
 import { logger } from "./logger";
-import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse, QueueResponse } from "./dashboard-types";
+import { readTurnLogEntries } from "./turn-log";
+import type { RecentMessage, SavedSession } from "./types";
+import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, SessionDriver, SessionListItem, SessionListResponse, SessionMessageView, SessionMetaView, SessionDetailResponse, SessionTurnView, SessionTurnsResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse, QueueResponse } from "./dashboard-types";
 
 const dashboardLog = logger.child({ module: "dashboard" });
 
@@ -158,6 +160,19 @@ function renderJsonPre(value: unknown): string {
   return `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
 }
 
+function formatTimestamp(value?: string | null): string {
+  if (!value) return "n/a";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1);
+  const day = String(parsed.getDate());
+  const hour = String(parsed.getHours()).padStart(2, "0");
+  const minute = String(parsed.getMinutes()).padStart(2, "0");
+  const second = String(parsed.getSeconds()).padStart(2, "0");
+  return `${day}.${month}.${year} ${hour}:${minute}:${second}`;
+}
+
 export function computeProgressPct(done: number, total: number): number {
   if (total <= 0) return 0;
   const pct = Math.round((done / total) * 100);
@@ -243,6 +258,296 @@ function buildCronJobView(job: ReturnType<typeof getJobs>[number]): CronJobView 
     chatId: job.chat_id || 0,
     silent: job.silent || false,
     createdAt: job.created_at,
+  };
+}
+
+type SessionSnapshot = {
+  row: SessionListItem;
+  messages: SessionMessageView[];
+  meta: SessionMetaView;
+};
+
+const SESSION_STATUS_ORDER: Record<SessionListItem["status"], number> = {
+  "active-running": 0,
+  "active-idle": 1,
+  saved: 2,
+};
+
+function buildSessionKey(driver: SessionDriver, sessionId: string): string {
+  return `${driver}:${sessionId}`;
+}
+
+function validateSessionId(sessionId: string): boolean {
+  if (!sessionId || sessionId.length > 256) return false;
+  if (sessionId.includes("/") || sessionId.includes("\\")) return false;
+  return true;
+}
+
+function mapRecentMessages(recentMessages?: RecentMessage[], preview?: string): SessionMessageView[] {
+  if (recentMessages && recentMessages.length > 0) {
+    return recentMessages.map((msg) => ({
+      role: msg.role,
+      text: msg.text,
+      timestamp: msg.timestamp,
+      charCount: msg.text.length,
+    }));
+  }
+
+  if (!preview) return [];
+  const lines = preview
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 2);
+
+  const synthetic: SessionMessageView[] = [];
+  for (const line of lines) {
+    if (line.startsWith("You: ")) {
+      const text = line.slice(5).trim();
+      synthetic.push({
+        role: "user",
+        text,
+        timestamp: "",
+        charCount: text.length,
+      });
+    } else if (line.startsWith("Assistant: ")) {
+      const text = line.slice(11).trim();
+      synthetic.push({
+        role: "assistant",
+        text,
+        timestamp: "",
+        charCount: text.length,
+      });
+    }
+  }
+  return synthetic;
+}
+
+function buildMessagePreview(messages: SessionMessageView[], fallback?: string | null): string | null {
+  if (messages.length === 0) return fallback || null;
+  const first = messages[0]!;
+  const second = messages[1];
+  const left = `${first.role === "user" ? "You" : "Assistant"}: ${first.text}`;
+  const right = second
+    ? `\n${second.role === "user" ? "You" : "Assistant"}: ${second.text}`
+    : "";
+  const combined = `${left}${right}`;
+  return combined.length > 280 ? `${combined.slice(0, 277)}...` : combined;
+}
+
+function defaultSessionMeta(driver: SessionDriver): SessionMetaView {
+  if (driver === "claude") {
+    return {
+      model: session.model,
+      effort: session.effort,
+      isRunning: false,
+      queryStarted: null,
+      lastUsage: null,
+      lastError: null,
+      lastErrorTime: null,
+      currentTool: null,
+      lastTool: null,
+    };
+  }
+  return {
+    model: codexSession.model,
+    effort: codexSession.reasoningEffort,
+    isRunning: false,
+    queryStarted: null,
+    lastUsage: null,
+    lastError: null,
+    lastErrorTime: null,
+    currentTool: null,
+    lastTool: null,
+  };
+}
+
+function upsertSavedSession(
+  snapshots: Map<string, SessionSnapshot>,
+  driver: SessionDriver,
+  saved: SavedSession
+): void {
+  if (!validateSessionId(saved.session_id)) return;
+
+  const messages = mapRecentMessages(saved.recentMessages, saved.preview);
+  const key = buildSessionKey(driver, saved.session_id);
+  snapshots.set(key, {
+    row: {
+      id: key,
+      driver,
+      sessionId: saved.session_id,
+      title: saved.title || `${driver} session`,
+      savedAt: saved.saved_at || null,
+      lastActivity: null,
+      status: "saved",
+      messageCount: messages.length,
+      workingDir: saved.working_dir || null,
+      preview: buildMessagePreview(messages, saved.preview || null),
+    },
+    messages,
+    meta: defaultSessionMeta(driver),
+  });
+}
+
+function sortSessionRows(rows: SessionListItem[]): SessionListItem[] {
+  return [...rows].sort((a, b) => {
+    const rankDiff = SESSION_STATUS_ORDER[a.status] - SESSION_STATUS_ORDER[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    const left = Date.parse(a.lastActivity || a.savedAt || "") || 0;
+    const right = Date.parse(b.lastActivity || b.savedAt || "") || 0;
+    if (left !== right) return right - left;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function buildSessionSnapshots(): Map<string, SessionSnapshot> {
+  const snapshots = new Map<string, SessionSnapshot>();
+
+  for (const saved of session.getSessionList()) {
+    upsertSavedSession(snapshots, "claude", saved);
+  }
+  for (const saved of codexSession.getSessionList()) {
+    upsertSavedSession(snapshots, "codex", saved);
+  }
+
+  const claudeSessionId = session.sessionId;
+  if (claudeSessionId && validateSessionId(claudeSessionId)) {
+    const key = buildSessionKey("claude", claudeSessionId);
+    const existing = snapshots.get(key);
+    const messages = mapRecentMessages(
+      session.recentMessages,
+      existing?.row.preview || undefined
+    );
+    snapshots.set(key, {
+      row: {
+        id: key,
+        driver: "claude",
+        sessionId: claudeSessionId,
+        title: session.conversationTitle || existing?.row.title || "Active Claude session",
+        savedAt: existing?.row.savedAt || null,
+        lastActivity: session.lastActivity?.toISOString() || existing?.row.lastActivity || null,
+        status: session.isRunning ? "active-running" : "active-idle",
+        messageCount: messages.length,
+        workingDir: WORKING_DIR,
+        preview: buildMessagePreview(messages, existing?.row.preview || null),
+      },
+      messages,
+      meta: {
+        model: session.model,
+        effort: session.effort,
+        isRunning: session.isRunning,
+        queryStarted: session.queryStarted?.toISOString() || null,
+        lastUsage: session.lastUsage as Record<string, unknown> | null,
+        lastError: session.lastError,
+        lastErrorTime: session.lastErrorTime?.toISOString() || null,
+        currentTool: session.currentTool,
+        lastTool: session.lastTool,
+      },
+    });
+  }
+
+  const codexSessionId = codexSession.getThreadId();
+  if (codexSessionId && validateSessionId(codexSessionId)) {
+    const key = buildSessionKey("codex", codexSessionId);
+    const existing = snapshots.get(key);
+    const messages = mapRecentMessages(
+      codexSession.recentMessages,
+      existing?.row.preview || undefined
+    );
+    snapshots.set(key, {
+      row: {
+        id: key,
+        driver: "codex",
+        sessionId: codexSessionId,
+        title: existing?.row.title || "Active Codex session",
+        savedAt: existing?.row.savedAt || null,
+        lastActivity: codexSession.lastActivity?.toISOString() || existing?.row.lastActivity || null,
+        status: codexSession.isRunning ? "active-running" : "active-idle",
+        messageCount: messages.length,
+        workingDir: WORKING_DIR,
+        preview: buildMessagePreview(messages, existing?.row.preview || null),
+      },
+      messages,
+      meta: {
+        model: codexSession.model,
+        effort: codexSession.reasoningEffort,
+        isRunning: codexSession.isRunning,
+        queryStarted: codexSession.runningSince?.toISOString() || null,
+        lastUsage: codexSession.lastUsage as Record<string, unknown> | null,
+        lastError: codexSession.lastError,
+        lastErrorTime: codexSession.lastErrorTime?.toISOString() || null,
+        currentTool: null,
+        lastTool: null,
+      },
+    });
+  }
+
+  return snapshots;
+}
+
+function buildSessionListResponse(): SessionListResponse {
+  const snapshots = buildSessionSnapshots();
+  const sessions = sortSessionRows(Array.from(snapshots.values()).map((snapshot) => snapshot.row));
+  return {
+    generatedAt: new Date().toISOString(),
+    sessions,
+  };
+}
+
+function buildSessionDetail(driver: SessionDriver, sessionId: string): SessionDetailResponse | null {
+  if (!validateSessionId(sessionId)) return null;
+  const key = buildSessionKey(driver, sessionId);
+  const snapshot = buildSessionSnapshots().get(key);
+  if (!snapshot) return null;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    session: snapshot.row,
+    messages: snapshot.messages,
+    meta: snapshot.meta,
+  };
+}
+
+function buildSessionTurns(
+  driver: SessionDriver,
+  sessionId: string,
+  limit = 200
+): SessionTurnsResponse | null {
+  const detail = buildSessionDetail(driver, sessionId);
+  if (!detail) return null;
+
+  const turns: SessionTurnView[] = readTurnLogEntries({
+    driver,
+    sessionId,
+    limit,
+  }).map((entry) => ({
+    id: entry.id,
+    driver: entry.driver,
+    source: entry.source,
+    sessionId: entry.sessionId,
+    userId: entry.userId,
+    username: entry.username,
+    chatId: entry.chatId,
+    model: entry.model,
+    effort: entry.effort,
+    originalMessage: entry.originalMessage,
+    effectivePrompt: entry.effectivePrompt,
+    injectedArtifacts: entry.injectedArtifacts || [],
+    response: entry.response,
+    error: entry.error,
+    status: entry.status,
+    startedAt: entry.startedAt,
+    completedAt: entry.completedAt,
+    elapsedMs: entry.elapsedMs,
+    usage: entry.usage as Record<string, unknown> | null,
+    injections: entry.injections,
+    context: entry.context,
+  }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    session: detail.session,
+    turns,
   };
 }
 
@@ -388,78 +693,329 @@ function renderDashboardHtml(): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Super Turtle Dashboard</title>
+    <style>
+      html, body { height: 100%; }
+      :root {
+        color-scheme: light;
+        --bg: #f4f6fb;
+        --panel: #ffffff;
+        --line: #d9e1ef;
+        --text: #1f2430;
+        --muted: #5f697d;
+        --chip: #eef3ff;
+        --chip-line: #cfdbf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        line-height: 1.45;
+        overflow: hidden;
+      }
+      .page {
+        max-width: 1400px;
+        margin: 0 auto;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      h1 {
+        margin: 0;
+      }
+      h2 {
+        margin: 0;
+        font-size: 17px;
+      }
+      .panel-head {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-bottom: 8px;
+      }
+      .panel-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      a {
+        color: #1e5cc8;
+        text-decoration: none;
+      }
+      a:hover { text-decoration: underline; }
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0;
+      }
+      .badge-row .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 10px;
+        border: 1px solid var(--chip-line);
+        border-radius: 999px;
+        background: var(--chip);
+        font-size: 13px;
+        color: #2e3a52;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        grid-template-rows: auto minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+        gap: 10px;
+        align-items: stretch;
+        flex: 1;
+        min-height: 0;
+      }
+      .panel-lanes {
+        grid-column: span 12;
+        grid-row: 1;
+      }
+      .panel-sessions {
+        grid-column: 1 / span 7;
+        grid-row: 2;
+      }
+      .panel-processes {
+        grid-column: 8 / span 5;
+        grid-row: 2;
+      }
+      .panel-queue { grid-column: span 6; }
+      .panel-jobs { grid-column: span 6; }
+      .panel-queue { grid-row: 3; }
+      .panel-jobs { grid-row: 3; }
+      .panel-cron {
+        grid-column: span 12;
+        grid-row: 4;
+      }
+      .table-wrap {
+        width: 100%;
+        overflow: auto;
+        min-height: 0;
+        flex: 1;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+        overflow-wrap: anywhere;
+      }
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+      tbody tr:hover td {
+        background: #fafcff;
+      }
+      .status-chip {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .status-running { background: #ecf9f0; color: #166534; border-color: #b7e7c4; }
+      .status-queued { background: #fff7e9; color: #9a6700; border-color: #f0d39a; }
+      .status-idle { background: #f2f4f8; color: #4a5568; border-color: #d6dce8; }
+      .status-error { background: #fdecec; color: #a61b1b; border-color: #f2bcbc; }
+      .status-stopped { background: #f7f7f9; color: #636b76; border-color: #d8dce3; }
+      .status-muted { background: #f5f6fa; color: #6e7785; border-color: #dde1ea; }
+      .lane-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        overflow: auto;
+        min-height: 0;
+        flex: 1;
+      }
+      .lane-list li {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: #fcfdff;
+      }
+      .lane-list li + li { margin-top: 8px; }
+      .status-line {
+        margin: 0;
+        color: #344055;
+        font-size: 13px;
+      }
+      .panel-actions {
+        margin-top: 10px;
+      }
+      .panel-btn {
+        display: inline-block;
+        border: 1px solid var(--chip-line);
+        background: var(--chip);
+        color: #2e3a52;
+        border-radius: 999px;
+        padding: 5px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .panel-btn:hover {
+        background: #e7eeff;
+      }
+      .panel-btn[hidden] {
+        display: none;
+      }
+      @media (max-width: 1100px) {
+        body {
+          overflow: auto;
+        }
+        .page {
+          height: auto;
+        }
+        .dashboard-grid {
+          grid-template-rows: auto;
+          flex: unset;
+        }
+        .panel-sessions,
+        .panel-lanes,
+        .panel-processes,
+        .panel-queue,
+        .panel-jobs,
+        .panel-cron {
+          grid-column: span 12;
+          grid-row: auto;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main>
+    <main class="page">
       <h1>Super Turtle Dashboard</h1>
-      <p>
-        <span id="updateBadge">Loading…</span> |
-        <span id="countBadge">SubTurtles: 0</span> |
-        <span id="processBadge">Processes: 0</span> |
-        <span id="queueBadge">Queued messages: 0</span> |
-        <span id="cronBadge">Cron jobs: 0</span> |
-        <span id="bgBadge">Background checks: 0</span> |
-        <span id="jobBadge">Current jobs: 0</span>
+      <p class="badge-row">
+        <span id="updateBadge" class="badge">Loading…</span>
+        <span id="sessionBadge" class="badge">Sessions: 0</span>
+        <span id="countBadge" class="badge">SubTurtles: 0</span>
+        <span id="processBadge" class="badge">Processes: 0</span>
+        <span id="queueBadge" class="badge">Queued messages: 0</span>
+        <span id="cronBadge" class="badge">Cron jobs: 0</span>
+        <span id="bgBadge" class="badge">Background checks: 0</span>
+        <span id="jobBadge" class="badge">Current jobs: 0</span>
       </p>
-      <section>
-        <h2>SubTurtle Race Lanes</h2>
-        <ul id="laneRows">
+      <div class="dashboard-grid">
+      <section class="panel panel-sessions">
+        <h2>Sessions</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Session</th><th>Driver</th><th>Status</th><th>Messages</th><th>Last seen</th></tr>
+            </thead>
+            <tbody id="sessionRows">
+              <tr><td colspan="5">No sessions found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel-actions">
+          <button id="sessionToggleBtn" class="panel-btn" type="button" hidden>Show more sessions</button>
+        </div>
+      </section>
+      <section class="panel panel-lanes">
+        <div class="panel-head">
+          <h2>SubTurtle Race Lanes</h2>
+        </div>
+        <ul id="laneRows" class="lane-list">
           <li>No SubTurtle lanes yet.</li>
         </ul>
       </section>
-      <section>
-        <h2>Running Processes</h2>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Kind</th><th>Status</th><th>Time</th><th>Detail</th></tr>
-          </thead>
-          <tbody id="processRows">
-            <tr><td colspan="5">No processes found.</td></tr>
-          </tbody>
-        </table>
+      <section class="panel panel-processes">
+        <div class="panel-head">
+          <h2>Running Processes</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Kind</th><th>Status</th><th>Time</th><th>Detail</th></tr>
+            </thead>
+            <tbody id="processRows">
+              <tr><td colspan="5">No processes found.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
-      <section>
-        <h2>Queued Messages</h2>
-        <table>
-          <thead>
-            <tr><th>Chat</th><th>Count</th><th>Oldest</th><th>Preview</th></tr>
-          </thead>
-          <tbody id="queueRows">
-            <tr><td colspan="4">No queued messages.</td></tr>
-          </tbody>
-        </table>
+      <section class="panel panel-queue">
+        <div class="panel-head">
+          <h2>Queued Messages</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Chat</th><th>Count</th><th>Oldest</th><th>Preview</th></tr>
+            </thead>
+            <tbody id="queueRows">
+              <tr><td colspan="4">No queued messages.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
-      <section>
-        <h2>Current Jobs</h2>
-        <table>
-          <thead>
-            <tr><th>Job</th><th>Owner</th><th>Owner type</th></tr>
-          </thead>
-          <tbody id="jobRows">
-            <tr><td colspan="3">No active jobs.</td></tr>
-          </tbody>
-        </table>
+      <section class="panel panel-jobs">
+        <div class="panel-head">
+          <h2>Current Jobs (Running Now)</h2>
+          <p class="panel-note">Actively executing jobs owned by current processes.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Job</th><th>Owner</th><th>Owner type</th></tr>
+            </thead>
+            <tbody id="jobRows">
+              <tr><td colspan="3">No active jobs.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
-      <section>
-        <h2>Upcoming Cron Jobs</h2>
-        <table>
-          <thead>
-            <tr><th>Type</th><th>Next in</th><th>Prompt</th></tr>
-          </thead>
-          <tbody id="cronRows">
-            <tr><td colspan="3">No jobs scheduled.</td></tr>
-          </tbody>
-        </table>
+      <section class="panel panel-cron">
+        <div class="panel-head">
+          <h2>Scheduled Cron Jobs (Upcoming)</h2>
+          <p class="panel-note">Pending one-shot and recurring jobs that will fire later.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Next in</th><th>Prompt</th></tr>
+            </thead>
+            <tbody id="cronRows">
+              <tr><td colspan="3">No jobs scheduled.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
-      <p id="statusLine">Status: waiting for first sync…</p>
+      </div>
+      <p id="statusLine" class="status-line">Status: waiting for first sync…</p>
     </main>
     <script>
       const laneRows = document.getElementById("laneRows");
+      const sessionRows = document.getElementById("sessionRows");
       const processRows = document.getElementById("processRows");
       const queueRows = document.getElementById("queueRows");
       const cronRows = document.getElementById("cronRows");
       const jobRows = document.getElementById("jobRows");
       const updateBadge = document.getElementById("updateBadge");
+      const sessionToggleBtn = document.getElementById("sessionToggleBtn");
+      const sessionBadge = document.getElementById("sessionBadge");
       const countBadge = document.getElementById("countBadge");
       const processBadge = document.getElementById("processBadge");
       const queueBadge = document.getElementById("queueBadge");
@@ -467,9 +1023,15 @@ function renderDashboardHtml(): string {
       const jobBadge = document.getElementById("jobBadge");
       const bgBadge = document.getElementById("bgBadge");
       const statusLine = document.getElementById("statusLine");
+      let sessionsExpanded = false;
+      let latestSessions = [];
 
       function setSubturtleBadge(value) {
         countBadge.textContent = "SubTurtles: " + value;
+      }
+
+      function setSessionBadge(value) {
+        sessionBadge.textContent = "Sessions: " + value;
       }
 
       function setProcessBadge(value) {
@@ -506,7 +1068,15 @@ function renderDashboardHtml(): string {
       function statusClass(status) {
         if (status === "running") return "status-running";
         if (status === "queued") return "status-queued";
+        if (status === "error") return "status-error";
+        if (status === "stopped") return "status-stopped";
         return "status-idle";
+      }
+
+      function sessionStatusClass(status) {
+        if (status === "active-running") return "status-running";
+        if (status === "active-idle") return "status-idle";
+        return "status-muted";
       }
 
       function escapeHtml(text) {
@@ -516,24 +1086,83 @@ function renderDashboardHtml(): string {
           .replace(/>/g, "&gt;");
       }
 
+      function formatDateTime(value) {
+        if (!value) return "n/a";
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return String(value);
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1);
+        const day = String(parsed.getDate());
+        const hour = String(parsed.getHours()).padStart(2, "0");
+        const minute = String(parsed.getMinutes()).padStart(2, "0");
+        const second = String(parsed.getSeconds()).padStart(2, "0");
+        return day + "." + month + "." + year + " " + hour + ":" + minute + ":" + second;
+      }
+
+      function renderSessionRows(sessions) {
+        const list = Array.isArray(sessions) ? sessions : [];
+        const visible = sessionsExpanded ? list : list.slice(0, 4);
+        if (!visible.length) {
+          sessionRows.innerHTML = "<tr><td colspan='5'>No sessions found.</td></tr>";
+        } else {
+          const rows = visible.map((s) => {
+            const shortId = s.sessionId.length > 8 ? s.sessionId.slice(0, 8) + "…" : s.sessionId;
+            const title = s.title ? s.title : "(untitled)";
+            const lastSeen = formatDateTime(s.lastActivity || s.savedAt);
+            return "<tr>" +
+              "<td><a href='/dashboard/sessions/" + encodeURIComponent(s.driver) + "/" + encodeURIComponent(s.sessionId) + "'>" +
+              escapeHtml(title) +
+              " (" + escapeHtml(shortId) + ")" +
+              "</a></td>" +
+              "<td>" + escapeHtml(s.driver) + "</td>" +
+              "<td><span class='status-chip " + sessionStatusClass(s.status) + "'>" + escapeHtml(s.status) + "</span></td>" +
+              "<td>" + String(s.messageCount) + "</td>" +
+              "<td>" + escapeHtml(lastSeen) + "</td>" +
+              "</tr>";
+          });
+          sessionRows.innerHTML = rows.join("");
+        }
+
+        if (!sessionToggleBtn) return;
+        if (list.length <= 4) {
+          sessionToggleBtn.hidden = true;
+          return;
+        }
+        const hiddenCount = Math.max(0, list.length - 4);
+        sessionToggleBtn.hidden = false;
+        sessionToggleBtn.textContent = sessionsExpanded
+          ? "Show fewer sessions"
+          : "Show " + hiddenCount + " more sessions";
+      }
+
       async function loadData() {
         try {
-          const [dashboardRes, jobsRes] = await Promise.all([
+          const [dashboardRes, jobsRes, sessionsRes] = await Promise.all([
             fetch("/api/dashboard", { cache: "no-store" }),
             fetch("/api/jobs/current", { cache: "no-store" }),
+            fetch("/api/sessions", { cache: "no-store" }),
           ]);
           if (!dashboardRes.ok) throw new Error("Failed dashboard request");
           if (!jobsRes.ok) throw new Error("Failed jobs request");
+          if (!sessionsRes.ok) throw new Error("Failed sessions request");
           const data = await dashboardRes.json();
           const jobsData = await jobsRes.json();
+          const sessionsData = await sessionsRes.json();
 
-          updateBadge.textContent = "Updated " + new Date(data.generatedAt).toLocaleTimeString();
+          updateBadge.textContent = "Updated " + formatDateTime(data.generatedAt);
+          setSessionBadge(sessionsData.sessions.length);
           setSubturtleBadge(data.turtles.length);
           setProcessBadge(data.processes.length);
           setQueueBadge(data.deferredQueue.totalMessages);
           setCronBadge(data.cronJobs.length);
           setJobBadge(jobsData.jobs.length);
           setBackgroundBadge(data.background.runActive, data.background.supervisionQueue);
+
+          latestSessions = Array.isArray(sessionsData.sessions) ? sessionsData.sessions : [];
+          if (latestSessions.length <= 4) {
+            sessionsExpanded = false;
+          }
+          renderSessionRows(latestSessions);
 
           if (!data.lanes.length) {
             laneRows.innerHTML = "<li>No SubTurtle lanes yet.</li>";
@@ -566,13 +1195,13 @@ function renderDashboardHtml(): string {
           } else {
             const rows = data.processes.map((p) => {
               return "<tr>" +
-                "<td><a href=\"/dashboard/processes/" + encodeURIComponent(p.id) + "\">" +
+                "<td><a href='/dashboard/processes/" + encodeURIComponent(p.id) + "'>" +
                 escapeHtml(p.label) +
                 "</a>" +
                 (p.pid && p.pid !== "-" ? " (pid " + escapeHtml(p.pid) + ")" : "") +
                 "</td>" +
                 "<td>" + escapeHtml(p.kind) + "</td>" +
-                "<td>" + escapeHtml(p.status) + "</td>" +
+                "<td><span class='status-chip " + statusClass(p.status) + "'>" + escapeHtml(p.status) + "</span></td>" +
                 "<td>" + escapeHtml(p.elapsed) + "</td>" +
                 "<td>" + escapeHtml(p.detail || "") + "</td>" +
                 "</tr>";
@@ -613,10 +1242,10 @@ function renderDashboardHtml(): string {
             const rows = jobsData.jobs.map((job) => {
               const ownerLink = "/dashboard/processes/" + encodeURIComponent(job.ownerId);
               return "<tr>" +
-                "<td><a href=\"/dashboard/jobs/" + encodeURIComponent(job.id) + "\">" +
+                "<td><a href='/dashboard/jobs/" + encodeURIComponent(job.id) + "'>" +
                 escapeHtml(job.id) +
                 "</a></td>" +
-                "<td><a href=\"" + ownerLink + "\">" +
+                "<td><a href='" + ownerLink + "'>" +
                 escapeHtml(job.ownerId) +
                 "</a></td>" +
                 "<td>" + escapeHtml(job.ownerType) + "</td>" +
@@ -627,6 +1256,8 @@ function renderDashboardHtml(): string {
 
           statusLine.textContent =
             "Status: " +
+            sessionsData.sessions.length +
+            " sessions, " +
             data.turtles.length +
             " turtles, " +
             data.processes.length +
@@ -640,6 +1271,13 @@ function renderDashboardHtml(): string {
         } catch (error) {
           statusLine.textContent = "Status: failed to fetch data";
         }
+      }
+
+      if (sessionToggleBtn) {
+        sessionToggleBtn.addEventListener("click", () => {
+          sessionsExpanded = !sessionsExpanded;
+          renderSessionRows(latestSessions);
+        });
       }
 
       loadData();
@@ -811,6 +1449,346 @@ function renderSubturtleDetailHtml(detail: SubturtleDetailResponse, logs: Subtur
     <pre>${escapeHtml(detail.claudeMd || "(empty)")}</pre>
     <h2>Logs</h2>
     <pre>${escapeHtml(logs?.lines.join("\\n") || "No logs")}</pre>
+  </body>
+</html>`;
+}
+
+function renderSessionDetailHtml(
+  detail: SessionDetailResponse,
+  turns: SessionTurnView[]
+): string {
+  type InjectedArtifactView = {
+    id: string;
+    label: string;
+    order: number;
+    exactText: string;
+    preview: string;
+  };
+
+  type ConversationRow = {
+    role: "system" | "user" | "assistant";
+    timestamp: string;
+    text: string;
+    html?: string;
+    turn?: SessionTurnView;
+  };
+
+  const buildPreview = (text: string): string => {
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (lines.length === 0) return "(empty)";
+    const preview = lines.slice(0, 2).join(" ");
+    return preview.length > 120 ? `${preview.slice(0, 117)}...` : preview;
+  };
+
+  const countWords = (text: string): number => {
+    const matches = text.match(/[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?/g);
+    return matches?.length || 0;
+  };
+
+  const pushArtifact = (
+    items: InjectedArtifactView[],
+    id: string,
+    label: string,
+    order: number,
+    exactText: string
+  ): void => {
+    items.push({
+      id,
+      label,
+      order,
+      exactText,
+      preview: buildPreview(exactText),
+    });
+  };
+
+  const hasTurns = turns.length > 0;
+  const firstTurn = turns[0];
+  const injectedArtifacts: InjectedArtifactView[] = (firstTurn?.injectedArtifacts || []).map((artifact) => {
+    const fallbackOrder = artifact.id === "claude-md"
+      ? 10
+      : artifact.id === "meta-prompt"
+        ? 20
+        : artifact.id === "date-prefix"
+          ? 30
+          : artifact.id === "cron-scheduled"
+            ? 40
+            : artifact.id === "background-snapshot"
+              ? 50
+              : 999;
+    return {
+      id: artifact.id,
+      label: artifact.label,
+      order: Number.isFinite(artifact.order) ? artifact.order : fallbackOrder,
+      exactText: artifact.text || "",
+      preview: buildPreview(artifact.text || ""),
+    };
+  });
+  if (firstTurn && injectedArtifacts.length === 0) {
+    pushArtifact(
+      injectedArtifacts,
+      "legacy",
+      "Legacy turn log",
+      999,
+      "No captured injected artifacts for this turn (legacy log entry)."
+    );
+  }
+  injectedArtifacts.sort((a, b) => a.order - b.order);
+
+  const injectedListHtml = injectedArtifacts.length > 0
+    ? "<p><strong>Injected context</strong></p><ol class=\"injected-list\">" + injectedArtifacts.map((artifact) => {
+      const wordCount = countWords(artifact.exactText);
+      const wordLabel = wordCount === 1 ? "word" : "words";
+      return "<li><details>" +
+        "<summary>" +
+        escapeHtml(`${artifact.label} (${wordCount} ${wordLabel})`) +
+        "</summary>" +
+        "<pre>" + escapeHtml(artifact.exactText) + "</pre>" +
+        "</details></li>";
+    }).join("") + "</ol>"
+    : "<p><strong>Injected context</strong></p><p>No captured injections for this session.</p>";
+
+  const conversationRows: ConversationRow[] = [
+    {
+      role: "system",
+      timestamp: formatTimestamp(firstTurn?.startedAt || detail.messages[0]?.timestamp || null),
+      text: "",
+      html: injectedListHtml,
+    },
+  ];
+
+  if (hasTurns) {
+    for (const turn of turns) {
+      conversationRows.push({
+        role: "user",
+        timestamp: formatTimestamp(turn.startedAt),
+        text: turn.originalMessage || "",
+        turn,
+      });
+      const assistantText =
+        turn.response && turn.response.trim().length > 0
+          ? turn.response
+          : turn.status === "completed"
+            ? "(No assistant response captured.)"
+            : `(No assistant response captured; status: ${turn.status})`;
+      conversationRows.push({
+        role: "assistant",
+        timestamp: formatTimestamp(turn.completedAt || turn.startedAt),
+        text: assistantText,
+        turn,
+      });
+    }
+  } else {
+    for (const msg of detail.messages) {
+      conversationRows.push({
+        role: msg.role,
+        timestamp: formatTimestamp(msg.timestamp),
+        text: msg.text,
+      });
+    }
+  }
+
+  const conversationBody = conversationRows.length > 0
+    ? conversationRows.map((row) => {
+        const turn = row.turn;
+        const injectedFlags = turn
+          ? [
+              turn.injections.datePrefixApplied ? "date-prefix" : "",
+              turn.injections.metaPromptApplied ? "meta-prompt" : "",
+              turn.injections.cronScheduledPromptApplied ? "cron-scheduled" : "",
+              turn.injections.backgroundSnapshotPromptApplied ? "background-snapshot" : "",
+            ].filter((value) => value.length > 0).join(", ") || "none"
+          : "none";
+        const debugDetails = turn && row.role === "assistant"
+          ? "<details><summary>Debug details</summary>" +
+            "<pre>" + escapeHtml([
+              `Source: ${turn.source}`,
+              `Status: ${turn.status}`,
+              `Model: ${turn.model}`,
+              `Effort: ${turn.effort}`,
+              `Elapsed: ${turn.elapsedMs}ms`,
+              `Injected flags: ${injectedFlags}`,
+              `Context flags: CLAUDE.md=${turn.context.claudeMdLoaded ? "loaded" : "missing"}, META=${turn.context.metaSharedLoaded ? "loaded" : "missing"}`,
+              `Effective prompt follows:`,
+              turn.effectivePrompt || "(none)",
+              `Error: ${turn.error || "none"}`,
+            ].join("\n")) + "</pre>" +
+            "<p>Usage</p>" +
+            renderJsonPre(turn.usage) +
+            "</details>"
+          : "";
+        return "<tr>" +
+          "<td><span class=\"role-pill\">" + escapeHtml(row.role) + "</span></td>" +
+          "<td>" + escapeHtml(row.timestamp) + "</td>" +
+          "<td>" + (row.html || ("<pre>" + escapeHtml(row.text || "") + "</pre>")) + debugDetails + "</td>" +
+          "</tr>";
+      }).join("")
+    : "<tr><td colspan='3'>No messages available.</td></tr>";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Session ${escapeHtml(detail.session.sessionId)} detail</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fc;
+        --panel: #ffffff;
+        --line: #dfe3ee;
+        --text: #1f2430;
+        --muted: #5d6475;
+        --code: #f3f5fb;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.45;
+      }
+      .page {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      h1, h2 {
+        margin: 0 0 12px 0;
+      }
+      h2 { margin-top: 20px; }
+      a { color: #1c5fd3; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .conversation {
+        margin-top: 12px;
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .col-role { width: 90px; }
+      .col-time { width: 230px; }
+      .role-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #f6f8ff;
+        font-size: 12px;
+      }
+      details {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+      details + details { margin-top: 8px; }
+      summary {
+        cursor: pointer;
+        color: var(--text);
+      }
+      pre {
+        margin: 8px 0 0 0;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--code);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        max-width: 100%;
+      }
+      .injected-list {
+        margin: 8px 0 0 20px;
+        padding: 0;
+      }
+      .injected-list li + li { margin-top: 8px; }
+      .meta-sections {
+        margin-top: 14px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 12px;
+      }
+      .meta-sections details > ul {
+        margin: 8px 0 0 0;
+        padding-left: 18px;
+      }
+      .meta-sections details > p {
+        margin: 10px 0 4px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1>Session detail</h1>
+      <p><a href="/dashboard">← Back to dashboard</a></p>
+      <h2>Conversation</h2>
+      <section class="card conversation">
+        <table>
+          <thead>
+            <tr><th class="col-role">Role</th><th class="col-time">Timestamp</th><th>Text</th></tr>
+          </thead>
+          <tbody>
+            ${conversationBody}
+          </tbody>
+        </table>
+      </section>
+      <section class="meta-sections">
+        <details>
+          <summary>Session overview</summary>
+          <ul>
+            <li>Driver: ${escapeHtml(detail.session.driver)}</li>
+            <li>Session ID: ${escapeHtml(detail.session.sessionId)}</li>
+            <li>Title: ${escapeHtml(detail.session.title)}</li>
+            <li>Status: ${escapeHtml(detail.session.status)}</li>
+            <li>Saved at: ${escapeHtml(formatTimestamp(detail.session.savedAt))}</li>
+            <li>Last activity: ${escapeHtml(formatTimestamp(detail.session.lastActivity))}</li>
+            <li>Messages: ${detail.session.messageCount}</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Runtime meta</summary>
+          <ul>
+            <li>Model: ${escapeHtml(detail.meta.model)}</li>
+            <li>Effort: ${escapeHtml(detail.meta.effort)}</li>
+            <li>Running: ${detail.meta.isRunning ? "yes" : "no"}</li>
+            <li>Query started: ${escapeHtml(formatTimestamp(detail.meta.queryStarted))}</li>
+            <li>Current tool: ${escapeHtml(detail.meta.currentTool || "n/a")}</li>
+            <li>Last tool: ${escapeHtml(detail.meta.lastTool || "n/a")}</li>
+            <li>Last error: ${escapeHtml(detail.meta.lastError || "n/a")}</li>
+            <li>Last error time: ${escapeHtml(formatTimestamp(detail.meta.lastErrorTime))}</li>
+          </ul>
+          <p>Last usage</p>
+          ${renderJsonPre(detail.meta.lastUsage)}
+        </details>
+      </section>
+    </main>
   </body>
 </html>`;
 }
@@ -1075,6 +2053,42 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     },
   },
   {
+    pattern: /^\/api\/sessions$/,
+    handler: async () => {
+      return jsonResponse(buildSessionListResponse());
+    },
+  },
+  {
+    pattern: /^\/api\/sessions\/(claude|codex)\/([^/]+)\/turns$/,
+    handler: async (_req, url, match) => {
+      const driver = decodeURIComponent(match[1] ?? "") as SessionDriver;
+      const sessionId = decodeURIComponent(match[2] ?? "");
+      if ((driver !== "claude" && driver !== "codex") || !validateSessionId(sessionId)) {
+        return notFoundResponse("Invalid session identifier");
+      }
+      const rawLimit = parseInt(url.searchParams.get("limit") || "200", 10);
+      const limit = Number.isFinite(rawLimit)
+        ? Math.max(1, Math.min(5000, rawLimit))
+        : 200;
+      const turns = buildSessionTurns(driver, sessionId, limit);
+      if (!turns) return notFoundResponse("Session not found");
+      return jsonResponse(turns);
+    },
+  },
+  {
+    pattern: /^\/api\/sessions\/(claude|codex)\/([^/]+)$/,
+    handler: async (_req, _url, match) => {
+      const driver = decodeURIComponent(match[1] ?? "") as SessionDriver;
+      const sessionId = decodeURIComponent(match[2] ?? "");
+      if ((driver !== "claude" && driver !== "codex") || !validateSessionId(sessionId)) {
+        return notFoundResponse("Invalid session identifier");
+      }
+      const detail = buildSessionDetail(driver, sessionId);
+      if (!detail) return notFoundResponse("Session not found");
+      return jsonResponse(detail);
+    },
+  },
+  {
     pattern: /^\/api\/context$/,
     handler: async () => {
       const claudeMdPath = `${WORKING_DIR}/CLAUDE.md`;
@@ -1164,6 +2178,26 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
       if (!detail) return notFoundResponse("SubTurtle not found");
       const logs = await buildSubturtleLogs(name, 200);
       return new Response(renderSubturtleDetailHtml(detail, logs), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  },
+  {
+    pattern: /^\/dashboard\/sessions\/(claude|codex)\/([^/]+)$/,
+    handler: async (_req, url, match) => {
+      const driver = decodeURIComponent(match[1] ?? "") as SessionDriver;
+      const sessionId = decodeURIComponent(match[2] ?? "");
+      if ((driver !== "claude" && driver !== "codex") || !validateSessionId(sessionId)) {
+        return notFoundResponse("Invalid session identifier");
+      }
+      const detail = buildSessionDetail(driver, sessionId);
+      if (!detail) return notFoundResponse("Session not found");
+      const rawLimit = parseInt(url.searchParams.get("limit") || "200", 10);
+      const limit = Number.isFinite(rawLimit)
+        ? Math.max(1, Math.min(5000, rawLimit))
+        : 200;
+      const turns = buildSessionTurns(driver, sessionId, limit)?.turns || [];
+      return new Response(renderSessionDetailHtml(detail, turns), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     },

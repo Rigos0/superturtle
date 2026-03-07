@@ -8,11 +8,18 @@ import type { Context } from "grammy";
 import { session } from "../session";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
-import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
+import {
+  auditLog,
+  auditLogAuth,
+  auditLogError,
+  auditLogRateLimit,
+  generateRequestId,
+  startTypingIndicator,
+} from "../utils";
 import { getDriverAuditType, isActiveDriverSessionActive, runMessageWithActiveDriver } from "./driver-routing";
 import { StreamingState, createStatusCallback } from "./streaming";
 import { handleProcessingError } from "./media-group";
-import { streamLog } from "../logger";
+import { eventLog, streamLog } from "../logger";
 
 const videoLog = streamLog.child({ handler: "video" });
 
@@ -52,6 +59,7 @@ export async function handleVideo(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
+  const requestId = generateRequestId("video");
   const video = ctx.message?.video || ctx.message?.video_note;
   const caption = ctx.message?.caption;
 
@@ -61,9 +69,25 @@ export async function handleVideo(ctx: Context): Promise<void> {
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: requestId,
+      source: "video",
+      chat_id: chatId,
+    });
     await ctx.reply("Unauthorized. Contact the bot owner for access.");
     return;
   }
+
+  eventLog.info({
+    event: "user.message.video",
+    requestId,
+    userId,
+    username,
+    chatId,
+    hasVideoNote: Boolean(ctx.message?.video_note),
+    captionLength: caption?.length || 0,
+    fileSize: video.file_size || null,
+  });
 
   // 2. Check file size
   if (video.file_size && video.file_size > MAX_VIDEO_SIZE) {
@@ -76,7 +100,11 @@ export async function handleVideo(ctx: Context): Promise<void> {
   // 3. Rate limit check
   const [allowed, retryAfter] = rateLimiter.check(userId);
   if (!allowed) {
-    await auditLogRateLimit(userId, username, retryAfter!);
+    await auditLogRateLimit(userId, username, retryAfter!, {
+      request_id: requestId,
+      source: "video",
+      chat_id: chatId,
+    });
     await ctx.reply(
       `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
     );
@@ -132,6 +160,7 @@ export async function handleVideo(ctx: Context): Promise<void> {
 
     const response = await runMessageWithActiveDriver({
       message: prompt,
+      source: "video",
       username,
       userId,
       chatId,
@@ -144,7 +173,11 @@ export async function handleVideo(ctx: Context): Promise<void> {
       username,
       getDriverAuditType("VIDEO"),
       caption || "[video]",
-      response
+      response,
+      {
+        request_id: requestId,
+        chat_id: chatId,
+      }
     );
 
     // Delete status message
@@ -157,6 +190,13 @@ export async function handleVideo(ctx: Context): Promise<void> {
     videoLog.error(
       { err: error, userId, username, chatId, videoPath },
       "Video processing failed"
+    );
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "handleVideo",
+      { request_id: requestId, chat_id: chatId }
     );
 
     // Delete status message on error

@@ -3,7 +3,7 @@ import { getDriver } from "../drivers/registry";
 import { runMessageWithDriver } from "./driver-routing";
 
 type DriverLike = {
-  runMessage: (input: { message: string; statusCallback: (...args: any[]) => Promise<void> }) => Promise<string>;
+  runMessage: (input: { message: string; source: string; statusCallback: (...args: any[]) => Promise<void> }) => Promise<string>;
   isStallError: (error: unknown) => boolean;
   isCrashError: (error: unknown) => boolean;
   kill: () => Promise<void>;
@@ -12,6 +12,7 @@ type DriverLike = {
 function baseInput(message: string) {
   return {
     message,
+    source: "text" as const,
     username: "tester",
     userId: 123,
     chatId: 123,

@@ -12,13 +12,16 @@ import { ALLOWED_USERS, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import {
   auditLog,
+  auditLogAuth,
+  auditLogError,
   auditLogRateLimit,
+  generateRequestId,
   transcribeVoice,
   startTypingIndicator,
 } from "../utils";
 import { getDriverAuditType, isActiveDriverSessionActive, runMessageWithActiveDriver } from "./driver-routing";
 import { StreamingState, createStatusCallback } from "./streaming";
-import { streamLog } from "../logger";
+import { eventLog, streamLog } from "../logger";
 
 const audioLog = streamLog.child({ handler: "audio" });
 
@@ -57,7 +60,8 @@ export async function processAudioFile(
   caption: string | undefined,
   userId: number,
   username: string,
-  chatId: number
+  chatId: number,
+  requestId?: string
 ): Promise<void> {
   if (!TRANSCRIPTION_AVAILABLE) {
     await ctx.reply(
@@ -116,6 +120,7 @@ export async function processAudioFile(
     // Send to active driver
     const response = await runMessageWithActiveDriver({
       message: prompt,
+      source: "audio",
       username,
       userId,
       chatId,
@@ -124,11 +129,21 @@ export async function processAudioFile(
     });
 
     // Audit log
-    await auditLog(userId, username, getDriverAuditType("AUDIO"), transcript, response);
+    await auditLog(userId, username, getDriverAuditType("AUDIO"), transcript, response, {
+      request_id: requestId,
+      chat_id: chatId,
+    });
   } catch (error) {
     audioLog.error(
       { err: error, userId, username, chatId, filePath },
       "Audio processing failed"
+    );
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "processAudioFile",
+      { request_id: requestId, chat_id: chatId }
     );
 
     if (String(error).includes("abort") || String(error).includes("cancel")) {
@@ -159,6 +174,7 @@ export async function handleAudio(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
+  const requestId = generateRequestId("audio");
   const audio = ctx.message?.audio;
 
   if (!userId || !chatId || !audio) {
@@ -167,6 +183,11 @@ export async function handleAudio(ctx: Context): Promise<void> {
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: requestId,
+      source: "audio",
+      chat_id: chatId,
+    });
     await ctx.reply("Unauthorized. Contact the bot owner for access.");
     return;
   }
@@ -174,14 +195,29 @@ export async function handleAudio(ctx: Context): Promise<void> {
   // 2. Rate limit check
   const [allowed, retryAfter] = rateLimiter.check(userId);
   if (!allowed) {
-    await auditLogRateLimit(userId, username, retryAfter!);
+    await auditLogRateLimit(userId, username, retryAfter!, {
+      request_id: requestId,
+      source: "audio",
+      chat_id: chatId,
+    });
     await ctx.reply(
       `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
     );
     return;
   }
 
-  audioLog.info({ userId, username, chatId, msgType: "audio" }, "Received audio message");
+  audioLog.info({ requestId, userId, username, chatId, msgType: "audio" }, "Received audio message");
+  eventLog.info({
+    event: "user.message.audio",
+    requestId,
+    userId,
+    username,
+    chatId,
+    mimeType: audio.mime_type || null,
+    durationSec: audio.duration || null,
+    fileSize: audio.file_size || null,
+    fileName: audio.file_name || null,
+  });
 
   // 3. Download audio file
   let audioPath: string;
@@ -209,6 +245,7 @@ export async function handleAudio(ctx: Context): Promise<void> {
     ctx.message?.caption,
     userId,
     username,
-    chatId
+    chatId,
+    requestId
   );
 }

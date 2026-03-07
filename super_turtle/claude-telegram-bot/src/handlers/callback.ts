@@ -18,12 +18,18 @@ import {
   IPC_DIR,
 } from "../config";
 import { isAuthorized } from "../security";
-import { auditLog, startTypingIndicator } from "../utils";
+import {
+  auditLog,
+  auditLogAuth,
+  auditLogError,
+  generateRequestId,
+  startTypingIndicator,
+} from "../utils";
 import {
   StreamingState,
   createStatusCallback,
-  isAskUserPromptMessage,
   checkPendingPinoLogsRequests,
+  teardownStreamingState,
 } from "./streaming";
 import { isAnyDriverRunning, runMessageWithActiveDriver, stopActiveDriverQuery } from "./driver-routing";
 import { escapeHtml, convertMarkdownToHtml } from "../formatting";
@@ -36,7 +42,7 @@ import {
   readClaudeBacklogItems,
   formatBacklogSummary,
 } from "./commands";
-import { streamLog } from "../logger";
+import { eventLog, streamLog } from "../logger";
 
 const SAFE_CALLBACK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SAFE_CALLBACK_OPTION_INDEX = /^\d+$/;
@@ -127,6 +133,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
   const callbackData = ctx.callbackQuery?.data;
+  const callbackRequestId = generateRequestId("callback");
 
   if (!userId || !chatId || !callbackData) {
     await ctx.answerCallbackQuery();
@@ -135,9 +142,25 @@ export async function handleCallback(ctx: Context): Promise<void> {
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: callbackRequestId,
+      source: "callback",
+      chat_id: chatId,
+    });
     await ctx.answerCallbackQuery({ text: "Unauthorized" });
     return;
   }
+
+  eventLog.info({
+    event: "user.callback",
+    requestId: callbackRequestId,
+    userId,
+    username,
+    chatId,
+    callbackData:
+      callbackData.length > 200 ? `${callbackData.slice(0, 200)}...` : callbackData,
+    callbackDataTruncated: callbackData.length > 200,
+  });
 
   // 2. Handle model selection: model:{model_id}
   if (callbackData.startsWith("model:")) {
@@ -382,7 +405,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
   try {
     await ctx.editMessageText(`✓ ${selectedOption}`);
   } catch (error) {
-    console.debug("Failed to edit callback message:", error);
+    callbackLog.debug({ err: error, userId, chatId, requestId: callbackRequestId }, "Failed to edit callback message");
   }
 
   // 12. Answer the callback
@@ -394,7 +417,10 @@ export async function handleCallback(ctx: Context): Promise<void> {
   try {
     unlinkSync(requestFile);
   } catch (error) {
-    console.debug("Failed to delete request file:", error);
+    callbackLog.debug(
+      { err: error, requestFile, requestId: callbackRequestId, userId, chatId },
+      "Failed to delete request file"
+    );
   }
 
   // 14. Send the choice to Claude as a message
@@ -419,6 +445,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
   try {
     const response = await runMessageWithActiveDriver({
       message,
+      source: "callback",
       username,
       userId,
       chatId,
@@ -426,18 +453,23 @@ export async function handleCallback(ctx: Context): Promise<void> {
       statusCallback,
     });
 
-    await auditLog(userId, username, "CALLBACK", message, response);
+    await auditLog(userId, username, "CALLBACK", message, response, {
+      request_id: callbackRequestId,
+      chat_id: chatId,
+    });
   } catch (error) {
     callbackLog.error({ err: error, callbackData, userId, chatId }, "Error processing callback");
-
-    for (const toolMsg of state.toolMessages) {
-      if (isAskUserPromptMessage(toolMsg)) continue;
-      try {
-        await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
-      } catch (error) {
-        console.debug("Failed to delete tool message:", error);
-      }
-    }
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "handleCallback.askuser",
+      { request_id: callbackRequestId, chat_id: chatId }
+    );
+    await teardownStreamingState(ctx, state, {
+      chatId,
+      clearRegisteredState: true,
+    });
 
     if (String(error).includes("abort") || String(error).includes("cancel")) {
       // Only show "Query stopped" if it was an explicit stop, not an interrupt from a new message
@@ -556,7 +588,7 @@ async function handleResumeCurrentCallback(ctx: Context): Promise<void> {
     try {
       await ctx.editMessageText("✅ Continuing current Codex session.");
     } catch (error) {
-      console.debug("Failed to edit resume_current message:", error);
+      callbackLog.debug({ err: error, chatId: ctx.chat?.id }, "Failed to edit resume_current message");
     }
     await ctx.answerCallbackQuery({ text: "Continuing current Codex session" });
 
@@ -578,7 +610,7 @@ async function handleResumeCurrentCallback(ctx: Context): Promise<void> {
   try {
     await ctx.editMessageText("✅ Continuing current Claude session.");
   } catch (error) {
-    console.debug("Failed to edit resume_current message:", error);
+    callbackLog.debug({ err: error, chatId: ctx.chat?.id }, "Failed to edit resume_current message");
   }
   await ctx.answerCallbackQuery({ text: "Continuing current Claude session" });
 
@@ -624,7 +656,7 @@ async function handleResumeCallback(
   try {
     await ctx.editMessageText(`✅ ${message}`);
   } catch (error) {
-    console.debug("Failed to edit resume message:", error);
+    callbackLog.debug({ err: error, chatId }, "Failed to edit resume message");
   }
   await ctx.answerCallbackQuery({ text: "Session resumed!" });
   session.activeDriver = "claude";
@@ -688,7 +720,7 @@ async function handleCodexResumeCallback(
   try {
     await ctx.editMessageText(`✅ ${message}`);
   } catch (error) {
-    console.debug("Failed to edit Codex resume message:", error);
+    callbackLog.debug({ err: error, chatId }, "Failed to edit Codex resume message");
   }
   await ctx.answerCallbackQuery({ text: "Codex session resumed!" });
   session.activeDriver = "codex";
@@ -820,7 +852,7 @@ async function handleCronCancelCallback(
     try {
       await ctx.editMessageText(`✅ Job cancelled`);
     } catch (error) {
-      console.debug("Failed to edit callback message:", error);
+      callbackLog.debug({ err: error, jobId, chatId: ctx.chat?.id }, "Failed to edit callback message");
     }
     await ctx.answerCallbackQuery({ text: "Job cancelled" });
   } else {

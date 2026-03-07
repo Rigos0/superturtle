@@ -4,6 +4,7 @@
 
 import type { ListedSubTurtle, ClaudeBacklogItem } from "./handlers/commands";
 import type { MetaFileData } from "./dashboard";
+import type { InjectedArtifact } from "./injected-artifacts";
 
 // ── Existing dashboard views ─────────────────────────────────────────
 
@@ -131,6 +132,91 @@ export type SessionResponse = {
   conversationTitle: string | null;
   queryStarted: string | null;
   lastActivity: string | null;
+};
+
+export type SessionDriver = "claude" | "codex";
+export type SessionStatus = "active-running" | "active-idle" | "saved";
+
+export type SessionListItem = {
+  id: string; // `${driver}:${sessionId}`
+  driver: SessionDriver;
+  sessionId: string;
+  title: string;
+  savedAt: string | null;
+  lastActivity: string | null;
+  status: SessionStatus;
+  messageCount: number;
+  workingDir: string | null;
+  preview: string | null;
+};
+
+export type SessionListResponse = {
+  generatedAt: string;
+  sessions: SessionListItem[];
+};
+
+export type SessionMessageView = {
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+  charCount: number;
+};
+
+export type SessionMetaView = {
+  model: string;
+  effort: string;
+  isRunning: boolean;
+  queryStarted: string | null;
+  lastUsage: Record<string, unknown> | null;
+  lastError: string | null;
+  lastErrorTime: string | null;
+  currentTool: string | null;
+  lastTool: string | null;
+};
+
+export type SessionDetailResponse = {
+  generatedAt: string;
+  session: SessionListItem;
+  messages: SessionMessageView[];
+  meta: SessionMetaView;
+};
+
+export type SessionTurnView = {
+  id: string;
+  driver: SessionDriver;
+  source: string;
+  sessionId: string | null;
+  userId: number;
+  username: string;
+  chatId: number;
+  model: string;
+  effort: string;
+  originalMessage: string;
+  effectivePrompt: string;
+  injectedArtifacts: InjectedArtifact[];
+  response: string | null;
+  error: string | null;
+  status: string;
+  startedAt: string;
+  completedAt: string;
+  elapsedMs: number;
+  usage: Record<string, unknown> | null;
+  injections: {
+    datePrefixApplied: boolean;
+    metaPromptApplied: boolean;
+    cronScheduledPromptApplied: boolean;
+    backgroundSnapshotPromptApplied: boolean;
+  };
+  context: {
+    claudeMdLoaded: boolean;
+    metaSharedLoaded: boolean;
+  };
+};
+
+export type SessionTurnsResponse = {
+  generatedAt: string;
+  session: SessionListItem;
+  turns: SessionTurnView[];
 };
 
 export type ContextResponse = {

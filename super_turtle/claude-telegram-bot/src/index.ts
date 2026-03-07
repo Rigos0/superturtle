@@ -73,7 +73,7 @@ import {
 import { buildCronScheduledPrompt } from "./cron-scheduled-prompt";
 import { UpdateDedupeCache } from "./update-dedupe";
 import { startTurtleGreetings } from "./turtle-greetings";
-import { botLog, cronLog } from "./logger";
+import { botLog, cronLog, eventLog } from "./logger";
 
 // Re-export for any existing consumers
 export { bot };
@@ -478,6 +478,7 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
       try {
         response = await runMessageWithDriver(primaryDriver, {
           message: buildPreparedSnapshotPrompt(snapshot),
+          source: "background_snapshot",
           username: "cron",
           userId: ALLOWED_USERS[0]!,
           chatId: snapshot.chatId,
@@ -490,6 +491,7 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
         }
         response = await runMessageWithDriver(fallbackDriver, {
           message: buildPreparedSnapshotPrompt(snapshot),
+          source: "background_snapshot",
           username: "cron",
           userId: ALLOWED_USERS[0]!,
           chatId: snapshot.chatId,
@@ -535,6 +537,22 @@ bot.use(async (ctx, next) => {
       // ignore duplicate callback ack errors
     }
   }
+});
+
+// Canonical command ingress events for replay/debug.
+bot.use(async (ctx, next) => {
+  const text = ctx.message?.text;
+  if (text?.startsWith("/")) {
+    eventLog.info({
+      event: "user.command",
+      userId: ctx.from?.id,
+      username: ctx.from?.username || "unknown",
+      chatId: ctx.chat?.id,
+      command: text.split(/\s+/)[0],
+      rawLength: text.length,
+    });
+  }
+  await next();
 });
 
 // User updates should preempt low-priority cron/background work.
@@ -753,6 +771,7 @@ const startCronTimer = () => {
               try {
                 response = await runMessageWithDriver(primaryDriver, {
                   message: job.prompt,
+                  source: "cron_silent",
                   username: "cron",
                   userId: resolvedUserId,
                   chatId: resolvedChatId,
@@ -766,6 +785,7 @@ const startCronTimer = () => {
                 fallbackAttempted = true;
                 response = await runMessageWithDriver(fallbackDriver, {
                   message: job.prompt,
+                  source: "cron_silent",
                   username: "cron",
                   userId: resolvedUserId,
                   chatId: resolvedChatId,
@@ -839,6 +859,7 @@ const startCronTimer = () => {
               try {
                 await runMessageWithDriver(primaryDriver, {
                   message: injectedPrompt,
+                  source: "cron_scheduled",
                   username: "cron",
                   userId: resolvedUserId,
                   chatId: resolvedChatId,
@@ -851,6 +872,7 @@ const startCronTimer = () => {
                 }
                 await runMessageWithDriver(fallbackDriver, {
                   message: injectedPrompt,
+                  source: "cron_scheduled",
                   username: "cron",
                   userId: resolvedUserId,
                   chatId: resolvedChatId,
@@ -1026,13 +1048,37 @@ const runner = run(bot, {
 });
 
 // Graceful shutdown
+let shutdownInitiated = false;
+
 const stopRunner = () => {
+  if (shutdownInitiated) return;
+  shutdownInitiated = true;
   if (runner.isRunning()) {
     botLog.info("Stopping bot...");
     runner.stop();
   }
   releaseInstanceLock();
 };
+
+process.on("uncaughtException", (error) => {
+  botLog.fatal({ err: error }, "Uncaught exception");
+  eventLog.error(
+    { eventType: "process_uncaught_exception", error: summarizeCronError(error) },
+    "Process-level crash"
+  );
+  stopRunner();
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  botLog.fatal({ err: reason }, "Unhandled promise rejection");
+  eventLog.error(
+    { eventType: "process_unhandled_rejection", error: summarizeCronError(reason) },
+    "Process-level crash"
+  );
+  stopRunner();
+  process.exit(1);
+});
 
 process.on("SIGINT", () => {
   botLog.info("Received SIGINT");

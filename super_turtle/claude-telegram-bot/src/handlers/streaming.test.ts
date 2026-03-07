@@ -308,6 +308,24 @@ describe("cleanupToolMessages()", () => {
     expect(deleteMessageMock).toHaveBeenCalledWith(chatId, 2003);
     expect(deleteMessageMock).not.toHaveBeenCalledWith(chatId, 2002);
   });
+
+  it("suppresses benign deleteMessage errors and still clears tool messages", async () => {
+    const state = new StreamingState();
+    const chatId = 77;
+    state.toolMessages = [
+      { chat: { id: chatId }, message_id: 3001 } as any,
+    ];
+
+    const deleteMessageMock = mock(async () => {
+      throw new Error("400: Bad Request: message to delete not found");
+    });
+    const ctx = { api: { deleteMessage: deleteMessageMock } } as unknown as Context;
+
+    await cleanupToolMessages(ctx, state);
+
+    expect(deleteMessageMock).toHaveBeenCalledTimes(1);
+    expect(state.toolMessages.length).toBe(0);
+  });
 });
 
 describe("bot-control dynamic import", () => {

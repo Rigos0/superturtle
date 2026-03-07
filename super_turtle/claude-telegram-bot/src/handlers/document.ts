@@ -9,12 +9,19 @@ import type { Context } from "grammy";
 import { session } from "../session";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
-import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
+import {
+  auditLog,
+  auditLogAuth,
+  auditLogError,
+  auditLogRateLimit,
+  generateRequestId,
+  startTypingIndicator,
+} from "../utils";
 import { getDriverAuditType, isActiveDriverSessionActive, runMessageWithActiveDriver } from "./driver-routing";
 import { StreamingState, createStatusCallback } from "./streaming";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
 import { isAudioFile, processAudioFile } from "./audio";
-import { streamLog } from "../logger";
+import { eventLog, streamLog } from "../logger";
 
 const documentLog = streamLog.child({ handler: "document" });
 
@@ -219,7 +226,8 @@ async function processArchive(
   caption: string | undefined,
   userId: number,
   username: string,
-  chatId: number
+  chatId: number,
+  requestId?: string
 ): Promise<void> {
   const stopProcessing = session.startProcessing();
   const typing = startTypingIndicator(ctx);
@@ -272,6 +280,7 @@ async function processArchive(
 
     const response = await runMessageWithActiveDriver({
       message: prompt,
+      source: "archive",
       username,
       userId,
       chatId,
@@ -284,7 +293,8 @@ async function processArchive(
       username,
       getDriverAuditType("ARCHIVE"),
       `[${fileName}] ${caption || ""}`,
-      response
+      response,
+      { request_id: requestId, chat_id: chatId }
     );
 
     // Cleanup
@@ -298,6 +308,13 @@ async function processArchive(
     }
   } catch (error) {
     documentLog.error({ err: error, userId, username, chatId, fileName }, "Archive processing failed");
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "processArchive",
+      { request_id: requestId, chat_id: chatId }
+    );
     // Delete status message on error
     try {
       await ctx.api.deleteMessage(statusMsg.chat.id, statusMsg.message_id);
@@ -322,7 +339,8 @@ async function processDocuments(
   caption: string | undefined,
   userId: number,
   username: string,
-  chatId: number
+  chatId: number,
+  requestId?: string
 ): Promise<void> {
   // Mark processing started
   const stopProcessing = session.startProcessing();
@@ -362,6 +380,7 @@ async function processDocuments(
   try {
     const response = await runMessageWithActiveDriver({
       message: prompt,
+      source: "document",
       username,
       userId,
       chatId,
@@ -374,9 +393,17 @@ async function processDocuments(
       username,
       getDriverAuditType("DOCUMENT"),
       `[${documents.length} docs] ${caption || ""}`,
-      response
+      response,
+      { request_id: requestId, chat_id: chatId }
     );
   } catch (error) {
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "processDocuments",
+      { request_id: requestId, chat_id: chatId }
+    );
     await handleProcessingError(ctx, error, state.toolMessages);
   } finally {
     stopProcessing();
@@ -393,7 +420,8 @@ async function processDocumentPaths(
   caption: string | undefined,
   userId: number,
   username: string,
-  chatId: number
+  chatId: number,
+  requestId?: string
 ): Promise<void> {
   // Extract text from all documents
   const documents: Array<{ path: string; name: string; content: string }> = [];
@@ -416,7 +444,7 @@ async function processDocumentPaths(
     return;
   }
 
-  await processDocuments(ctx, documents, caption, userId, username, chatId);
+  await processDocuments(ctx, documents, caption, userId, username, chatId, requestId);
 }
 
 /**
@@ -426,6 +454,7 @@ export async function handleDocument(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
+  const requestId = generateRequestId("document");
   const doc = ctx.message?.document;
   const mediaGroupId = ctx.message?.media_group_id;
 
@@ -435,9 +464,26 @@ export async function handleDocument(ctx: Context): Promise<void> {
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: requestId,
+      source: "document",
+      chat_id: chatId,
+    });
     await ctx.reply("Unauthorized. Contact the bot owner for access.");
     return;
   }
+
+  eventLog.info({
+    event: "user.message.document",
+    requestId,
+    userId,
+    username,
+    chatId,
+    fileName: doc.file_name || null,
+    mimeType: doc.mime_type || null,
+    fileSize: doc.file_size || null,
+    mediaGroupId: mediaGroupId || null,
+  });
 
   // 2. Check file size
   if (doc.file_size && doc.file_size > MAX_FILE_SIZE) {
@@ -463,7 +509,11 @@ export async function handleDocument(ctx: Context): Promise<void> {
     // Rate limit check
     const [allowed, retryAfter] = rateLimiter.check(userId);
     if (!allowed) {
-      await auditLogRateLimit(userId, username, retryAfter!);
+      await auditLogRateLimit(userId, username, retryAfter!, {
+        request_id: requestId,
+        source: "audio-document",
+        chat_id: chatId,
+      });
       await ctx.reply(
         `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
       );
@@ -483,7 +533,15 @@ export async function handleDocument(ctx: Context): Promise<void> {
       return;
     }
 
-    await processAudioFile(ctx, docPath, ctx.message?.caption, userId, username, chatId);
+    await processAudioFile(
+      ctx,
+      docPath,
+      ctx.message?.caption,
+      userId,
+      username,
+      chatId,
+      requestId
+    );
     return;
   }
 
@@ -515,7 +573,11 @@ export async function handleDocument(ctx: Context): Promise<void> {
     );
     const [allowed, retryAfter] = rateLimiter.check(userId);
     if (!allowed) {
-      await auditLogRateLimit(userId, username, retryAfter!);
+      await auditLogRateLimit(userId, username, retryAfter!, {
+        request_id: requestId,
+        source: "archive",
+        chat_id: chatId,
+      });
       await ctx.reply(
         `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
       );
@@ -529,7 +591,8 @@ export async function handleDocument(ctx: Context): Promise<void> {
       ctx.message?.caption,
       userId,
       username,
-      chatId
+      chatId,
+      requestId
     );
     return;
   }
@@ -543,7 +606,11 @@ export async function handleDocument(ctx: Context): Promise<void> {
     // Rate limit
     const [allowed, retryAfter] = rateLimiter.check(userId);
     if (!allowed) {
-      await auditLogRateLimit(userId, username, retryAfter!);
+      await auditLogRateLimit(userId, username, retryAfter!, {
+        request_id: requestId,
+        source: "document",
+        chat_id: chatId,
+      });
       await ctx.reply(
         `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
       );
@@ -558,7 +625,8 @@ export async function handleDocument(ctx: Context): Promise<void> {
         ctx.message?.caption,
         userId,
         username,
-        chatId
+        chatId,
+        requestId
       );
     } catch (error) {
       documentLog.error(
@@ -567,6 +635,13 @@ export async function handleDocument(ctx: Context): Promise<void> {
       );
       await ctx.reply(
         `❌ Failed to process document: ${String(error).slice(0, 100)}`
+      );
+      await auditLogError(
+        userId,
+        username,
+        String(error).slice(0, 200),
+        "handleDocument.extractText",
+        { request_id: requestId, chat_id: chatId }
       );
     }
     return;
@@ -579,6 +654,7 @@ export async function handleDocument(ctx: Context): Promise<void> {
     ctx,
     userId,
     username,
-    processDocumentPaths
+    (gctx, paths, caption, gUserId, gUsername, gChatId) =>
+      processDocumentPaths(gctx, paths, caption, gUserId, gUsername, gChatId, requestId)
   );
 }

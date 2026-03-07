@@ -4,6 +4,20 @@ import type { StatusCallback } from "../types";
 export type DriverId = "claude" | "codex";
 export type DriverStopResult = "stopped" | "pending" | false;
 export type DriverAuditEvent = "TEXT" | "TEXT_CODEX";
+export type DriverRunSource =
+  | "text"
+  | "voice"
+  | "photo"
+  | "audio"
+  | "video"
+  | "document"
+  | "archive"
+  | "callback"
+  | "queue_text"
+  | "queue_voice"
+  | "cron_silent"
+  | "cron_scheduled"
+  | "background_snapshot";
 
 export interface DriverUsage {
   inputTokens: number;
@@ -23,6 +37,7 @@ export interface DriverStatusSnapshot {
 
 export interface DriverRunInput {
   message: string;
+  source: DriverRunSource;
   username: string;
   userId: number;
   chatId: number;

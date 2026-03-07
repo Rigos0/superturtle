@@ -19,6 +19,12 @@ import { logger } from "./logger";
 
 const utilsLog = logger.child({ module: "utils" });
 
+export function generateRequestId(prefix = "req"): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${ts}-${rand}`;
+}
+
 // ============== OpenAI Client ==============
 
 let openaiClient: OpenAI | null = null;
@@ -62,7 +68,8 @@ export async function auditLog(
   username: string,
   messageType: string,
   content: string,
-  response = ""
+  response = "",
+  metadata?: Record<string, unknown>
 ): Promise<void> {
   const event: AuditEvent = {
     timestamp: new Date().toISOString(),
@@ -75,21 +82,29 @@ export async function auditLog(
   if (response) {
     event.response = response;
   }
+  if (metadata && Object.keys(metadata).length > 0) {
+    Object.assign(event, metadata);
+  }
   await writeAuditLog(event);
 }
 
 export async function auditLogAuth(
   userId: number,
   username: string,
-  authorized: boolean
+  authorized: boolean,
+  metadata?: Record<string, unknown>
 ): Promise<void> {
-  await writeAuditLog({
+  const event: AuditEvent = {
     timestamp: new Date().toISOString(),
     event: "auth",
     user_id: userId,
     username,
     authorized,
-  });
+  };
+  if (metadata && Object.keys(metadata).length > 0) {
+    Object.assign(event, metadata);
+  }
+  await writeAuditLog(event);
 }
 
 export async function auditLogTool(
@@ -119,7 +134,8 @@ export async function auditLogError(
   userId: number,
   username: string,
   error: string,
-  context = ""
+  context = "",
+  metadata?: Record<string, unknown>
 ): Promise<void> {
   const event: AuditEvent = {
     timestamp: new Date().toISOString(),
@@ -131,21 +147,29 @@ export async function auditLogError(
   if (context) {
     event.context = context;
   }
+  if (metadata && Object.keys(metadata).length > 0) {
+    Object.assign(event, metadata);
+  }
   await writeAuditLog(event);
 }
 
 export async function auditLogRateLimit(
   userId: number,
   username: string,
-  retryAfter: number
+  retryAfter: number,
+  metadata?: Record<string, unknown>
 ): Promise<void> {
-  await writeAuditLog({
+  const event: AuditEvent = {
     timestamp: new Date().toISOString(),
     event: "rate_limit",
     user_id: userId,
     username,
     retry_after: retryAfter,
-  });
+  };
+  if (metadata && Object.keys(metadata).length > 0) {
+    Object.assign(event, metadata);
+  }
+  await writeAuditLog(event);
 }
 
 // ============== Voice Transcription ==============
@@ -186,7 +210,7 @@ export function startTypingIndicator(ctx: Context): TypingController {
       try {
         await ctx.replyWithChatAction("typing");
       } catch (error) {
-        console.debug("Typing indicator failed:", error);
+        utilsLog.debug({ err: error }, "Typing indicator failed");
       }
       await Bun.sleep(4000);
     }

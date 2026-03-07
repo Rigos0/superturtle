@@ -30,6 +30,15 @@ Then start:
 superturtle start
 ```
 
+Operations:
+
+```bash
+superturtle status
+superturtle doctor
+superturtle logs loop
+superturtle logs pino --pretty
+```
+
 For agents and CI, init runs non-interactively with flags:
 
 ```bash

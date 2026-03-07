@@ -8,11 +8,18 @@ import type { Context } from "grammy";
 import { session } from "../session";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
-import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
+import {
+  auditLog,
+  auditLogAuth,
+  auditLogError,
+  auditLogRateLimit,
+  generateRequestId,
+  startTypingIndicator,
+} from "../utils";
 import { getDriverAuditType, isActiveDriverSessionActive, runMessageWithActiveDriver } from "./driver-routing";
 import { StreamingState, createStatusCallback } from "./streaming";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
-import { streamLog } from "../logger";
+import { eventLog, streamLog } from "../logger";
 
 const photoLog = streamLog.child({ handler: "photo" });
 
@@ -58,7 +65,8 @@ async function processPhotos(
   caption: string | undefined,
   userId: number,
   username: string,
-  chatId: number
+  chatId: number,
+  requestId?: string
 ): Promise<void> {
   // Mark processing started
   const stopProcessing = session.startProcessing();
@@ -94,6 +102,7 @@ async function processPhotos(
   try {
     const response = await runMessageWithActiveDriver({
       message: prompt,
+      source: "photo",
       username,
       userId,
       chatId,
@@ -101,8 +110,18 @@ async function processPhotos(
       statusCallback,
     });
 
-    await auditLog(userId, username, getDriverAuditType("PHOTO"), prompt, response);
+    await auditLog(userId, username, getDriverAuditType("PHOTO"), prompt, response, {
+      request_id: requestId,
+      chat_id: chatId,
+    });
   } catch (error) {
+    await auditLogError(
+      userId,
+      username,
+      String(error).slice(0, 200),
+      "processPhotos",
+      { request_id: requestId, chat_id: chatId }
+    );
     await handleProcessingError(ctx, error, state.toolMessages);
   } finally {
     stopProcessing();
@@ -117,6 +136,7 @@ export async function handlePhoto(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const username = ctx.from?.username || "unknown";
   const chatId = ctx.chat?.id;
+  const requestId = generateRequestId("photo");
   const mediaGroupId = ctx.message?.media_group_id;
 
   if (!userId || !chatId) {
@@ -125,9 +145,24 @@ export async function handlePhoto(ctx: Context): Promise<void> {
 
   // 1. Authorization check
   if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await auditLogAuth(userId, username, false, {
+      request_id: requestId,
+      source: "photo",
+      chat_id: chatId,
+    });
     await ctx.reply("Unauthorized. Contact the bot owner for access.");
     return;
   }
+
+  eventLog.info({
+    event: "user.message.photo",
+    requestId,
+    userId,
+    username,
+    chatId,
+    mediaGroupId: mediaGroupId || null,
+    captionLength: ctx.message?.caption?.length || 0,
+  });
 
   // 2. For single photos, show status and rate limit early
   let statusMsg: Awaited<ReturnType<typeof ctx.reply>> | null = null;
@@ -136,7 +171,11 @@ export async function handlePhoto(ctx: Context): Promise<void> {
     // Rate limit
     const [allowed, retryAfter] = rateLimiter.check(userId);
     if (!allowed) {
-      await auditLogRateLimit(userId, username, retryAfter!);
+      await auditLogRateLimit(userId, username, retryAfter!, {
+        request_id: requestId,
+        source: "photo",
+        chat_id: chatId,
+      });
       await ctx.reply(
         `⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`
       );
@@ -181,7 +220,8 @@ export async function handlePhoto(ctx: Context): Promise<void> {
       ctx.message?.caption,
       userId,
       username,
-      chatId
+      chatId,
+      requestId
     );
 
     // Clean up status message
@@ -205,6 +245,7 @@ export async function handlePhoto(ctx: Context): Promise<void> {
     ctx,
     userId,
     username,
-    processPhotos
+    (gctx, items, caption, gUserId, gUsername, gChatId) =>
+      processPhotos(gctx, items, caption, gUserId, gUsername, gChatId, requestId)
   );
 }

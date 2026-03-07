@@ -6,6 +6,7 @@ import { DASHBOARD_AUTH_TOKEN, WORKING_DIR } from "./config";
 const { isAuthorized, safeSubstring, computeProgressPct, jsonResponse, notFoundResponse, readFileOr, parseMetaFile, validateSubturtleName } = await import("./dashboard");
 const { session } = await import("./session");
 const { enqueueDeferredMessage, clearDeferredQueue } = await import("./deferred-queue");
+const { appendTurnLogEntry, clearTurnLogFile } = await import("./turn-log");
 
 const hasAuthToken = DASHBOARD_AUTH_TOKEN.length > 0;
 const validToken = hasAuthToken ? DASHBOARD_AUTH_TOKEN : "any-token";
@@ -586,7 +587,7 @@ describe("GET /api/jobs/:id", () => {
 });
 
 describe("GET /dashboard", () => {
-  it("matches the route pattern and renders plain HTML", async () => {
+  it("matches the route pattern and renders styled HTML", async () => {
     const result = findRoute("/dashboard");
     expect(result).not.toBeNull();
     const { req, url } = makeReq("/dashboard");
@@ -594,7 +595,23 @@ describe("GET /dashboard", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html.toLowerCase()).toContain("<html");
-    expect(html.toLowerCase()).not.toContain("<style>");
+    expect(html.toLowerCase()).toContain("<style>");
+    expect(html).toContain("class=\"panel panel-sessions\"");
+    expect(html).toContain("class=\"badge-row\"");
+    expect(html).toContain("id=\"sessionToggleBtn\"");
+    expect(html).toContain("Show more sessions");
+  });
+
+  it("renders JavaScript that parses successfully", async () => {
+    const result = findRoute("/dashboard");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/dashboard");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+    expect(scriptMatch).not.toBeNull();
+    expect(() => new Function(scriptMatch![1]!)).not.toThrow();
   });
 });
 
@@ -633,6 +650,158 @@ describe("GET /dashboard/jobs/:id", () => {
   });
 });
 
+describe("GET /dashboard/sessions/:driver/:sessionId", () => {
+  const originalState = {
+    sessionId: session.sessionId,
+    conversationTitle: session.conversationTitle,
+  };
+
+  afterEach(() => {
+    session.sessionId = originalState.sessionId;
+    session.conversationTitle = originalState.conversationTitle;
+    clearTurnLogFile();
+  });
+
+  it("matches the route pattern", () => {
+    const result = findRoute("/dashboard/sessions/claude/session-123");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("claude");
+    expect(result!.match[2]).toBe("session-123");
+  });
+
+  it("renders conversation-first layout with injected context message", async () => {
+    session.sessionId = "dashboard-session-html";
+    session.conversationTitle = "Dashboard html session";
+
+    appendTurnLogEntry({
+      driver: "claude",
+      source: "text",
+      sessionId: "dashboard-session-html",
+      userId: 1,
+      username: "tester",
+      chatId: 1,
+      model: "claude-opus-4-6",
+      effort: "high",
+      originalMessage: "Hello!!",
+      effectivePrompt: "[Current date/time: ...]\n\nHello!!",
+      injectedArtifacts: [
+        {
+          id: "claude-md",
+          label: "CLAUDE.md context",
+          order: 10,
+          text: "## Current task\nAuditability\n",
+          applied: true,
+        },
+        {
+          id: "meta-prompt",
+          label: "Meta system prompt",
+          order: 20,
+          text: "meta prompt text",
+          applied: true,
+        },
+        {
+          id: "date-prefix",
+          label: "Date/time prefix",
+          order: 30,
+          text: "[Current date/time: ...]\n\n",
+          applied: true,
+        },
+      ],
+      injections: {
+        datePrefixApplied: true,
+        metaPromptApplied: true,
+        cronScheduledPromptApplied: false,
+        backgroundSnapshotPromptApplied: false,
+      },
+      context: {
+        claudeMdLoaded: true,
+        metaSharedLoaded: true,
+      },
+      startedAt: "2026-03-07T15:17:12.480Z",
+      completedAt: "2026-03-07T15:17:17.895Z",
+      elapsedMs: 5416,
+      status: "completed",
+      response: "Hey! 👋 What's up?",
+      error: null,
+      usage: {
+        inputTokens: 3,
+        outputTokens: 14,
+      },
+    });
+
+    const result = findRoute("/dashboard/sessions/claude/dashboard-session-html");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/dashboard/sessions/claude/dashboard-session-html");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Conversation");
+    expect(html).toContain("Injected context");
+    expect(html).toContain("<p><strong>Injected context</strong></p><ol class=\"injected-list\">");
+    expect(html).toContain("<details><summary>CLAUDE.md context (");
+    expect(html).toContain("<details><summary>Meta system prompt (");
+    expect(html).toContain("<details><summary>Date/time prefix (");
+    expect(html).toContain("<pre>[Current date/time: ...]");
+    const claudeIdx = html.indexOf("<summary>CLAUDE.md context (");
+    const metaIdx = html.indexOf("<summary>Meta system prompt (");
+    const dateIdx = html.indexOf("<summary>Date/time prefix (");
+    expect(claudeIdx).toBeGreaterThan(-1);
+    expect(metaIdx).toBeGreaterThan(claudeIdx);
+    expect(metaIdx).toBeGreaterThan(-1);
+    expect(dateIdx).toBeGreaterThan(metaIdx);
+    expect(html).toContain("Debug details");
+    expect(html).not.toContain("Turn Timeline");
+  });
+
+  it("renders a legacy notice when turn log has no injected artifacts", async () => {
+    session.sessionId = "dashboard-session-legacy";
+    session.conversationTitle = "Legacy session";
+
+    appendTurnLogEntry({
+      driver: "claude",
+      source: "text",
+      sessionId: "dashboard-session-legacy",
+      userId: 1,
+      username: "tester",
+      chatId: 1,
+      model: "claude-opus-4-6",
+      effort: "high",
+      originalMessage: "Hi",
+      effectivePrompt: "Hi",
+      injectedArtifacts: [],
+      injections: {
+        datePrefixApplied: false,
+        metaPromptApplied: false,
+        cronScheduledPromptApplied: false,
+        backgroundSnapshotPromptApplied: false,
+      },
+      context: {
+        claudeMdLoaded: false,
+        metaSharedLoaded: false,
+      },
+      startedAt: "2026-03-07T16:00:00.000Z",
+      completedAt: "2026-03-07T16:00:01.000Z",
+      elapsedMs: 1000,
+      status: "completed",
+      response: "Hello",
+      error: null,
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    });
+
+    const result = findRoute("/dashboard/sessions/claude/dashboard-session-legacy");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/dashboard/sessions/claude/dashboard-session-legacy");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Legacy turn log");
+    expect(html).toContain("No captured injected artifacts for this turn (legacy log entry).");
+  });
+});
+
 /* ── Route table tests for /api/session ───────────────────────────── */
 
 describe("GET /api/session", () => {
@@ -655,6 +824,194 @@ describe("GET /api/session", () => {
     expect(typeof body.activeDriver).toBe("string");
     expect(typeof body.isRunning).toBe("boolean");
     expect(typeof body.isActive).toBe("boolean");
+  });
+});
+
+describe("GET /api/sessions", () => {
+  const originalState = {
+    sessionId: session.sessionId,
+    conversationTitle: session.conversationTitle,
+    recentMessages: [...session.recentMessages],
+    lastActivity: session.lastActivity,
+  };
+
+  afterEach(() => {
+    session.sessionId = originalState.sessionId;
+    session.conversationTitle = originalState.conversationTitle;
+    session.recentMessages = [...originalState.recentMessages];
+    session.lastActivity = originalState.lastActivity;
+  });
+
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/sessions");
+    expect(result).not.toBeNull();
+  });
+
+  it("returns active claude session with recent messages", async () => {
+    session.sessionId = "dashboard-test-session";
+    session.conversationTitle = "Dashboard test title";
+    session.lastActivity = new Date("2026-03-07T15:00:00.000Z");
+    session.recentMessages = [
+      {
+        role: "user",
+        text: "Hello dashboard",
+        timestamp: "2026-03-07T15:00:00.000Z",
+      },
+      {
+        role: "assistant",
+        text: "Hi from assistant",
+        timestamp: "2026-03-07T15:00:01.000Z",
+      },
+    ];
+
+    const listRoute = findRoute("/api/sessions");
+    expect(listRoute).not.toBeNull();
+    const { req, url } = makeReq("/api/sessions");
+    const listRes = await listRoute!.handler(req, url, listRoute!.match);
+    expect(listRes.status).toBe(200);
+    const listBody = await listRes.json() as Record<string, unknown>;
+    expect(listBody.generatedAt).toBeDefined();
+    expect(listBody.sessions).toBeInstanceOf(Array);
+
+    const sessions = listBody.sessions as Array<Record<string, unknown>>;
+    const match = sessions.find((entry) => entry.sessionId === "dashboard-test-session");
+    expect(match).toBeDefined();
+    expect(match?.driver).toBe("claude");
+    expect(match?.status).toBe("active-idle");
+    expect(match?.messageCount).toBe(2);
+  });
+});
+
+describe("GET /api/sessions/:driver/:sessionId", () => {
+  const originalState = {
+    sessionId: session.sessionId,
+    recentMessages: [...session.recentMessages],
+  };
+
+  afterEach(() => {
+    session.sessionId = originalState.sessionId;
+    session.recentMessages = [...originalState.recentMessages];
+  });
+
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/sessions/claude/session-123");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("claude");
+    expect(result!.match[2]).toBe("session-123");
+  });
+
+  it("returns detail payload for active claude session", async () => {
+    session.sessionId = "session-detail-test";
+    session.recentMessages = [
+      { role: "user", text: "A", timestamp: "2026-03-07T15:10:00.000Z" },
+      { role: "assistant", text: "B", timestamp: "2026-03-07T15:10:01.000Z" },
+    ];
+
+    const result = findRoute("/api/sessions/claude/session-detail-test");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/sessions/claude/session-detail-test");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.generatedAt).toBeDefined();
+    const sessionInfo = body.session as Record<string, unknown>;
+    expect(sessionInfo.sessionId).toBe("session-detail-test");
+    const messages = body.messages as Array<Record<string, unknown>>;
+    expect(messages.length).toBe(2);
+    const meta = body.meta as Record<string, unknown>;
+    expect(typeof meta.model).toBe("string");
+    expect(typeof meta.effort).toBe("string");
+  });
+
+  it("returns 404 for missing session", async () => {
+    const result = findRoute("/api/sessions/claude/__nope__");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/sessions/claude/__nope__");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/sessions/:driver/:sessionId/turns", () => {
+  const originalState = {
+    sessionId: session.sessionId,
+    conversationTitle: session.conversationTitle,
+  };
+
+  afterEach(() => {
+    session.sessionId = originalState.sessionId;
+    session.conversationTitle = originalState.conversationTitle;
+    clearTurnLogFile();
+  });
+
+  it("matches the route pattern", () => {
+    const result = findRoute("/api/sessions/claude/session-123/turns");
+    expect(result).not.toBeNull();
+    expect(result!.match[1]).toBe("claude");
+    expect(result!.match[2]).toBe("session-123");
+  });
+
+  it("returns turn timeline for an active session", async () => {
+    session.sessionId = "turn-log-session";
+    session.conversationTitle = "Turn log title";
+
+    appendTurnLogEntry({
+      driver: "claude",
+      source: "cron_scheduled",
+      sessionId: "turn-log-session",
+      userId: 123,
+      username: "tester",
+      chatId: 456,
+      model: "claude-opus-4-6",
+      effort: "high",
+      originalMessage: "run the daily update",
+      effectivePrompt: "[Current date/time: ...]\nrun the daily update",
+      injectedArtifacts: [
+        {
+          id: "cron-scheduled",
+          label: "Cron scheduled instruction",
+          order: 40,
+          text: "(This is a scheduled message. Start your response with \"🔔 Scheduled:\" on its own line before anything else.)",
+          applied: true,
+        },
+      ],
+      injections: {
+        datePrefixApplied: true,
+        metaPromptApplied: true,
+        cronScheduledPromptApplied: true,
+        backgroundSnapshotPromptApplied: false,
+      },
+      context: {
+        claudeMdLoaded: true,
+        metaSharedLoaded: true,
+      },
+      startedAt: "2026-03-07T15:00:00.000Z",
+      completedAt: "2026-03-07T15:00:03.000Z",
+      elapsedMs: 3000,
+      status: "completed",
+      response: "Done.",
+      error: null,
+      usage: {
+        inputTokens: 10,
+        outputTokens: 20,
+      },
+    });
+
+    const result = findRoute("/api/sessions/claude/turn-log-session/turns");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/sessions/claude/turn-log-session/turns");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.generatedAt).toBeDefined();
+    expect((body.session as Record<string, unknown>).sessionId).toBe("turn-log-session");
+    const turns = body.turns as Array<Record<string, unknown>>;
+    expect(turns.length).toBe(1);
+    expect(turns[0]?.source).toBe("cron_scheduled");
+    expect((turns[0]?.injections as Record<string, unknown>).cronScheduledPromptApplied).toBe(true);
+    const artifacts = turns[0]?.injectedArtifacts as Array<Record<string, unknown>>;
+    expect(artifacts.length).toBe(1);
+    expect(artifacts[0]?.id).toBe("cron-scheduled");
   });
 });
 

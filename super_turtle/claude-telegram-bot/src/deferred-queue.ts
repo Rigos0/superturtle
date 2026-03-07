@@ -1,8 +1,9 @@
 import type { Context } from "grammy";
 import { session } from "./session";
-import { auditLog, startTypingIndicator } from "./utils";
+import { auditLog, generateRequestId, startTypingIndicator } from "./utils";
 import { isAnyDriverRunning, runMessageWithActiveDriver } from "./handlers/driver-routing";
 import { StreamingState, createStatusCallback, getStreamingState } from "./handlers/streaming";
+import { eventLog } from "./logger";
 
 export interface DeferredMessage {
   text: string;
@@ -77,6 +78,13 @@ export function enqueueDeferredMessage(item: DeferredMessage): number {
     item.enqueuedAt - last.enqueuedAt <= DEDUPE_WINDOW_MS
   ) {
     queues.set(item.chatId, queue);
+    eventLog.info({
+      event: "deferred_queue.dedupe",
+      chatId: item.chatId,
+      userId: item.userId,
+      source: item.source,
+      queueSize: queue.length,
+    });
     return queue.length;
   }
 
@@ -86,6 +94,14 @@ export function enqueueDeferredMessage(item: DeferredMessage): number {
   }
 
   queues.set(item.chatId, queue);
+  eventLog.info({
+    event: "deferred_queue.enqueued",
+    chatId: item.chatId,
+    userId: item.userId,
+    source: item.source,
+    queueSize: queue.length,
+    textLength: item.text.length,
+  });
   return queue.length;
 }
 
@@ -138,8 +154,17 @@ export async function drainDeferredQueue(
       const stopProcessing = session.startProcessing();
       const typing = startTypingIndicator(ctx);
       session.typingController = typing;
+      const requestId = generateRequestId("queue");
 
       try {
+        eventLog.info({
+          event: "deferred_queue.processing_start",
+          requestId,
+          chatId,
+          userId: next.userId,
+          source: next.source,
+          queueRemaining: getDeferredQueueSize(chatId),
+        });
         const state = new StreamingState();
         const statusCallback = createStatusCallback(ctx, state);
         try {
@@ -149,6 +174,7 @@ export async function drainDeferredQueue(
         }
         const response = await runMessageWithActiveDriver({
           message: next.text,
+          source: next.source === "voice" ? "queue_voice" : "queue_text",
           username: next.username,
           userId: next.userId,
           chatId: next.chatId,
@@ -161,9 +187,26 @@ export async function drainDeferredQueue(
           next.username,
           next.source === "voice" ? "VOICE_QUEUED" : "TEXT_QUEUED",
           next.text,
-          response
+          response,
+          { request_id: requestId, chat_id: chatId, source: next.source }
         );
+        eventLog.info({
+          event: "deferred_queue.processing_done",
+          requestId,
+          chatId,
+          userId: next.userId,
+          source: next.source,
+          queueRemaining: getDeferredQueueSize(chatId),
+        });
       } catch (error) {
+        eventLog.error({
+          event: "deferred_queue.processing_error",
+          requestId,
+          chatId,
+          userId: next.userId,
+          source: next.source,
+          error: String(error).slice(0, 200),
+        });
         const message = String(error).toLowerCase();
         if (!message.includes("abort") && !message.includes("cancel")) {
           await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);

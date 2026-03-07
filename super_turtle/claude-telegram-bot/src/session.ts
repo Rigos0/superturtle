@@ -7,7 +7,6 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
 import type { Context } from "grammy";
 import {
   ALLOWED_PATHS,
@@ -41,6 +40,9 @@ import type {
   TokenUsage,
 } from "./types";
 import { claudeLog } from "./logger";
+import type { DriverRunSource } from "./drivers/types";
+import { appendTurnLogEntry, type TurnLogStatus, type TurnLogUsage } from "./turn-log";
+import { buildInjectedArtifacts, readClaudeMdSnapshot } from "./injected-artifacts";
 
 // Stream-json event types from claude CLI
 interface StreamJsonEvent {
@@ -403,8 +405,21 @@ export class ClaudeSession {
     userId: number,
     statusCallback: StatusCallback,
     chatId?: number,
-    ctx?: Context
+    ctx?: Context,
+    source: DriverRunSource = "text"
   ): Promise<string> {
+    const turnStartedAt = new Date();
+    const sessionIdAtStart = this.sessionId;
+    const claudeMdSnapshot = readClaudeMdSnapshot(WORKING_DIR);
+    const claudeMdLoaded = claudeMdSnapshot.loaded;
+    let messageToSend = message;
+    let turnStatus: TurnLogStatus = "completed";
+    let turnError: string | null = null;
+    let turnResponse: string | null = null;
+    let turnUsage: TokenUsage | null = null;
+    let isNewSession = false;
+
+    try {
     // Acquire the query lock IMMEDIATELY to prevent TOCTOU races.
     // Without this, two callers can both check isRunning (false), then both
     // enter this method and resume the same session concurrently — producing
@@ -417,14 +432,13 @@ export class ClaudeSession {
       writeMcpConfig(chatId);
     }
 
-    const isNewSession = !this.isActive;
+    isNewSession = !this.isActive;
     const thinkingTokens = getThinkingLevel(message);
     const thinkingLabel =
       { 0: "off", 10000: "normal", 50000: "deep" }[thinkingTokens] ||
       String(thinkingTokens);
 
     // Inject current date/time at session start so Claude doesn't need to call a tool for it
-    let messageToSend = message;
     if (isNewSession) {
       const now = new Date();
       const datePrefix = `[Current date/time: ${now.toLocaleDateString(
@@ -805,6 +819,7 @@ export class ClaudeSession {
             // Capture usage if available
             if (event.usage) {
               this.lastUsage = event.usage as TokenUsage;
+              turnUsage = event.usage as TokenUsage;
               const u = this.lastUsage;
               claudeLog.info(
                 `Usage: in=${u.input_tokens} out=${u.output_tokens} cache_read=${
@@ -878,14 +893,15 @@ export class ClaudeSession {
     // If ask_user was triggered, return early - user will respond via button
     if (askUserTriggered) {
       await statusCallback("done", "");
-      return "[Waiting for user selection]";
+      turnResponse = "[Waiting for user selection]";
+      return turnResponse;
     }
 
     // Detect empty response (in=0 out=0) — typically means the resumed session
     // is stale or expired. Throw so the caller can retry with a fresh session.
     const responseText = responseParts.join("");
-    if (!responseText && this.lastUsage) {
-      const u = this.lastUsage;
+    if (!responseText && turnUsage) {
+      const u = turnUsage;
       if (u.input_tokens === 0 && u.output_tokens === 0) {
         claudeLog.warn(
           "Empty response detected (in=0 out=0) — session likely stale, clearing for retry"
@@ -910,7 +926,67 @@ export class ClaudeSession {
     }
     // Persist the rolling buffer after each assistant response so /resume previews are fresh.
     this.saveSession();
-    return responseText || "No response from Claude.";
+    turnResponse = responseText || "No response from Claude.";
+    return turnResponse;
+  } catch (error) {
+    turnError = getErrorMessage(error).slice(0, 4000);
+    const errorLower = turnError.toLowerCase();
+    turnStatus =
+      errorLower.includes("abort") || errorLower.includes("cancel")
+        ? "cancelled"
+        : "error";
+    throw error;
+  } finally {
+    const completedAt = new Date();
+    const usage: TurnLogUsage | null = turnUsage
+      ? {
+          inputTokens: turnUsage.input_tokens,
+          outputTokens: turnUsage.output_tokens,
+          cacheReadInputTokens: turnUsage.cache_read_input_tokens,
+          cacheCreateInputTokens: turnUsage.cache_creation_input_tokens,
+        }
+      : null;
+
+    appendTurnLogEntry({
+      driver: "claude",
+      source,
+      sessionId: this.sessionId || sessionIdAtStart,
+      userId,
+      username,
+      chatId: chatId ?? 0,
+      model: this.model,
+      effort: this.effort,
+      originalMessage: message,
+      effectivePrompt: messageToSend,
+      injectedArtifacts: buildInjectedArtifacts({
+        source,
+        effectivePrompt: messageToSend,
+        originalMessage: message,
+        datePrefixApplied: isNewSession,
+        metaPromptApplied: META_PROMPT.length > 0,
+        claudeMdLoaded,
+        claudeMdText: claudeMdSnapshot.text,
+        metaPromptText: META_PROMPT,
+      }),
+      injections: {
+        datePrefixApplied: isNewSession,
+        metaPromptApplied: META_PROMPT.length > 0,
+        cronScheduledPromptApplied: source === "cron_scheduled",
+        backgroundSnapshotPromptApplied: source === "background_snapshot",
+      },
+      context: {
+        claudeMdLoaded,
+        metaSharedLoaded: META_PROMPT.length > 0,
+      },
+      startedAt: turnStartedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      elapsedMs: Math.max(0, completedAt.getTime() - turnStartedAt.getTime()),
+      status: turnStatus,
+      response: turnResponse,
+      error: turnError,
+      usage,
+    });
+  }
   }
 
   /**

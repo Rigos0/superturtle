@@ -35,6 +35,8 @@ import {
 // Union type for bot control to work with both Claude and Codex sessions
 type BotControlSession = ClaudeSession | CodexSession;
 const PENDING_REQUEST_MAX_AGE_MS = 5 * 60 * 1000;
+const HEARTBEAT_IDLE_MS = 15_000;
+const HEARTBEAT_TICK_MS = 5_000;
 
 function getRequestChatId(data: Record<string, unknown>): string {
   const raw = data.chat_id;
@@ -636,6 +638,12 @@ export class StreamingState {
   sawToolUse = false; // used to avoid replaying side-effectful tool runs on retries
   sawSpawnOrchestration = false; // true when streamed tool activity indicates `ctl spawn` orchestration
   thinkingPlaceholder: Message | null = null; // ephemeral "Thinking..." indicator
+  heartbeatMessage: Message | null = null; // ephemeral "still working" indicator
+  heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  heartbeatUpdating = false;
+  statusStartedAt = Date.now();
+  lastStatusAt = Date.now();
+  teardownCompleted = false;
 
   getSilentCapturedText(): string {
     return [...this.silentSegments.entries()]
@@ -652,7 +660,25 @@ export function getStreamingState(chatId: number): StreamingState | undefined {
 }
 
 export function clearStreamingState(chatId: number): void {
+  const existing = activeStreamingStates.get(chatId);
+  if (existing) {
+    stopHeartbeat(existing);
+  }
   activeStreamingStates.delete(chatId);
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function isIgnorableDeleteMessageError(error: unknown): boolean {
+  const message = describeError(error).toLowerCase();
+  return (
+    message.includes("message to delete not found") ||
+    message.includes("message can't be deleted") ||
+    message.includes("chat not found")
+  );
 }
 
 /** Delete the thinking placeholder if it exists. */
@@ -663,7 +689,12 @@ async function deleteThinkingPlaceholder(ctx: Context, state: StreamingState): P
   try {
     await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
   } catch (error) {
-    console.debug("Failed to delete thinking placeholder:", error);
+    if (!isIgnorableDeleteMessageError(error)) {
+      streamLog.debug(
+        { errorSummary: describeError(error) },
+        "Failed to delete thinking placeholder"
+      );
+    }
   }
 }
 
@@ -675,10 +706,97 @@ export async function cleanupToolMessages(ctx: Context, state: StreamingState): 
     try {
       await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
     } catch (error) {
-      console.debug("Failed to delete tool message:", error);
+      if (!isIgnorableDeleteMessageError(error)) {
+        streamLog.debug(
+          { errorSummary: describeError(error), chatId: toolMsg.chat.id, messageId: toolMsg.message_id },
+          "Failed to delete tool message"
+        );
+      }
     }
   }
   state.toolMessages = [];
+  state.heartbeatMessage = null;
+}
+
+async function clearHeartbeatMessage(ctx: Context, state: StreamingState): Promise<void> {
+  if (!state.heartbeatMessage) return;
+  const msg = state.heartbeatMessage;
+  state.heartbeatMessage = null;
+  try {
+    await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
+  } catch (error) {
+    if (!isIgnorableDeleteMessageError(error)) {
+      streamLog.debug(
+        { errorSummary: describeError(error), chatId: msg.chat.id, messageId: msg.message_id },
+        "Failed to delete heartbeat message"
+      );
+    }
+  }
+}
+
+function startHeartbeat(ctx: Context, state: StreamingState): void {
+  if (state.heartbeatTimer) return;
+  state.statusStartedAt = Date.now();
+  state.lastStatusAt = Date.now();
+  state.heartbeatTimer = setInterval(async () => {
+    if (state.heartbeatUpdating) return;
+    if (Date.now() - state.lastStatusAt < HEARTBEAT_IDLE_MS) return;
+    if (state.thinkingPlaceholder) return;
+
+    state.heartbeatUpdating = true;
+    try {
+      const elapsedSec = Math.floor((Date.now() - state.statusStartedAt) / 1000);
+      const text = `<i>Still working… ${elapsedSec}s</i>`;
+
+      if (state.heartbeatMessage) {
+        await ctx.api.editMessageText(
+          state.heartbeatMessage.chat.id,
+          state.heartbeatMessage.message_id,
+          text,
+          { parse_mode: "HTML" }
+        );
+      } else {
+        const msg = await ctx.reply(text, { parse_mode: "HTML" });
+        state.heartbeatMessage = msg;
+        state.toolMessages.push(msg);
+      }
+    } catch (error) {
+      streamLog.debug({ errorSummary: describeError(error) }, "Heartbeat update skipped");
+    } finally {
+      state.heartbeatUpdating = false;
+    }
+  }, HEARTBEAT_TICK_MS);
+}
+
+function stopHeartbeat(state: StreamingState): void {
+  if (!state.heartbeatTimer) return;
+  clearInterval(state.heartbeatTimer);
+  state.heartbeatTimer = null;
+}
+
+interface TeardownOptions {
+  chatId?: number;
+  clearRegisteredState?: boolean;
+}
+
+export async function teardownStreamingState(
+  ctx: Context,
+  state: StreamingState,
+  options: TeardownOptions = {}
+): Promise<void> {
+  if (state.teardownCompleted) return;
+  state.teardownCompleted = true;
+  stopHeartbeat(state);
+  await deleteThinkingPlaceholder(ctx, state);
+  await clearHeartbeatMessage(ctx, state);
+  await cleanupToolMessages(ctx, state);
+  if (options.clearRegisteredState) {
+    if (typeof options.chatId === "number") {
+      clearStreamingState(options.chatId);
+    } else if (ctx.chat?.id !== undefined) {
+      clearStreamingState(ctx.chat.id);
+    }
+  }
 }
 
 function decodeBasicHtmlEntities(text: string): string {
@@ -746,7 +864,7 @@ async function sendChunkedMessages(
       try {
         await ctx.reply(chunk);
       } catch (plainError) {
-        console.debug("Failed to send chunk:", plainError);
+        streamLog.debug({ err: plainError }, "Failed to send chunk");
       }
     }
   }
@@ -763,8 +881,22 @@ export function createStatusCallback(
   if (typeof chatId === "number") {
     activeStreamingStates.set(chatId, state);
   }
+  startHeartbeat(ctx, state);
   return async (statusType: string, content: string, segmentId?: number) => {
     try {
+      if (statusType !== "done") {
+        state.lastStatusAt = Date.now();
+      }
+      if (
+        state.heartbeatMessage &&
+        (statusType === "thinking" ||
+          statusType === "tool" ||
+          statusType === "text" ||
+          statusType === "segment_end")
+      ) {
+        await clearHeartbeatMessage(ctx, state);
+      }
+
       if (statusType === "thinking_start") {
         // Immediate placeholder shown before any CLI events arrive
         const msg = await ctx.reply("<i>Thinking\u2026</i>", {
@@ -794,10 +926,7 @@ export function createStatusCallback(
           state.toolMessages.push(toolMsg);
         } catch (htmlError) {
           // HTML parse failed (unexpected entity edge case) - try plain text
-          console.debug(
-            "HTML tool status failed, using plain text:",
-            htmlError
-          );
+          streamLog.debug({ err: htmlError }, "HTML tool status failed, using plain text");
           const toolMsg = await ctx.reply(escapeHtml(content));
           state.toolMessages.push(toolMsg);
         }
@@ -816,7 +945,7 @@ export function createStatusCallback(
             state.lastContent.set(segmentId, formatted);
           } catch (htmlError) {
             // HTML parse failed, fall back to plain text
-            console.debug("HTML reply failed, using plain text:", htmlError);
+            streamLog.debug({ err: htmlError }, "HTML reply failed, using plain text");
             const msg = await ctx.reply(formatted);
             state.textMessages.set(segmentId, msg);
             state.lastContent.set(segmentId, formatted);
@@ -844,11 +973,9 @@ export function createStatusCallback(
             const errorStr = String(error);
             if (errorStr.includes("MESSAGE_TOO_LONG")) {
               // Skip this intermediate update - segment_end will chunk properly
-              console.debug(
-                "Streaming edit too long, deferring to segment_end"
-              );
+              streamLog.debug("Streaming edit too long, deferring to segment_end");
             } else {
-              console.debug("HTML edit failed, trying plain text:", error);
+              streamLog.debug({ err: error }, "HTML edit failed, trying plain text");
               try {
                 await ctx.api.editMessageText(
                   msg.chat.id,
@@ -857,7 +984,7 @@ export function createStatusCallback(
                 );
                 state.lastContent.set(segmentId, formatted);
               } catch (editError) {
-                console.debug("Edit message failed:", editError);
+                streamLog.debug({ err: editError }, "Edit message failed");
               }
             }
           }
@@ -892,11 +1019,11 @@ export function createStatusCallback(
                   try {
                     await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
                   } catch (delError) {
-                    console.debug("Failed to delete for chunking:", delError);
+                    streamLog.debug({ err: delError }, "Failed to delete for chunking");
                   }
                   await sendChunkedMessages(ctx, formatted);
                 } else {
-                  console.debug("Failed to edit final message:", error);
+                  streamLog.debug({ err: error }, "Failed to edit final message");
                 }
               }
             } else {
@@ -904,7 +1031,7 @@ export function createStatusCallback(
               try {
                 await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
               } catch (error) {
-                console.debug("Failed to delete message for splitting:", error);
+                streamLog.debug({ err: error }, "Failed to delete message for splitting");
               }
               await sendChunkedMessages(ctx, formatted);
             }
@@ -918,7 +1045,7 @@ export function createStatusCallback(
                 try {
                   await ctx.reply(formatted);
                 } catch (plainError) {
-                  console.debug("Failed to send short segment:", plainError);
+                  streamLog.debug({ err: plainError }, "Failed to send short segment");
                 }
               }
             } else {
@@ -927,14 +1054,16 @@ export function createStatusCallback(
           }
         }
       } else if (statusType === "done") {
-        // Crash safety: always clean up thinking placeholder on done
-        await deleteThinkingPlaceholder(ctx, state);
-        await cleanupToolMessages(ctx, state);
-        if (typeof chatId === "number") {
-          clearStreamingState(chatId);
-        }
+        await teardownStreamingState(ctx, state, {
+          chatId,
+          clearRegisteredState: true,
+        });
       }
     } catch (error) {
+      await teardownStreamingState(ctx, state, {
+        chatId,
+        clearRegisteredState: true,
+      });
       streamLog.error({ err: error, statusType, segmentId }, "Status callback error");
     }
   };

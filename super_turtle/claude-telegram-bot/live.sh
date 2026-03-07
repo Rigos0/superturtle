@@ -6,6 +6,19 @@ cd "$(dirname "$0")"
 # Default CLAUDE_WORKING_DIR to repo root (two levels up from claude-telegram-bot/)
 export CLAUDE_WORKING_DIR="${CLAUDE_WORKING_DIR:-$(cd ../.. && pwd)}"
 
+# Load project env before deriving token/session/log names.
+if [ -f "${CLAUDE_WORKING_DIR}/.superturtle/.env" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${CLAUDE_WORKING_DIR}/.superturtle/.env"
+  set +a
+elif [ -f .env ]; then
+  echo "[live] WARNING: Using legacy .env in bot dir. Move it to \${CLAUDE_WORKING_DIR}/.superturtle/.env"
+  set -a
+  source .env
+  set +a
+fi
+
 WINDOW_NAME="${SUPERTURTLE_TMUX_WINDOW:-bot}"
 TELEGRAM_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TOKEN_PREFIX="${TELEGRAM_TOKEN%%:*}"
