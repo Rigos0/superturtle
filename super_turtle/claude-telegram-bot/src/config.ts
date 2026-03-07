@@ -382,6 +382,35 @@ export const AUDIT_LOG_PATH =
 export const AUDIT_LOG_JSON =
   (process.env.AUDIT_LOG_JSON || "false").toLowerCase() === "true";
 
+// ============== Env Overrides Log ==============
+
+// Log all non-default env var overrides at startup for quick debugging
+const ENV_DEFAULTS: Record<string, string> = {
+  DEFAULT_MODEL: "claude-opus-4-6",
+  DEFAULT_EFFORT: "high",
+  HIDE_TOOL_STATUS: "false",
+  LOG_LEVEL: "info",
+  RATE_LIMIT_ENABLED: "true",
+  RATE_LIMIT_REQUESTS: "20",
+  RATE_LIMIT_WINDOW: "60",
+  DASHBOARD_ENABLED: "false",
+  DASHBOARD_PORT: "4173",
+  CODEX_ENABLED: "false",
+  AUDIT_LOG_JSON: "false",
+  TURTLE_GREETINGS: "true",
+};
+
+const overrides: Record<string, string> = {};
+for (const [key, defaultVal] of Object.entries(ENV_DEFAULTS)) {
+  const actual = process.env[key];
+  if (actual && actual.toLowerCase() !== defaultVal.toLowerCase()) {
+    overrides[key] = actual;
+  }
+}
+if (Object.keys(overrides).length > 0) {
+  configLog.info({ overrides }, "Env overrides (non-default values)");
+}
+
 // ============== Rate Limiting ==============
 
 export const RATE_LIMIT_ENABLED =
