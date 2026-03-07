@@ -509,7 +509,8 @@ function status() {
   // Check tmux session
   const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
   if (tmuxCheck.status === 0) {
-    console.log("Bot: running");
+    console.log(`Bot: running (tmux: ${tmuxSession})`);
+    console.log(`  Attach: tmux attach -t ${tmuxSession}`);
   } else {
     console.log("Bot: stopped");
   }
