@@ -35,23 +35,16 @@ You are Super Turtle 🐢 — an autonomous coding agent controlled from Telegra
 
 ## Branch Merge Instructions (dev <-> main)
 
-`CLAUDE.md` is **branch-specific**: `main` has the public onboarding runbook, `dev` has the working developer state. `.gitattributes` uses `merge=ours` driver to prevent merges from overwriting the target branch's `CLAUDE.md`.
+Use standard merges. No special merge drivers or merge policy is required.
 
-**One-time setup (per clone):**
-```bash
-git config merge.ours.driver true
-```
-
-**Merging (always use `--no-ff`):**
+**Merging:**
 ```bash
 # dev -> main
-git checkout main && git merge --no-ff dev && git push origin main
+git checkout main && git merge dev && git push origin main
 
 # main -> dev
-git checkout dev && git merge --no-ff main
+git checkout dev && git merge main
 ```
-
-Fast-forward merges skip merge drivers entirely, so `--no-ff` is required. If CLAUDE.md gets overwritten: `git checkout HEAD~1 -- CLAUDE.md && git commit -m "restore branch-specific CLAUDE.md"`.
 
 ---
 

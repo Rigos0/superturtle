@@ -1,5 +1,0 @@
-# Protect CLAUDE.md on each branch during merges.
-# When merging dev → main (or vice versa), the target branch keeps its own CLAUDE.md.
-# This uses the "ours" merge driver: `git config merge.ours.driver true`
-# IMPORTANT: Always merge with --no-ff to ensure the merge driver is invoked.
-CLAUDE.md merge=ours
