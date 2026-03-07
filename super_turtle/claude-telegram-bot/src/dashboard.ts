@@ -566,7 +566,7 @@ function renderDashboardHtml(): string {
           } else {
             const rows = data.processes.map((p) => {
               return "<tr>" +
-                "<td><a href=\"/dashboard/processes/" + encodeURIComponent(p.id) + "\">" +
+                "<td><a href='/dashboard/processes/" + encodeURIComponent(p.id) + "'>" +
                 escapeHtml(p.label) +
                 "</a>" +
                 (p.pid && p.pid !== "-" ? " (pid " + escapeHtml(p.pid) + ")" : "") +
@@ -613,10 +613,10 @@ function renderDashboardHtml(): string {
             const rows = jobsData.jobs.map((job) => {
               const ownerLink = "/dashboard/processes/" + encodeURIComponent(job.ownerId);
               return "<tr>" +
-                "<td><a href=\"/dashboard/jobs/" + encodeURIComponent(job.id) + "\">" +
+                "<td><a href='/dashboard/jobs/" + encodeURIComponent(job.id) + "'>" +
                 escapeHtml(job.id) +
                 "</a></td>" +
-                "<td><a href=\"" + ownerLink + "\">" +
+                "<td><a href='" + ownerLink + "'>" +
                 escapeHtml(job.ownerId) +
                 "</a></td>" +
                 "<td>" + escapeHtml(job.ownerType) + "</td>" +
