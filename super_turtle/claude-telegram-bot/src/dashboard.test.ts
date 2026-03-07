@@ -18,6 +18,7 @@ const { session } = await import("./session");
 const { codexSession } = await import("./codex-session");
 const { enqueueDeferredMessage, clearDeferredQueue, getAllDeferredQueues } = await import("./deferred-queue");
 const { appendTurnLogEntry, clearTurnLogFile } = await import("./turn-log");
+const { setExecutingDriverForTests } = await import("./handlers/driver-routing");
 
 const hasAuthToken = DASHBOARD_AUTH_TOKEN.length > 0;
 const validToken = hasAuthToken ? DASHBOARD_AUTH_TOKEN : "any-token";
@@ -30,11 +31,13 @@ function clearAllDeferredQueuesForTest(): void {
 
 beforeEach(() => {
   clearAllDeferredQueuesForTest();
+  setExecutingDriverForTests(null);
   resetDashboardSessionCachesForTests();
 });
 
 afterEach(() => {
   clearAllDeferredQueuesForTest();
+  setExecutingDriverForTests(null);
   resetDashboardSessionCachesForTests();
 });
 
@@ -457,6 +460,38 @@ describe("GET /api/processes", () => {
       rmSync(testDir, { recursive: true, force: true });
     }
   });
+
+  it("shows only the executing driver as running during a codex turn", async () => {
+    const originalDriver = session.activeDriver;
+    const stopProcessing = session.startProcessing();
+
+    try {
+      session.activeDriver = "codex";
+      setExecutingDriverForTests("codex");
+
+      const result = findRoute("/api/processes");
+      expect(result).not.toBeNull();
+      const { req, url } = makeReq("/api/processes");
+      const res = await result!.handler(req, url, result!.match);
+      expect(res.status).toBe(200);
+
+      const body = await res.json() as Record<string, unknown>;
+      const processes = body.processes as Array<Record<string, unknown>>;
+      const claude = processes.find((p) => p.id === "driver-claude");
+      const codex = processes.find((p) => p.id === "driver-codex");
+
+      expect(claude).toBeDefined();
+      expect(claude?.status).toBe("idle");
+      expect(claude?.pid).toBe("-");
+      expect(codex).toBeDefined();
+      expect(codex?.status).toBe("running");
+      expect(codex?.pid).toBe("active");
+    } finally {
+      stopProcessing();
+      session.activeDriver = originalDriver;
+      setExecutingDriverForTests(null);
+    }
+  });
 });
 
 describe("GET /api/queue", () => {
@@ -770,7 +805,14 @@ describe("GET /dashboard/sessions/:driver/:sessionId", () => {
     const html = await res.text();
     expect(html).toContain("Conversation");
     expect(html).toContain("Injected context");
-    expect(html).toContain("<p><strong>Injected context</strong></p><ol class=\"injected-list\">");
+    expect(html).toContain("<div class=\"injected-heading\">");
+    expect(html).toContain("<ol class=\"injected-list\">");
+    expect(html).toContain("Project instructions");
+    expect(html).toContain("META prompt");
+    expect(html).toContain("Date/time prefix");
+    expect(html).toContain("How instructions are passed to this CLI");
+    expect(html).toContain("--setting-sources user,project");
+    expect(html).toContain("--system-prompt");
     expect(html).toContain("<details><summary>CLAUDE.md context (");
     expect(html).toContain("<details><summary>Meta system prompt (");
     expect(html).toContain("<details><summary>Date/time prefix (");
@@ -886,8 +928,15 @@ describe("GET /dashboard/sessions/:driver/:sessionId", () => {
     const html = await res.text();
     expect(html).toContain("Older Codex user message");
     expect(html).toContain("Older Codex assistant reply");
+    expect(html).toContain("<div class=\"injected-heading\">");
+    expect(html).toContain("<ol class=\"injected-list\">");
+    expect(html).toContain("Project instructions");
     expect(html).toContain("Meta system prompt");
+    expect(html).toContain("Date/time prefix");
     expect(html).toContain("meta prompt from transcript");
+    expect(html).toContain("How instructions are passed to this CLI");
+    expect(html).toContain("workingDirectory set to the repo root");
+    expect(html).toContain("&lt;system-instructions&gt;");
     expect(html).not.toContain("No captured injections for this session.");
   });
 });
@@ -982,7 +1031,7 @@ describe("GET /api/sessions", () => {
     expect(match?.messageCount).toBe(2);
   });
 
-  it("includes live-only codex sessions from the app-server listing", async () => {
+  it("excludes live-only codex sessions from the app-server listing", async () => {
     codexSession.recentMessages = [];
     codexSession.lastActivity = null;
     codexSession.getSessionList = () => [];
@@ -1004,9 +1053,67 @@ describe("GET /api/sessions", () => {
     const listBody = await listRes.json() as Record<string, unknown>;
     const sessions = listBody.sessions as Array<Record<string, unknown>>;
     const match = sessions.find((entry) => entry.sessionId === "codex-live-session");
+    expect(match).toBeUndefined();
+  });
+
+  it("includes tracked live codex sessions from the app-server listing", async () => {
+    codexSession.recentMessages = [];
+    codexSession.lastActivity = null;
+    codexSession.getSessionList = () => [];
+    codexSession.getSessionListLive = async () => [
+      {
+        session_id: "codex-live-session",
+        saved_at: "2026-03-07T16:30:00.000Z",
+        working_dir: WORKING_DIR,
+        title: "Live Codex session",
+        preview: "You: check dashboard",
+      },
+    ];
+
+    appendTurnLogEntry({
+      driver: "codex",
+      source: "text",
+      sessionId: "codex-live-session",
+      userId: 1,
+      username: "tester",
+      chatId: 1,
+      model: "codex",
+      effort: "high",
+      originalMessage: "check dashboard",
+      effectivePrompt: "<system-instructions>META</system-instructions>\n\n[Current date/time: ...]\n\ncheck dashboard",
+      injectedArtifacts: [],
+      injections: {
+        datePrefixApplied: true,
+        metaPromptApplied: true,
+        cronScheduledPromptApplied: false,
+        backgroundSnapshotPromptApplied: false,
+      },
+      context: {
+        claudeMdLoaded: true,
+        metaSharedLoaded: true,
+      },
+      startedAt: "2026-03-07T16:30:00.000Z",
+      completedAt: "2026-03-07T16:30:01.000Z",
+      elapsedMs: 1000,
+      status: "completed",
+      response: "dashboard checked",
+      error: null,
+      usage: {
+        inputTokens: 5,
+        outputTokens: 7,
+      },
+    });
+
+    const listRoute = findRoute("/api/sessions");
+    expect(listRoute).not.toBeNull();
+    const { req, url } = makeReq("/api/sessions");
+    const listRes = await listRoute!.handler(req, url, listRoute!.match);
+    expect(listRes.status).toBe(200);
+    const listBody = await listRes.json() as Record<string, unknown>;
+    const sessions = listBody.sessions as Array<Record<string, unknown>>;
+    const match = sessions.find((entry) => entry.sessionId === "codex-live-session");
     expect(match).toBeDefined();
     expect(match?.driver).toBe("codex");
-    expect(match?.status).toBe("saved");
   });
 });
 

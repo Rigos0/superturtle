@@ -7,7 +7,7 @@ import { getAllDeferredQueues } from "./deferred-queue";
 import { session, getAvailableModels } from "./session";
 import { codexSession } from "./codex-session";
 import { getPreparedSnapshotCount } from "./cron-supervision-queue";
-import { isBackgroundRunActive, wasBackgroundRunPreempted } from "./handlers/driver-routing";
+import { getExecutingDriverId, isBackgroundRunActive, wasBackgroundRunPreempted } from "./handlers/driver-routing";
 import { logger } from "./logger";
 import { readTurnLogEntries } from "./turn-log";
 import { buildExternalSessionHistory, buildSavedSessionHistory, buildTurnLogHistory } from "./session-history";
@@ -275,20 +275,8 @@ type SessionSnapshot = {
   meta: SessionMetaView;
 };
 
-const DASHBOARD_CODEX_SESSION_CACHE_TTL_MS = 5000;
-const DASHBOARD_CODEX_SESSION_LIMIT = 50;
-
-let cachedDashboardCodexSessions:
-  | {
-      fetchedAt: number;
-      sessions: SavedSession[];
-    }
-  | null = null;
-let pendingDashboardCodexSessions: Promise<SavedSession[]> | null = null;
-
 export function resetDashboardSessionCachesForTests(): void {
-  cachedDashboardCodexSessions = null;
-  pendingDashboardCodexSessions = null;
+  // No-op; retained for test compatibility.
 }
 
 const SESSION_STATUS_ORDER: Record<SessionListItem["status"], number> = {
@@ -449,35 +437,58 @@ function sortSessionRows(rows: SessionListItem[]): SessionListItem[] {
 }
 
 async function getDashboardCodexSessions(): Promise<SavedSession[]> {
-  if (
-    cachedDashboardCodexSessions
-    && Date.now() - cachedDashboardCodexSessions.fetchedAt < DASHBOARD_CODEX_SESSION_CACHE_TTL_MS
-  ) {
-    return cachedDashboardCodexSessions.sessions;
+  const trackedSessionIds = new Set<string>();
+  for (const saved of codexSession.getSessionList()) {
+    if (validateSessionId(saved.session_id)) {
+      trackedSessionIds.add(saved.session_id);
+    }
+  }
+  const activeThreadId = codexSession.getThreadId();
+  if (activeThreadId && validateSessionId(activeThreadId)) {
+    trackedSessionIds.add(activeThreadId);
+  }
+  for (const entry of readTurnLogEntries({ driver: "codex", limit: 5000 })) {
+    if (entry.sessionId && validateSessionId(entry.sessionId)) {
+      trackedSessionIds.add(entry.sessionId);
+    }
   }
 
-  if (pendingDashboardCodexSessions) {
-    return pendingDashboardCodexSessions;
+  if (trackedSessionIds.size === 0) {
+    return codexSession.getSessionList();
   }
 
-  pendingDashboardCodexSessions = (async () => {
-    const sessions = await codexSession.getSessionListLive(DASHBOARD_CODEX_SESSION_LIMIT);
-    cachedDashboardCodexSessions = {
-      fetchedAt: Date.now(),
-      sessions,
+  const liveSessions = await codexSession.getSessionListLive();
+  return liveSessions.filter((saved) => trackedSessionIds.has(saved.session_id));
+}
+
+function getDriverRunningState(): {
+  activeDriverId: SessionDriver;
+  executingDriverId: SessionDriver | null;
+  claudeRunning: boolean;
+  codexRunning: boolean;
+} {
+  const executingDriverId = getExecutingDriverId();
+  const activeDriverId = executingDriverId || session.activeDriver;
+  if (executingDriverId) {
+    return {
+      activeDriverId,
+      executingDriverId,
+      claudeRunning: executingDriverId === "claude",
+      codexRunning: executingDriverId === "codex",
     };
-    return sessions;
-  })();
-
-  try {
-    return await pendingDashboardCodexSessions;
-  } finally {
-    pendingDashboardCodexSessions = null;
   }
+
+  return {
+    activeDriverId,
+    executingDriverId,
+    claudeRunning: session.isRunning,
+    codexRunning: codexSession.isRunning,
+  };
 }
 
 async function buildSessionSnapshots(): Promise<Map<string, SessionSnapshot>> {
   const snapshots = new Map<string, SessionSnapshot>();
+  const { claudeRunning, codexRunning } = getDriverRunningState();
 
   for (const saved of session.getSessionList()) {
     upsertSavedSession(snapshots, "claude", saved);
@@ -502,7 +513,7 @@ async function buildSessionSnapshots(): Promise<Map<string, SessionSnapshot>> {
         title: session.conversationTitle || existing?.row.title || "Active Claude session",
         savedAt: existing?.row.savedAt || null,
         lastActivity: session.lastActivity?.toISOString() || existing?.row.lastActivity || null,
-        status: session.isRunning ? "active-running" : "active-idle",
+        status: claudeRunning ? "active-running" : "active-idle",
         messageCount: messages.length,
         workingDir: WORKING_DIR,
         preview: buildMessagePreview(messages, existing?.row.preview || null),
@@ -511,7 +522,7 @@ async function buildSessionSnapshots(): Promise<Map<string, SessionSnapshot>> {
       meta: {
         model: session.model,
         effort: session.effort,
-        isRunning: session.isRunning,
+        isRunning: claudeRunning,
         queryStarted: session.queryStarted?.toISOString() || null,
         lastUsage: session.lastUsage as Record<string, unknown> | null,
         lastError: session.lastError,
@@ -538,7 +549,7 @@ async function buildSessionSnapshots(): Promise<Map<string, SessionSnapshot>> {
         title: existing?.row.title || "Active Codex session",
         savedAt: existing?.row.savedAt || null,
         lastActivity: codexSession.lastActivity?.toISOString() || existing?.row.lastActivity || null,
-        status: codexSession.isRunning ? "active-running" : "active-idle",
+        status: codexRunning ? "active-running" : "active-idle",
         messageCount: messages.length,
         workingDir: WORKING_DIR,
         preview: buildMessagePreview(messages, existing?.row.preview || null),
@@ -547,7 +558,7 @@ async function buildSessionSnapshots(): Promise<Map<string, SessionSnapshot>> {
       meta: {
         model: codexSession.model,
         effort: codexSession.reasoningEffort,
-        isRunning: codexSession.isRunning,
+        isRunning: codexRunning,
         queryStarted: codexSession.runningSince?.toISOString() || null,
         lastUsage: codexSession.lastUsage as Record<string, unknown> | null,
         lastError: codexSession.lastError,
@@ -715,15 +726,16 @@ async function buildDashboardState(): Promise<DashboardState> {
   }
   const hasQueuePressure = totalMessages > 0;
   const queueSummary = queuePressureSummary(totalMessages, chats.length);
+  const { activeDriverId, claudeRunning, codexRunning } = getDriverRunningState();
   const claudeStatus = mapDriverStatus(
-    session.isRunning,
+    claudeRunning,
     hasQueuePressure,
-    session.activeDriver === "claude"
+    activeDriverId === "claude"
   );
   const codexStatus = mapDriverStatus(
-    codexSession.isRunning,
+    codexRunning,
     hasQueuePressure,
-    session.activeDriver === "codex"
+    activeDriverId === "codex"
   );
   const claudeBaseDetail = session.currentTool || session.lastTool || "idle";
   const codexBaseDetail = codexSession.isActive ? "thread active" : "idle";
@@ -734,8 +746,8 @@ async function buildDashboardState(): Promise<DashboardState> {
       kind: "driver",
       label: "Claude driver",
       status: claudeStatus,
-      pid: session.isRunning ? "active" : "-",
-      elapsed: session.isRunning ? elapsedFrom(session.queryStarted) : "0s",
+      pid: claudeRunning ? "active" : "-",
+      elapsed: claudeRunning ? elapsedFrom(session.queryStarted) : "0s",
       detail: claudeStatus === "queued" ? `${claudeBaseDetail} · ${queueSummary}` : claudeBaseDetail,
     },
     {
@@ -743,8 +755,8 @@ async function buildDashboardState(): Promise<DashboardState> {
       kind: "driver",
       label: "Codex driver",
       status: codexStatus,
-      pid: codexSession.isRunning ? "active" : "-",
-      elapsed: codexSession.isRunning ? elapsedFrom(codexSession.runningSince) : "0s",
+      pid: codexRunning ? "active" : "-",
+      elapsed: codexRunning ? elapsedFrom(codexSession.runningSince) : "0s",
       detail: codexStatus === "queued" ? `${codexBaseDetail} · ${queueSummary}` : codexBaseDetail,
     },
     {
@@ -1509,11 +1521,13 @@ async function buildCurrentJobDetail(id: string): Promise<JobDetailResponse | nu
     };
     extra.elapsed = await getSubTurtleElapsed(name);
   } else if (job.ownerId === "driver-claude") {
-    extra.elapsed = session.isRunning ? elapsedFrom(session.queryStarted) : "0s";
+    extra.elapsed = getDriverRunningState().claudeRunning ? elapsedFrom(session.queryStarted) : "0s";
     extra.currentTool = session.currentTool;
     extra.lastTool = session.lastTool;
   } else if (job.ownerId === "driver-codex") {
-    extra.elapsed = codexSession.isRunning ? elapsedFrom(codexSession.runningSince) : "0s";
+    extra.elapsed = getDriverRunningState().codexRunning
+      ? elapsedFrom(codexSession.runningSince)
+      : "0s";
   }
 
   return {
@@ -1592,6 +1606,28 @@ function renderSessionDetailHtml(
     const matches = text.match(/[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?/g);
     return matches?.length || 0;
   };
+  const instructionTooltipHtml = detail.session.driver === "claude"
+    ? "<div class=\"info-popover\"><p><strong>How instructions reach this CLI</strong></p>" +
+      "<ul class=\"info-list\">" +
+      "<li><strong>Project instructions</strong>: Claude Code runs from the repo root with --setting-sources user,project, so project instructions are loaded by the CLI.</li>" +
+      "<li><strong>META prompt</strong>: The wrapper passes META_SHARED.md via --system-prompt on each query.</li>" +
+      "<li><strong>Date/time prefix</strong>: The wrapper prepends the date/time prefix when starting a new session.</li>" +
+      "</ul></div>"
+    : "<div class=\"info-popover\"><p><strong>How instructions reach this CLI</strong></p>" +
+      "<ul class=\"info-list\">" +
+      "<li><strong>Project instructions</strong>: Codex runs with workingDirectory set to the repo root, so repo-root AGENTS.md / project instructions are loaded by the CLI.</li>" +
+      "<li><strong>META prompt</strong>: The wrapper wraps META_SHARED.md in &lt;system-instructions&gt; and prepends it to the first message of a thread only.</li>" +
+      "<li><strong>Date/time prefix</strong>: The wrapper prepends the date/time prefix on the first message of a thread.</li>" +
+      "</ul></div>";
+
+  const injectedHeadingHtml =
+    "<div class=\"injected-heading\">" +
+    "<p><strong>Injected context</strong></p>" +
+    "<button class=\"info-btn\" type=\"button\" aria-label=\"How instructions are passed to this CLI\">" +
+    "i" +
+    instructionTooltipHtml +
+    "</button>" +
+    "</div>";
 
   const pushArtifact = (
     items: InjectedArtifactView[],
@@ -1647,7 +1683,7 @@ function renderSessionDetailHtml(
   injectedArtifacts.sort((a, b) => a.order - b.order);
 
   const injectedListHtml = injectedArtifacts.length > 0
-    ? "<p><strong>Injected context</strong></p><ol class=\"injected-list\">" + injectedArtifacts.map((artifact) => {
+    ? injectedHeadingHtml + "<ol class=\"injected-list\">" + injectedArtifacts.map((artifact) => {
       const wordCount = countWords(artifact.exactText);
       const wordLabel = wordCount === 1 ? "word" : "words";
       return "<li><details>" +
@@ -1657,7 +1693,7 @@ function renderSessionDetailHtml(
         "<pre>" + escapeHtml(artifact.exactText) + "</pre>" +
         "</details></li>";
     }).join("") + "</ol>"
-    : "<p><strong>Injected context</strong></p><p>No captured injections for this session.</p>";
+    : injectedHeadingHtml + "<p>No captured injections for this session.</p>";
 
   const conversationRows: ConversationRow[] = [
     {
@@ -1831,6 +1867,59 @@ function renderSessionDetailHtml(
         overflow-wrap: anywhere;
         word-break: break-word;
         max-width: 100%;
+      }
+      .injected-heading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .injected-heading p {
+        margin: 0;
+      }
+      .info-btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--muted);
+        font: inherit;
+        font-weight: 700;
+        cursor: help;
+      }
+      .info-popover {
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        display: none;
+        width: min(420px, 70vw);
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #172033;
+        color: #f7f8fc;
+        text-align: left;
+        box-shadow: 0 20px 40px rgba(23, 32, 51, 0.18);
+        z-index: 10;
+      }
+      .info-btn:hover .info-popover,
+      .info-btn:focus-visible .info-popover {
+        display: block;
+      }
+      .info-popover p {
+        margin: 0 0 8px 0;
+      }
+      .info-list {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .info-list li + li {
+        margin-top: 6px;
       }
       .injected-list {
         margin: 8px 0 0 20px;
@@ -2022,9 +2111,10 @@ async function buildProcessExtra(p: ProcessView): Promise<DriverExtra | Subturtl
 
 async function buildCurrentJobs(): Promise<CurrentJobView[]> {
   const jobs: CurrentJobView[] = [];
+  const { claudeRunning, codexRunning } = getDriverRunningState();
 
   // Driver activity
-  if (session.isRunning) {
+  if (claudeRunning) {
     jobs.push({
       id: "driver:claude:active",
       name: session.currentTool || session.lastTool || "query running",
@@ -2033,7 +2123,7 @@ async function buildCurrentJobs(): Promise<CurrentJobView[]> {
       detailLink: "/api/jobs/driver:claude:active",
     });
   }
-  if (codexSession.isRunning) {
+  if (codexRunning) {
     jobs.push({
       id: "driver:codex:active",
       name: "codex query running",

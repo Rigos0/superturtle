@@ -21,6 +21,7 @@ export interface DriverMessageInput {
 const MAX_RETRIES = 1;
 let backgroundRunDepth = 0;
 let backgroundRunPreempted = false;
+let executingDriverId: DriverId | null = null;
 const routingLog = streamLog.child({ handler: "driver-routing" });
 
 function buildStallRecoveryPrompt(originalMessage: string): string {
@@ -81,6 +82,14 @@ export function wasBackgroundRunPreempted(): boolean {
   return backgroundRunPreempted;
 }
 
+export function getExecutingDriverId(): DriverId | null {
+  return executingDriverId;
+}
+
+export function setExecutingDriverForTests(driverId: DriverId | null): void {
+  executingDriverId = driverId;
+}
+
 export async function runMessageWithActiveDriver(
   input: DriverMessageInput
 ): Promise<string> {
@@ -113,11 +122,17 @@ export async function runMessageWithDriver(
     };
 
     try {
-      return await driver.runMessage({
-        ...input,
-        message,
-        statusCallback: trackingStatusCallback,
-      });
+      const previousExecutingDriverId = executingDriverId;
+      executingDriverId = driverId;
+      try {
+        return await driver.runMessage({
+          ...input,
+          message,
+          statusCallback: trackingStatusCallback,
+        });
+      } finally {
+        executingDriverId = previousExecutingDriverId;
+      }
     } catch (error) {
       routingLog.warn(
         {
