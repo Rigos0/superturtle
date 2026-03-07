@@ -765,61 +765,166 @@ export async function handleSwitch(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * Retrieve Claude Code OAuth credentials from the platform keychain.
- * macOS: uses `security find-generic-password` (Keychain)
- * Linux: uses `secret-tool lookup` (GNOME Keyring / libsecret)
- * Returns the parsed credentials object, or null on failure.
- */
-function getClaudeCredentials(): Record<string, unknown> | null {
+type JsonObj = Record<string, unknown>;
+
+function coerceNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getNestedString(obj: JsonObj, path: string[]): string | null {
+  let current: unknown = obj;
+  for (const part of path) {
+    if (!current || typeof current !== "object") return null;
+    current = (current as JsonObj)[part];
+  }
+  return typeof current === "string" && current.trim().length > 0 ? current.trim() : null;
+}
+
+function extractTokenFromObject(obj: JsonObj, depth = 0): string | null {
+  if (depth > 6) return null;
+
+  const candidatePaths = [
+    ["claudeAiOauth", "accessToken"],
+    ["claudeAiOauth", "access_token"],
+    ["claudeAiOauth", "token"],
+    ["oauth", "accessToken"],
+    ["oauth", "access_token"],
+    ["oauth", "token"],
+    ["accessToken"],
+    ["access_token"],
+    ["token"],
+  ];
+
+  for (const path of candidatePaths) {
+    const token = getNestedString(obj, path);
+    if (token) return token;
+  }
+
+  for (const value of Object.values(obj)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const nested = extractTokenFromObject(value as JsonObj, depth + 1);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+function extractTokenFromPayload(payload: string): string | null {
+  const trimmed = payload.trim();
+  if (!trimmed) return null;
+
   try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (typeof parsed === "string" && parsed.trim().length > 0) {
+      return parsed.trim();
+    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return extractTokenFromObject(parsed as JsonObj);
+    }
+  } catch {
+    // Not JSON — treat as raw token string.
+  }
+
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readTokenFromCredentialFile(path: string): string | null {
+  try {
+    const file = Bun.file(path);
+    if (file.size <= 0) return null;
+    const text = require("fs").readFileSync(path, "utf-8");
+    return extractTokenFromPayload(text);
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyTestToken(token: string): boolean {
+  const normalized = token.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "test-claude-token") return true;
+  return /^(test|fake|dummy)[-_].*token$/.test(normalized);
+}
+
+function shouldRejectToken(token: string): boolean {
+  const isTestRuntime = (process.env.TELEGRAM_BOT_TOKEN || "") === "test-token";
+  return !isTestRuntime && isLikelyTestToken(token);
+}
+
+/**
+ * Retrieve Claude Code OAuth access token from platform keychain with file fallback.
+ */
+function getClaudeAccessToken(): string | null {
+  try {
+    const user = process.env.USER || "unknown";
+    const home = process.env.HOME || "";
+    const credPaths = [
+      `${home}/.config/claude-code/credentials.json`,
+      `${home}/.claude/credentials.json`,
+    ];
+
     if (IS_MACOS) {
-      const proc = Bun.spawnSync([
-        "security",
-        "find-generic-password",
-        "-s",
-        "Claude Code-credentials",
-        "-a",
-        process.env.USER || "unknown",
-        "-w",
-      ]);
-      if (proc.exitCode !== 0) return null;
-      return JSON.parse(proc.stdout.toString());
+      const keychainCommands: string[][] = [
+        [
+          "security",
+          "find-generic-password",
+          "-s",
+          "Claude Code-credentials",
+          "-a",
+          user,
+          "-w",
+        ],
+        [
+          "security",
+          "find-generic-password",
+          "-s",
+          "Claude Code-credentials",
+          "-w",
+        ],
+      ];
+
+      for (const cmd of keychainCommands) {
+        const proc = Bun.spawnSync(cmd);
+        if (proc.exitCode !== 0) continue;
+        const token = extractTokenFromPayload(proc.stdout.toString());
+        if (token && !shouldRejectToken(token)) return token;
+      }
     }
 
-    if (IS_LINUX) {
-      // Try secret-tool (libsecret / GNOME Keyring)
-      if (Bun.which("secret-tool")) {
-        const proc = Bun.spawnSync([
+    if (IS_LINUX && Bun.which("secret-tool")) {
+      const secretToolCommands: string[][] = [
+        [
           "secret-tool",
           "lookup",
           "service",
           "Claude Code-credentials",
           "username",
-          process.env.USER || "unknown",
-        ]);
-        if (proc.exitCode === 0) {
-          const output = proc.stdout.toString().trim();
-          if (output) return JSON.parse(output);
-        }
-      }
-
-      // Fallback: try reading from Claude Code config directory
-      const credPaths = [
-        `${process.env.HOME}/.config/claude-code/credentials.json`,
-        `${process.env.HOME}/.claude/credentials.json`,
+          user,
+        ],
+        [
+          "secret-tool",
+          "lookup",
+          "service",
+          "Claude Code-credentials",
+        ],
       ];
-      for (const credPath of credPaths) {
-        try {
-          const file = Bun.file(credPath);
-          if (file.size > 0) {
-            const text = require("fs").readFileSync(credPath, "utf-8");
-            return JSON.parse(text);
-          }
-        } catch {
-          // Try next path
-        }
+
+      for (const cmd of secretToolCommands) {
+        const proc = Bun.spawnSync(cmd);
+        if (proc.exitCode !== 0) continue;
+        const token = extractTokenFromPayload(proc.stdout.toString());
+        if (token && !shouldRejectToken(token)) return token;
       }
+    }
+
+    for (const path of credPaths) {
+      const token = readTokenFromCredentialFile(path);
+      if (token && !shouldRejectToken(token)) return token;
     }
 
     return null;
@@ -833,9 +938,7 @@ function getClaudeCredentials(): Record<string, unknown> | null {
  */
 export async function getUsageLines(): Promise<string[]> {
   try {
-    const creds = getClaudeCredentials();
-    if (!creds) return [];
-    const token = (creds as Record<string, Record<string, string>>).claudeAiOauth?.accessToken;
+    const token = getClaudeAccessToken();
     if (!token) return [];
 
     const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
@@ -844,12 +947,17 @@ export async function getUsageLines(): Promise<string[]> {
         "anthropic-beta": "oauth-2025-04-20",
       },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      if (res.status === 429) {
+        return ["<i>Usage API is rate-limited right now. Try /usage again shortly.</i>"];
+      }
+      if (res.status === 401 || res.status === 403) {
+        return ["<i>Claude credentials were rejected. Re-run Claude login.</i>"];
+      }
+      return [];
+    }
 
-    const data = (await res.json()) as Record<
-      string,
-      { utilization: number; resets_at: string } | null
-    >;
+    const data = (await res.json()) as Record<string, unknown>;
 
     const bar = (pct: number): string => {
       const filled = Math.round(pct / 5);
@@ -879,8 +987,24 @@ export async function getUsageLines(): Promise<string[]> {
     for (const [key, label] of sections) {
       const entry = data[key];
       if (!entry) continue;
-      const pct = Math.round(entry.utilization);
-      const reset = resetStr(entry.resets_at);
+      if (typeof entry !== "object" || Array.isArray(entry)) continue;
+
+      const entryObj = entry as JsonObj;
+      const utilizationRaw =
+        entryObj.utilization ??
+        entryObj.usedPercent ??
+        entryObj.used_percent ??
+        entryObj.utilizationPercent;
+      const resetsRaw = entryObj.resets_at ?? entryObj.resetsAt;
+
+      const utilization = coerceNumber(utilizationRaw);
+      if (utilization === null || typeof resetsRaw !== "string" || !resetsRaw.trim()) {
+        continue;
+      }
+
+      const pctValue = utilization <= 1 ? utilization * 100 : utilization;
+      const pct = Math.max(0, Math.min(100, Math.round(pctValue)));
+      const reset = resetStr(resetsRaw);
       lines.push(`<code>${bar(pct)}</code> ${pct}% ${label}\n${reset}`);
     }
 
@@ -1013,7 +1137,9 @@ export function formatUnifiedUsage(
   } else {
     // Just show Claude status
     let statusSummary = "";
-    if (claudeHighestPct >= 95) {
+    if (claudeDataMissing) {
+      statusSummary = `❓ <b>Status:</b> Claude usage data unavailable`;
+    } else if (claudeHighestPct >= 95) {
       statusSummary = `🔴 <b>Status:</b> Claude Code critical`;
     } else if (claudeHighestPct >= 80) {
       statusSummary = `⚠️ <b>Status:</b> Claude Code nearing limit`;
