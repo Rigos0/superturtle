@@ -7,6 +7,7 @@
  *   superturtle init    — scaffold .superturtle/ config in current project
  *   superturtle start   — launch the bot (requires Bun + tmux)
  *   superturtle stop    — stop bot + all SubTurtles
+ *   superturtle restart — stop and restart (errors if not running)
  *   superturtle status  — show bot and SubTurtle status
  */
 
@@ -444,6 +445,29 @@ function stop() {
   }
 }
 
+function isBotRunning() {
+  const env = loadDotEnv();
+  const tmuxSession = resolveTmuxSession(env);
+  const check = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
+  return check.status === 0;
+}
+
+function restart() {
+  if (!isBotRunning()) {
+    console.error("Error: bot is not running. Use 'superturtle start' first.");
+    process.exit(1);
+  }
+
+  // Kill just the tmux session (skip subturtle stopall — subturtles survive restart)
+  const env = loadDotEnv();
+  const tmuxSession = resolveTmuxSession(env);
+  spawnSync("tmux", ["kill-session", "-t", tmuxSession], { stdio: "pipe" });
+  console.log("Bot stopped.");
+
+  console.log("Starting bot...");
+  start();
+}
+
 function status() {
   const env = loadDotEnv();
   const tmuxSession = resolveTmuxSession(env);
@@ -486,6 +510,9 @@ switch (command) {
   case "stop":
     stop();
     break;
+  case "restart":
+    restart();
+    break;
   case "status":
     status();
     break;
@@ -507,6 +534,7 @@ Commands:
   init      Set up superturtle in the current project
   start     Launch the bot
   stop      Stop the bot and all SubTurtles
+  restart   Stop and restart the bot (errors if not running)
   status    Show bot and SubTurtle status
 
 Init flags (for non-interactive / agent use):
