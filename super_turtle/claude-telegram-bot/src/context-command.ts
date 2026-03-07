@@ -64,7 +64,12 @@ export function findLatestContextOutput(
       continue;
     }
 
-    const content = contentToString(entry.message?.content);
+    // Context output can appear as entry.message.content (older CLI) or
+    // entry.content directly (newer CLI: type=system, subtype=local_command)
+    const content = contentToString(entry.message?.content)
+      ?? (typeof (entry as Record<string, unknown>).content === "string"
+        ? (entry as Record<string, unknown>).content as string
+        : null);
     if (!content || !content.includes("<local-command-stdout>")) {
       continue;
     }

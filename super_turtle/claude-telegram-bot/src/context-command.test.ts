@@ -83,6 +83,20 @@ describe("findLatestContextOutput()", () => {
     expect(findLatestContextOutput(sessionLog, Date.parse("2026-02-01T12:00:05.000Z"))).toBeNull();
   });
 
+  it("finds context output in newer CLI format (top-level content, type=system)", () => {
+    const startedAtMs = Date.parse("2026-02-01T12:00:05.000Z");
+    const sessionLog = toJsonl([
+      {
+        type: "system",
+        subtype: "local_command",
+        timestamp: "2026-02-01T12:00:04.000Z",
+        content: wrapStdout("Context Usage: 55%"),
+      },
+    ]);
+
+    expect(findLatestContextOutput(sessionLog, startedAtMs)).toBe("Context Usage: 55%");
+  });
+
   it("falls back to the latest matching output even if timestamps are old", () => {
     const startedAtMs = Date.parse("2026-02-01T12:00:10.000Z");
     const sessionLog = toJsonl([
