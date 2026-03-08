@@ -22,6 +22,14 @@ Ordered by severity.
 - Concrete fix: track whether a session was bootstrapped by Telegram (for example via saved-session metadata or transcript artifact detection) and only skip bootstrap on resume when that provenance is present. Otherwise inject the bootstrap prompt on the first Telegram-owned turn after resume.
 - Missing test: add a `resumeSession()` case that sources the session from `getSessionListLive()` without transcript bootstrap evidence and assert that the first `sendMessage()` still includes the `<system-instructions>` wrapper.
 
+### 3. Dashboard context snapshots never expose Codex bootstrap prompt health
+- File paths: `super_turtle/claude-telegram-bot/src/config.ts`, `super_turtle/claude-telegram-bot/src/dashboard.ts`, `super_turtle/claude-telegram-bot/src/dashboard-types.ts`
+- Approximate lines: `261-279`, `2365-2380`, `224-232`
+- Issue: `config.ts` now loads `CODEX_TELEGRAM_BOOTSTRAP.md` as a separate runtime dependency, but `/api/context` still reports only `META_SHARED.md`. If the Codex bootstrap file is missing or unreadable, the only signal is the startup warning log; the dashboard/context snapshot has no field that tells an operator whether new Codex threads are actually running with their required bootstrap instructions.
+- Why it matters: this branch intentionally moved Telegram-specific Codex behavior out of repo-global instructions. Losing that file is therefore a control-plane failure for every new Codex session, but the main observability surface still looks healthy unless someone digs through startup logs. That is exactly the kind of failure signal the observability work is supposed to surface quickly.
+- Concrete fix: extend `ContextResponse` and `/api/context` with Codex bootstrap metadata (`text`, `source`, and/or an explicit loaded boolean), and expose that alongside the existing META prompt state so `/debug` and dashboard consumers can detect the failure immediately.
+- Missing test: update the `/api/context` route coverage in `src/dashboard.test.ts` to assert the Codex bootstrap fields are present.
+
 ## Verification
 
 - `bun test src/codex-session.test.ts src/session-observability.test.ts src/dashboard.test.ts`

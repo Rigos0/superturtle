@@ -1,5 +1,5 @@
 # Current task
-Review observability and logging paths for missing failure signals using the collected workspace context in `review-context.md`.
+Review SubTurtle orchestration changes for isolation regressions using the collected workspace context in `review-context.md`.
 
 # End goal with specs
 Produce an actionable review report that prioritizes high-severity issues, includes file/line references, identifies missing tests, and avoids broad stylistic feedback.
@@ -17,7 +17,7 @@ Produce an actionable review report that prioritizes high-severity issues, inclu
 # Backlog
 - [x] Collect changed files and commit context
 - [x] Review runtime/session lifecycle changes for crash or stall risks
-- [ ] Review observability and logging paths for missing failure signals <- current
-- [ ] Review SubTurtle orchestration changes for isolation regressions
+- [x] Review observability and logging paths for missing failure signals
+- [ ] Review SubTurtle orchestration changes for isolation regressions <- current
 - [ ] Identify missing or insufficient automated tests
 - [ ] Draft concise findings report for Super Turtle
