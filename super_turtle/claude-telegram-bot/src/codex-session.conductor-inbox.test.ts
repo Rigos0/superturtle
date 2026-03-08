@@ -151,4 +151,100 @@ describe("CodexSession conductor inbox delivery", () => {
     expect(updatedInboxItem.delivery.acknowledged_by_driver).toBe("codex");
     expect(updatedInboxItem.delivery.acknowledged_by_turn_id).toBeTruthy();
   });
+
+  it("keeps pending background events deliverable after switching to Codex and changing model", async () => {
+    const tempDir = makeTempDir();
+    const chatId = 727272;
+    const inboxPath = join(tempDir, ".superturtle", "state", "inbox", "inbox_codex_model_switch.json");
+    writeJson(inboxPath, {
+      kind: "meta_agent_inbox_item",
+      schema_version: 1,
+      id: "inbox_codex_model_switch",
+      chat_id: chatId,
+      worker_name: "worker-codex-model-switch",
+      run_id: "run-codex-model-switch",
+      priority: "critical",
+      category: "fatal_error",
+      title: "SubTurtle worker-codex-model-switch failed",
+      text: "Error: model switch path boom",
+      delivery_state: "pending",
+      created_at: "2026-03-08T12:20:00Z",
+      updated_at: "2026-03-08T12:20:00Z",
+      delivery: {},
+      metadata: {},
+    });
+
+    let capturedPrompt = "";
+    const startThreadCalls: Array<{ model?: string; modelReasoningEffort?: string }> = [];
+    mock.module("@openai/codex-sdk", () => ({
+      Codex: class {
+        startThread(options?: { model?: string; modelReasoningEffort?: string }) {
+          startThreadCalls.push(options || {});
+          return {
+            id: "thread-inbox-codex-switch",
+            run: async () => ({ finalResponse: "", usage: null }),
+            runStreamed: async (message: string) => {
+              capturedPrompt = message;
+              return {
+                events: (async function* () {
+                  yield { type: "thread.started", thread_id: "thread-inbox-codex-switch" };
+                  yield {
+                    type: "item.completed",
+                    item: {
+                      type: "agent_message",
+                      id: "msg-switch",
+                      text: "Codex handled the switched-driver background event.",
+                    },
+                  };
+                  yield {
+                    type: "turn.completed",
+                    usage: {
+                      input_tokens: 8,
+                      output_tokens: 10,
+                    },
+                  };
+                })(),
+              };
+            },
+          };
+        }
+
+        resumeThread() {
+          throw new Error("not used");
+        }
+      },
+    }));
+
+    const { CodexSession, getAvailableCodexModels } = await loadCodexSessionModule(tempDir, "model-switch");
+    const codex = new CodexSession();
+    const targetModel =
+      getAvailableCodexModels().find((model: { value: string }) => model.value !== codex.model)?.value ||
+      "gpt-5.2-codex";
+
+    codex.model = targetModel;
+    codex.reasoningEffort = "high";
+
+    const response = await codex.sendMessage(
+      "Continue the user conversation after the worker update",
+      async () => {},
+      undefined,
+      undefined,
+      undefined,
+      "text",
+      123,
+      "tester",
+      chatId
+    );
+
+    expect(response).toBe("Codex handled the switched-driver background event.");
+    expect(startThreadCalls[0]?.model).toBe(targetModel);
+    expect(startThreadCalls[0]?.modelReasoningEffort).toBe("high");
+    expect(capturedPrompt).toContain("<background-events>");
+    expect(capturedPrompt).toContain("SubTurtle worker-codex-model-switch failed");
+    expect(capturedPrompt).toContain("Continue the user conversation after the worker update");
+
+    const updatedInboxItem = JSON.parse(readFileSync(inboxPath, "utf-8"));
+    expect(updatedInboxItem.delivery_state).toBe("acknowledged");
+    expect(updatedInboxItem.delivery.acknowledged_by_driver).toBe("codex");
+  });
 });

@@ -418,6 +418,30 @@ Each inbox record currently tracks:
 - `source_event_id`
 - `source_wakeup_id`
 - `created_at`
+
+## Core flow validation matrix
+
+These are the 15 user-shaped pathways the conductor must keep correct.
+
+| # | Pathway | Expected behavior | Primary coverage |
+| --- | --- | --- | --- |
+| 1 | Single worker first silent check | Baseline is recorded, no Telegram noise, no inbox item, cron stays armed | `src/conductor-core-flow.test.ts`, `src/conductor-supervisor.test.ts` |
+| 2 | Single worker milestone | Deterministic milestone wakeup, Telegram update, inbox item, cron stays armed | `src/conductor-core-flow.test.ts`, `src/conductor-supervisor.test.ts` |
+| 3 | Single worker self-stop completion | Completion wakeup reconciles to terminal state, cleanup is verified, notification is sent, inbox item is queued | `src/conductor-core-flow.test.ts`, `src/conductor-supervisor.test.ts` |
+| 4 | Single worker fatal error | Fatal wakeup reconciles to failed state, notification is sent, inbox item is queued | `src/conductor-supervisor.test.ts` |
+| 5 | Single worker timeout | Timeout wakeup reconciles to `timed_out`, cleanup is verified, notification is sent, inbox item is queued | `src/conductor-core-flow.test.ts` |
+| 6 | Single worker stuck path | Repeated no-progress checks emit one stuck wakeup without terminal cleanup side effects | `src/conductor-supervisor.test.ts` |
+| 7 | Reused worker name on a new run | Old checkpoint/supervisor/wakeup state does not corrupt the new run | `src/conductor-supervisor.test.ts`, `src/conductor-maintenance.test.ts`, `super_turtle/state/test_run_state_writer.py` |
+| 8 | Missing wakeup recovery | Canonical worker state recreates missing completion/failure/timeout wakeups after interruption | `src/conductor-supervisor.test.ts` |
+| 9 | Interrupted wakeup delivery replay | Wakeups stranded in `processing` are safely requeued and replayed | `src/conductor-supervisor.test.ts`, `src/conductor-maintenance.test.ts` |
+| 10 | Stale recurring cron cleanup | Recurring SubTurtle cron is removed exactly once when the worker is gone | `src/conductor-supervisor.test.ts`, `super_turtle/subturtle/tests/test_ctl_integration.sh` |
+| 11 | Parallel SubTurtles with mixed outcomes | One worker can milestone while others complete/fail without cross-worker mutation or cron corruption | `src/conductor-core-flow.test.ts` |
+| 12 | Parallel worker inbox ordering | Multiple background events remain ordered and pending until the next interactive ack | `src/conductor-core-flow.test.ts`, `src/conductor-supervisor.test.ts` |
+| 13 | Next Claude turn consumes background worker events | Pending inbox items are injected into the next interactive Claude turn and only acknowledged after success | `src/session.conductor-inbox.test.ts` |
+| 14 | Next Codex turn consumes background worker events | Pending inbox items are injected into the next interactive Codex turn and only acknowledged after success | `src/codex-session.conductor-inbox.test.ts` |
+| 15 | Driver/model changes while workers run | Switching driver or model does not lose pending worker events; the next turn on the chosen driver still gets the durable inbox context | `src/handlers/switch-new-session.trace.test.ts`, `src/handlers/codex.flow.test.ts`, `src/session.conductor-inbox.test.ts`, `src/codex-session.conductor-inbox.test.ts` |
+
+The matrix is meant to be a living contract. When conductor behavior changes, update the matching row and either extend the referenced test or add a new one before changing the runtime logic.
 - `updated_at`
 - `delivery`
 - `metadata`

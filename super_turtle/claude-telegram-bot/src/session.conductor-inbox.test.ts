@@ -220,4 +220,90 @@ describe("ClaudeSession conductor inbox delivery", () => {
     expect(updatedInboxItem.delivery_state).toBe("pending");
     expect(updatedInboxItem.delivery.acknowledged_at).toBeUndefined();
   });
+
+  it("keeps pending background events deliverable after switching back to Claude and changing model", async () => {
+    const tempDir = makeTempDir();
+    const chatId = 616161;
+    const inboxPath = join(tempDir, ".superturtle", "state", "inbox", "inbox_claude_model_switch.json");
+    writeJson(inboxPath, {
+      kind: "meta_agent_inbox_item",
+      schema_version: 1,
+      id: "inbox_claude_model_switch",
+      chat_id: chatId,
+      worker_name: "worker-claude-model-switch",
+      run_id: "run-claude-model-switch",
+      priority: "notable",
+      category: "milestone_reached",
+      title: "SubTurtle worker-claude-model-switch milestone",
+      text: "Milestone items: Ship preview",
+      delivery_state: "pending",
+      created_at: "2026-03-08T12:10:00Z",
+      updated_at: "2026-03-08T12:10:00Z",
+      delivery: {},
+      metadata: {},
+    });
+
+    let capturedPrompt = "";
+    let capturedArgv: string[] = [];
+    Bun.spawn = ((cmd: unknown, _opts?: unknown) => {
+      capturedArgv = Array.isArray(cmd) ? cmd.map((value) => String(value)) : [];
+      const promptIndex = capturedArgv.findIndex((value) => value === "-p");
+      capturedPrompt =
+        promptIndex >= 0 && typeof capturedArgv[promptIndex + 1] === "string"
+          ? String(capturedArgv[promptIndex + 1])
+          : "";
+
+      const { stdout, stderr } = makeSpawnOutput([
+        {
+          type: "assistant",
+          session_id: "session-inbox-claude-switch",
+          message: {
+            content: [{ type: "text", text: "Claude handled the switched-driver background event." }],
+          },
+        },
+        {
+          type: "result",
+          session_id: "session-inbox-claude-switch",
+          usage: { input_tokens: 6, output_tokens: 7 },
+        },
+      ]);
+
+      return {
+        stdout,
+        stderr,
+        pid: 99994,
+        kill: () => {},
+        exited: Promise.resolve(0),
+      } as unknown as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+
+    const { ClaudeSession, getAvailableModels } = await loadSessionModule(tempDir, "model-switch");
+    const claude = new ClaudeSession();
+    const targetModel =
+      getAvailableModels().find((model: { value: string }) => model.value !== claude.model)?.value ||
+      "claude-sonnet-4-6";
+
+    claude.activeDriver = "codex";
+    claude.activeDriver = "claude";
+    claude.model = targetModel;
+
+    const response = await claude.sendMessageStreaming(
+      "Continue the user conversation after the worker update",
+      "tester",
+      123,
+      async () => {},
+      chatId
+    );
+
+    expect(response).toBe("Claude handled the switched-driver background event.");
+    expect(capturedArgv).toContain("--model");
+    expect(capturedArgv[capturedArgv.indexOf("--model") + 1]).toBe(targetModel);
+    expect(capturedPrompt).toContain("<background-events>");
+    expect(capturedPrompt).toContain("SubTurtle worker-claude-model-switch milestone");
+    expect(capturedPrompt).toContain("Continue the user conversation after the worker update");
+
+    const updatedInboxItem = JSON.parse(readFileSync(inboxPath, "utf-8"));
+    expect(updatedInboxItem.delivery_state).toBe("acknowledged");
+    expect(updatedInboxItem.delivery.acknowledged_by_driver).toBe("claude");
+  });
 });

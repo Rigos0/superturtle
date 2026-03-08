@@ -1316,17 +1316,32 @@ export async function processPendingConductorWakeups(
       }
 
       if (workingState && payloadKind === "timeout" && supervisor.resolved_terminal_state !== "timed_out") {
+        const timedOutEvent = appendWorkerEvent(
+          stateDir,
+          workingState,
+          wakeup.worker_name,
+          "worker.timed_out",
+          "timed_out",
+          { wakeup_id: wakeup.id, reason: "timeout" },
+          now,
+          wakeupRunId
+        );
         workingState = {
           ...workingState,
           lifecycle_state: "timed_out",
+          stop_reason: workingState.stop_reason || "timeout",
           terminal_at: workingState.terminal_at || now,
           updated_at: now,
           updated_by: EVENT_EMITTED_BY,
+          last_event_id: timedOutEvent.id,
+          last_event_at: timedOutEvent.timestamp,
           metadata: mergeMetadata(workingState, {
             resolved_terminal_state: "timed_out",
             reconciled_at: now,
+            resolution_event_id: timedOutEvent.id,
           }),
         };
+        result.reconciled += 1;
       }
 
       if (workingState) {

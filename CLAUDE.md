@@ -49,7 +49,7 @@ git checkout dev && git merge main
 ---
 
 ## Current task
-Redesign SubTurtle orchestration so durable state, not chat/session memory, is the control plane. Current focus: keep widening end-to-end recovery coverage now that reused worker names, stop cleanup, handoff rendering, and run-aware wakeup delivery are no longer corrupting live state.
+Redesign SubTurtle orchestration so durable state, not chat/session memory, is the control plane. Current focus: lock the core user-facing orchestration contract behind a 15-path test matrix that covers single-worker happy/error/timeout/stuck flows, parallel SubTurtles, and driver/model changes while workers are still running.
 
 ## SubTurtle orchestration redesign scope
 
@@ -75,12 +75,11 @@ We are redesigning the weak parts:
 - `/status`, `/debug`, `/looplogs`, `/pinologs`, `superturtle doctor`, and `superturtle logs`
 
 ### Known gaps
-- Reusing a worker name across runs still leaks prior supervisor/checkpoint metadata because `put-worker` merges by worker name even when `run_id` changes
-- Manual/self-stop removes recurring cron jobs, but the stop path still does not always persist `worker.cron_removed` or clear stale `cron_job_id` in canonical worker state
-- `handoff.md` still under-reports archived completions because recent updates are filtered by raw lifecycle state and live workspace presence instead of resolved terminal outcome
+- Core conductor correctness is now much stronger, but the automated coverage needs to stay organized around real user pathways instead of scattered unit-level behaviors
+- We still need explicit matrix coverage for some cross-surface paths, especially real switch-command/manual Telegram validation while multiple workers are already running
 - `handoff.md` and `runs.jsonl` still exist for compatibility, so they must stay strictly derived from canonical conductor state
 - `subturtle.meta` still carries some spawn/runtime metadata; worker lifecycle truth now lives in the conductor store and those paths need continued convergence
-- Restart/recovery behavior is much stronger now, but broader end-to-end coverage is still thin around multi-worker orchestration and true bot reboot flows
+- Historical archived worker records from pre-fix runs may still carry stale fields until manually repaired
 
 ## End goal with specs
 - Every SubTurtle has explicit durable lifecycle state that can be reconstructed after any bot restart
@@ -107,7 +106,8 @@ We are redesigning the weak parts:
 - ✅ Current worker execution model: isolated workspaces, `CLAUDE.md` state files, commit-per-iteration yolo/slow loops, and self-stop directives
 
 ## Roadmap (Upcoming)
-- Add restart, recovery, stale-cleanup, reused-name, and multi-worker tests for conductor behavior
+- Build out and maintain the core 15-path conductor contract across single-worker, multi-worker, and cross-driver/model user flows
+- Add the remaining restart/manual validation coverage after the core live-user paths are locked down
 
 ## Backlog
 - [x] Define orchestration v2 ownership boundaries, lifecycle states, event types, and invariants
@@ -123,7 +123,9 @@ We are redesigning the weak parts:
 - [x] Reset worker state cleanly when a reused SubTurtle name starts a new run
 - [x] Persist `worker.cron_removed` and clear `cron_job_id` on the stop path, not only in supervisor reconciliation
 - [x] Render archived completed/failed workers in `handoff.md` recent updates using canonical terminal outcome
-- [ ] Add end-to-end tests for restart recovery, stale cron cleanup, mid-chat completion delivery, reused worker names, and multi-worker orchestration <- current
+- [x] Add end-to-end tests for restart recovery, stale cron cleanup, mid-chat completion delivery, reused worker names, and multi-worker orchestration
+- [ ] Lock the conductor behind a 15-path core-flow matrix that matches real user behavior <- current
+- [ ] Fill any remaining matrix gaps, especially true switch-command/manual Telegram validation with multiple live SubTurtles
 
 ## Notes
 - Multi-instance audit: `docs/audits/multi-instance-isolation.md`
@@ -145,6 +147,9 @@ We are redesigning the weak parts:
 - Live `book-writer` validation confirmed the end-to-end completion path works, but also surfaced three follow-ups: stale supervisor metadata survives reused worker names, stop-path cron removal is not always persisted canonically, and archived completions are missing from `handoff.md` recent updates
 - `put-worker` now resets checkpoint/metadata/terminal residue when a reused worker name starts a new `run_id`, `ctl stop` now persists `worker.cron_removed` and clears stale cron metadata, and `handoff.md` recent updates now render archived completed/failed workers by canonical resolved terminal outcome
 - Wakeup recovery, stale-cron gating, and pending delivery are now `run_id`-aware, so an old completion/failure wakeup from a previous run with the same worker name no longer mutates or blocks the current run
+- `conductor-core-flow.test.ts` now covers the happy path end-to-end (`baseline -> milestone -> completion -> inbox ack`), a parallel three-worker path (`milestone + completion + failure`), and the timeout terminal path
+- Claude and Codex inbox tests now also cover model changes while background worker events are pending, so the next interactive turn still injects and acknowledges those durable updates under the selected driver/model
+- The 15-path user-flow matrix now lives in `super_turtle/docs/long-run-state-tracking.md`; use it as the checklist for future conductor changes
 - TOKEN_PREFIX lives in `src/token-prefix.ts` (standalone leaf module, no circular deps)
 - MCP IPC files are isolated in `/tmp/superturtle-{tokenPrefix}/`, passed to MCP servers via `SUPERTURTLE_IPC_DIR`
 - The bot is the meta agent; system prompt injection still lives in `super_turtle/claude-telegram-bot/src/config.ts`
