@@ -145,4 +145,127 @@ Recover completed worker
     expect(events).toContain('"event_type":"worker.completed"');
     expect(events).toContain('"event_type":"worker.cron_removed"');
   });
+
+  it("requeues in-flight processing wakeups during startup recovery and replays them once", async () => {
+    const baseDir = makeStateDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    const archivedWorkspace = join(baseDir, ".subturtles", ".archive", "worker-processing");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+    mkdirSync(archivedWorkspace, { recursive: true });
+
+    writeFileSync(
+      join(archivedWorkspace, "CLAUDE.md"),
+      `# Current task
+
+Replay in-flight completion
+
+# Backlog
+- [x] Finish the replayable path
+`,
+      "utf-8"
+    );
+
+    writeJson(join(stateDir, "workers", "worker-processing.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-processing",
+      run_id: "run-processing",
+      lifecycle_state: "completion_pending",
+      workspace: archivedWorkspace,
+      cron_job_id: "cron-processing",
+      current_task: "Replay in-flight completion",
+      metadata: {},
+    });
+    writeJson(join(stateDir, "wakeups", "wake-processing.json"), {
+      kind: "wakeup",
+      schema_version: 1,
+      id: "wake-processing",
+      worker_name: "worker-processing",
+      run_id: "run-processing",
+      category: "notable",
+      delivery_state: "processing",
+      summary: "worker processing",
+      created_at: "2026-03-08T00:00:00Z",
+      updated_at: "2026-03-08T00:00:01Z",
+      delivery: {
+        attempts: 1,
+        last_attempt_at: "2026-03-08T00:00:01Z",
+      },
+      payload: { kind: "completion_requested" },
+      metadata: {},
+    });
+
+    const jobs = [
+      {
+        id: "cron-processing",
+        type: "recurring" as const,
+        job_kind: "subturtle_supervision" as const,
+        worker_name: "worker-processing",
+        chat_id: 123,
+      },
+    ];
+    const sentMessages: string[] = [];
+
+    const first = await runConductorMaintenance({
+      stateDir,
+      defaultChatId: 123,
+      recoverInFlightWakeups: true,
+      listJobs: () => [...jobs],
+      removeJob: (id) => {
+        const index = jobs.findIndex((job) => job.id === id);
+        if (index === -1) return false;
+        jobs.splice(index, 1);
+        return true;
+      },
+      sendMessage: async (_chatId, text) => {
+        sentMessages.push(text);
+      },
+      isWorkerRunning: () => false,
+      nowIso: (() => {
+        const timestamps = [
+          "2026-03-08T01:20:00Z",
+          "2026-03-08T01:20:01Z",
+          "2026-03-08T01:20:02Z",
+        ];
+        let index = 0;
+        return () => timestamps[Math.min(index++, timestamps.length - 1)]!;
+      })(),
+    });
+
+    expect(first.requeuedWakeups).toBe(1);
+    expect(first.recoveredWakeups).toBe(0);
+    expect(first.sent).toBe(1);
+    expect(sentMessages).toEqual([
+      expect.stringContaining("🎉 Finished: worker-processing"),
+    ]);
+
+    const wakeup = JSON.parse(
+      readFileSync(join(stateDir, "wakeups", "wake-processing.json"), "utf-8")
+    );
+    expect(wakeup.delivery_state).toBe("sent");
+    expect(wakeup.delivery.attempts).toBe(2);
+
+    const second = await runConductorMaintenance({
+      stateDir,
+      defaultChatId: 123,
+      recoverInFlightWakeups: true,
+      listJobs: () => [...jobs],
+      removeJob: () => false,
+      sendMessage: async (_chatId, text) => {
+        sentMessages.push(text);
+      },
+      isWorkerRunning: () => false,
+      nowIso: () => "2026-03-08T01:30:00Z",
+    });
+
+    expect(second.requeuedWakeups).toBe(0);
+    expect(second.sent).toBe(0);
+    expect(sentMessages).toHaveLength(1);
+
+    const events = readFileSync(join(stateDir, "events.jsonl"), "utf-8");
+    expect(events).toContain('"event_type":"worker.recovered"');
+    expect(events).toContain('"recovery_kind":"requeued_processing_wakeup"');
+    expect(events).toContain('"event_type":"worker.completed"');
+  });
 });

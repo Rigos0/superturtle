@@ -49,7 +49,7 @@ git checkout dev && git merge main
 ---
 
 ## Current task
-Redesign SubTurtle orchestration so durable state, not chat/session memory, is the control plane. Current focus: harden boot-time conductor recovery so restart delivery and stale-cleanup happen immediately and idempotently on startup.
+Redesign SubTurtle orchestration so durable state, not chat/session memory, is the control plane. Current focus: keep hardening restart recovery so boot-time conductor maintenance replays stranded in-flight wakeups and keeps operator state aligned after crashes.
 
 ## SubTurtle orchestration redesign scope
 
@@ -130,10 +130,12 @@ We are redesigning the weak parts:
 - Silent SubTurtle supervision now runs deterministic supervisor policy over canonical worker state, backlog completion, and checkpoint signatures; milestone/stuck wakeups flow through the same inbox and Telegram delivery path as lifecycle wakeups without terminal cleanup side effects
 - The bot timer now recreates missing `completion_requested` / `fatal_error` / `timeout` wakeups from canonical worker state before delivery, and stale recurring SubTurtle cron cleanup is persisted as a conductor event instead of existing only as an inline warning
 - The bot now runs the same conductor maintenance pass on startup and on each timer tick, so recovered wakeups and stale recurring-cron cleanup no longer wait for the first scheduled interval after a reboot
+- Startup conductor maintenance now also requeues wakeups stranded in `processing`, so an interrupted completion/failure/milestone notification is replayable after a bot restart instead of being lost indefinitely
 - `ctl spawn` now registers structured supervision cron jobs with `job_kind=subturtle_supervision`, `worker_name`, and `supervision_mode`, and the bot prefers those fields over prompt regex parsing
 - `handoff.md` is now refreshed from canonical worker state plus pending wakeups, and dashboard lanes prefer conductor worker fields for live SubTurtles
 - Reconciled lifecycle wakeups now also create durable meta-agent inbox items; the next successful interactive Claude/Codex turn injects them as non-chat background context and acknowledges them after the turn completes
-- Current conductor coverage now includes recreated pending-wakeup recovery, stale recurring-cron cleanup, startup maintenance idempotency, multi-worker inbox recovery, and driver-level interactive acknowledgment tests for both Claude and Codex session paths
+- `handoff.md` now surfaces both `pending` and `processing` wakeups so in-flight recovery state stays visible to the operator instead of disappearing from the rendered summary
+- Current conductor coverage now includes recreated pending-wakeup recovery, `processing` wakeup replay on startup, stale recurring-cron cleanup, startup maintenance idempotency, multi-worker inbox recovery, and driver-level interactive acknowledgment tests for both Claude and Codex session paths
 - TOKEN_PREFIX lives in `src/token-prefix.ts` (standalone leaf module, no circular deps)
 - MCP IPC files are isolated in `/tmp/superturtle-{tokenPrefix}/`, passed to MCP servers via `SUPERTURTLE_IPC_DIR`
 - The bot is the meta agent; system prompt injection still lives in `super_turtle/claude-telegram-bot/src/config.ts`

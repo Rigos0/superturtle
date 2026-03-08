@@ -12,6 +12,7 @@ import {
   parseCompletedBacklogItems,
   processPendingConductorWakeups,
   processSilentSubturtleSupervision,
+  recoverProcessingWakeups,
   recoverPendingWorkerWakeups,
 } from "./conductor-supervisor";
 
@@ -190,6 +191,69 @@ Recover missing completion wakeup
     expect(wakeup.payload.kind).toBe("fatal_error");
     expect(wakeup.payload.message).toBe("recovered boom");
     expect(wakeup.category).toBe("critical");
+  });
+});
+
+describe("recoverProcessingWakeups", () => {
+  it("requeues processing wakeups so startup recovery can replay them", () => {
+    const baseDir = makeStateDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+
+    writeJson(join(stateDir, "workers", "worker-processing.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-processing",
+      run_id: "run-processing",
+      lifecycle_state: "completion_pending",
+      workspace: join(baseDir, ".subturtles", "worker-processing"),
+      cron_job_id: "cron-processing",
+      current_task: "Recover in-flight wakeup",
+      metadata: {},
+    });
+    writeJson(join(stateDir, "wakeups", "wake-processing.json"), {
+      kind: "wakeup",
+      schema_version: 1,
+      id: "wake-processing",
+      worker_name: "worker-processing",
+      run_id: "run-processing",
+      category: "notable",
+      delivery_state: "processing",
+      summary: "worker finished",
+      created_at: "2026-03-08T00:00:00Z",
+      updated_at: "2026-03-08T00:00:01Z",
+      delivery: {
+        attempts: 1,
+        last_attempt_at: "2026-03-08T00:00:01Z",
+      },
+      payload: { kind: "completion_requested" },
+      metadata: {},
+    });
+
+    const recovered = recoverProcessingWakeups({
+      stateDir,
+      nowIso: () => "2026-03-08T01:15:00Z",
+    });
+
+    expect(recovered.requeuedWakeups).toBe(1);
+    expect(recovered.reconciled).toBe(1);
+
+    const wakeup = JSON.parse(
+      readFileSync(join(stateDir, "wakeups", "wake-processing.json"), "utf-8")
+    );
+    expect(wakeup.delivery_state).toBe("pending");
+    expect(wakeup.delivery.attempts).toBe(1);
+    expect(wakeup.metadata.recovery_kind).toBe("requeued_processing_wakeup");
+
+    const worker = JSON.parse(
+      readFileSync(join(stateDir, "workers", "worker-processing.json"), "utf-8")
+    );
+    expect(worker.metadata.supervisor.last_requeued_wakeup_id).toBe("wake-processing");
+
+    const events = readFileSync(join(stateDir, "events.jsonl"), "utf-8");
+    expect(events).toContain('"event_type":"worker.recovered"');
+    expect(events).toContain('"recovery_kind":"requeued_processing_wakeup"');
   });
 });
 

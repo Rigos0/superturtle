@@ -110,6 +110,16 @@ export interface RecoverPendingWorkerWakeupsResult {
   reconciled: number;
 }
 
+export interface RecoverProcessingWakeupsOptions {
+  stateDir?: string;
+  nowIso?: () => string;
+}
+
+export interface RecoverProcessingWakeupsResult {
+  requeuedWakeups: number;
+  reconciled: number;
+}
+
 export interface CleanupStaleRecurringSubturtleCronOptions {
   stateDir?: string;
   workingDir?: string;
@@ -185,20 +195,31 @@ function statePaths(stateDir: string) {
   };
 }
 
-function loadPendingWakeups(stateDir: string): WakeupRecord[] {
+function loadWakeupsByDeliveryStates(
+  stateDir: string,
+  deliveryStates: ReadonlySet<string>
+): WakeupRecord[] {
   const { wakeupsDir } = statePaths(stateDir);
   if (!existsSync(wakeupsDir)) return [];
 
   return readdirSync(wakeupsDir)
     .filter((name) => name.endsWith(".json"))
     .map((name) => readJsonObject<WakeupRecord>(join(wakeupsDir, name)))
-    .filter((value): value is WakeupRecord => value !== null && value.delivery_state === "pending")
+    .filter((value): value is WakeupRecord =>
+      value !== null &&
+      typeof value.delivery_state === "string" &&
+      deliveryStates.has(value.delivery_state)
+    )
     .sort((a, b) => {
       const left = a.created_at || "";
       const right = b.created_at || "";
       if (left !== right) return left.localeCompare(right);
       return a.id.localeCompare(b.id);
     });
+}
+
+function loadPendingWakeups(stateDir: string): WakeupRecord[] {
+  return loadWakeupsByDeliveryStates(stateDir, new Set(["pending"]));
 }
 
 function loadWakeups(stateDir: string): WakeupRecord[] {
@@ -592,6 +613,14 @@ function mergeMetadata(
   return metadata;
 }
 
+function mergeWakeupMetadata(
+  wakeup: WakeupRecord,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const metadata = isObjectRecord(wakeup.metadata) ? { ...wakeup.metadata } : {};
+  return { ...metadata, ...patch };
+}
+
 function numericMetadataValue(metadata: Record<string, unknown>, key: string): number {
   const value = metadata[key];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -781,6 +810,67 @@ export function recoverPendingWorkerWakeups(
   }
 
   return { recoveredWakeups, reconciled };
+}
+
+export function recoverProcessingWakeups(
+  options: RecoverProcessingWakeupsOptions = {}
+): RecoverProcessingWakeupsResult {
+  const stateDir = options.stateDir || join(SUPERTURTLE_DATA_DIR, "state");
+  const nowIso = options.nowIso || utcNowIso;
+  const now = nowIso();
+  let requeuedWakeups = 0;
+  let reconciled = 0;
+
+  for (const wakeup of loadWakeupsByDeliveryStates(stateDir, new Set(["processing"]))) {
+    const workerState = loadWorkerState(stateDir, wakeup.worker_name);
+    const recoveryEvent = appendWorkerEvent(
+      stateDir,
+      workerState,
+      wakeup.worker_name,
+      "worker.recovered",
+      workerState?.lifecycle_state || null,
+      {
+        recovery_kind: "requeued_processing_wakeup",
+        wakeup_id: wakeup.id,
+        wakeup_kind: wakeupKind(wakeup) || null,
+        previous_delivery_state: wakeup.delivery_state,
+      },
+      now
+    );
+
+    writeWakeup(stateDir, {
+      ...wakeup,
+      delivery_state: "pending",
+      updated_at: now,
+      metadata: mergeWakeupMetadata(wakeup, {
+        recovered: true,
+        recovery_kind: "requeued_processing_wakeup",
+        recovery_event_id: recoveryEvent.id,
+        last_requeued_at: now,
+      }),
+    });
+
+    if (workerState) {
+      writeWorkerState(stateDir, {
+        ...workerState,
+        updated_at: now,
+        updated_by: EVENT_EMITTED_BY,
+        last_event_id: recoveryEvent.id,
+        last_event_at: recoveryEvent.timestamp,
+        metadata: mergeMetadata(workerState, {
+          last_recovered_at: now,
+          last_recovery_event_id: recoveryEvent.id,
+          last_requeued_wakeup_id: wakeup.id,
+          last_requeued_wakeup_kind: wakeupKind(wakeup) || null,
+        }),
+      });
+    }
+
+    requeuedWakeups += 1;
+    reconciled += 1;
+  }
+
+  return { requeuedWakeups, reconciled };
 }
 
 export async function cleanupStaleRecurringSubturtleCron(

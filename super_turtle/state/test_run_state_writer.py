@@ -100,6 +100,24 @@ class RunStateWriterTests(unittest.TestCase):
                     [
                         "--state-dir",
                         tmp_dir,
+                        "enqueue-wakeup",
+                        "--worker-name",
+                        "alpha",
+                        "--category",
+                        "critical",
+                        "--summary",
+                        "Alpha notification was interrupted mid-send",
+                        "--delivery-state",
+                        "processing",
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(
+                main(
+                    [
+                        "--state-dir",
+                        tmp_dir,
                         "put-worker",
                         "--worker-name",
                         "ghost",
@@ -151,6 +169,8 @@ class RunStateWriterTests(unittest.TestCase):
             self.assertIn("Ship conductor-rendered handoff", handoff_content)
             self.assertIn("## Pending Wakeups", handoff_content)
             self.assertIn("Alpha needs a checkpoint review", handoff_content)
+            self.assertIn("Alpha notification was interrupted mid-send", handoff_content)
+            self.assertIn("alpha [critical/processing]", handoff_content)
             self.assertNotIn("ghost [running]", handoff_content)
 
     def test_cli_commands_smoke(self) -> None:

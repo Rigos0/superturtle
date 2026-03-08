@@ -241,8 +241,11 @@ function refreshConductorHandoff(): void {
   }
 }
 
-async function runConductorMaintenancePass(): Promise<void> {
+async function runConductorMaintenancePass(
+  options: { recoverInFlightWakeups?: boolean } = {}
+): Promise<void> {
   const maintenanceResult = await runConductorMaintenance({
+    recoverInFlightWakeups: options.recoverInFlightWakeups,
     listJobs: getJobs,
     removeJob,
     sendMessage: async (chatId, text) => {
@@ -252,6 +255,7 @@ async function runConductorMaintenancePass(): Promise<void> {
   });
 
   if (
+    maintenanceResult.requeuedWakeups > 0 ||
     maintenanceResult.recoveredWakeups > 0 ||
     maintenanceResult.staleCronRemoved > 0 ||
     maintenanceResult.sent > 0 ||
@@ -261,7 +265,7 @@ async function runConductorMaintenancePass(): Promise<void> {
     refreshConductorHandoff();
     cronLog.info(
       { maintenanceResult },
-      `[conductor] recovered_wakeups=${maintenanceResult.recoveredWakeups} stale_cron_removed=${maintenanceResult.staleCronRemoved} sent=${maintenanceResult.sent} reconciled=${maintenanceResult.reconciled} errors=${maintenanceResult.errors} skipped=${maintenanceResult.skipped}`
+      `[conductor] requeued_wakeups=${maintenanceResult.requeuedWakeups} recovered_wakeups=${maintenanceResult.recoveredWakeups} stale_cron_removed=${maintenanceResult.staleCronRemoved} sent=${maintenanceResult.sent} reconciled=${maintenanceResult.reconciled} errors=${maintenanceResult.errors} skipped=${maintenanceResult.skipped}`
     );
   }
 }
@@ -912,7 +916,7 @@ if (existsSync(RESTART_FILE)) {
   }
 }
 
-await runConductorMaintenancePass();
+await runConductorMaintenancePass({ recoverInFlightWakeups: true });
 
 // Start with concurrent runner (commands work immediately)
 // Retry forever on getUpdates failures (e.g. network drop during sleep)

@@ -179,8 +179,9 @@ def _format_active_worker(state: Mapping[str, Any]) -> str:
 def _format_pending_wakeup(wakeup: Mapping[str, Any]) -> str:
     worker_name = _string_value(wakeup.get("worker_name")) or "(unknown)"
     category = _string_value(wakeup.get("category")) or "unknown"
+    delivery_state = _string_value(wakeup.get("delivery_state")) or "unknown"
     summary = _string_value(wakeup.get("summary")) or "(missing summary)"
-    parts = [f"{worker_name} [{category}]", summary]
+    parts = [f"{worker_name} [{category}/{delivery_state}]", summary]
     created_at = _string_value(wakeup.get("created_at"))
     if created_at:
         parts.append(f"created: {created_at}")
@@ -232,7 +233,9 @@ def refresh_handoff_from_conductor(
         for wakeup in _sort_newest(
             [
                 wakeup
-                for wakeup in conductor.list_wakeups(delivery_state="pending")
+                for wakeup in conductor.list_wakeups()
+                if _string_value(wakeup.get("delivery_state"))
+                in {"pending", "processing"}
                 if _string_value(wakeup.get("category")) != "silent"
                 and _worker_has_live_workspace(
                     conductor, _string_value(wakeup.get("worker_name"))

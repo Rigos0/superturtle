@@ -5,8 +5,10 @@ import type { CronJob } from "./cron";
 import {
   cleanupStaleRecurringSubturtleCron,
   processPendingConductorWakeups,
+  recoverProcessingWakeups,
   recoverPendingWorkerWakeups,
   type CleanupStaleRecurringSubturtleCronResult,
+  type RecoverProcessingWakeupsResult,
   type SupervisorTickResult,
 } from "./conductor-supervisor";
 
@@ -17,6 +19,7 @@ export interface RunConductorMaintenanceOptions {
   workingDir?: string;
   ctlPath?: string;
   defaultChatId?: number | null;
+  recoverInFlightWakeups?: boolean;
   listJobs: () => ConductorMaintenanceJob[];
   removeJob: (id: string) => boolean;
   sendMessage: (chatId: number, text: string) => Promise<void>;
@@ -26,6 +29,7 @@ export interface RunConductorMaintenanceOptions {
 
 export interface ConductorMaintenanceResult extends SupervisorTickResult {
   recoveredWakeups: number;
+  requeuedWakeups: number;
   staleCronRemoved: number;
   staleCronNotified: number;
 }
@@ -53,14 +57,28 @@ function readJsonObject<T>(path: string): T | null {
   }
 }
 
-function loadPendingWakeups(stateDir: string): Array<{ worker_name: string; payload?: Record<string, unknown> }> {
+function loadOutstandingWakeups(stateDir: string): Array<{
+  worker_name: string;
+  delivery_state?: string;
+  payload?: Record<string, unknown>;
+}> {
   const wakeupsDir = join(stateDir, "wakeups");
   if (!existsSync(wakeupsDir)) return [];
   return readdirSync(wakeupsDir)
     .filter((name) => name.endsWith(".json"))
-    .map((name) => readJsonObject<{ worker_name: string; delivery_state?: string; payload?: Record<string, unknown> }>(join(wakeupsDir, name)))
-    .filter((value): value is { worker_name: string; delivery_state?: string; payload?: Record<string, unknown> } =>
-      value !== null && value.delivery_state === "pending" && typeof value.worker_name === "string");
+    .map((name) =>
+      readJsonObject<{ worker_name: string; delivery_state?: string; payload?: Record<string, unknown> }>(
+        join(wakeupsDir, name)
+      )
+    )
+    .filter(
+      (
+        value
+      ): value is { worker_name: string; delivery_state?: string; payload?: Record<string, unknown> } =>
+        value !== null &&
+        (value.delivery_state === "pending" || value.delivery_state === "processing") &&
+        typeof value.worker_name === "string"
+    );
 }
 
 function loadWorkerState(stateDir: string, workerName: string): { lifecycle_state?: string } | null {
@@ -68,8 +86,8 @@ function loadWorkerState(stateDir: string, workerName: string): { lifecycle_stat
 }
 
 function shouldSkipStaleCleanupForWorker(stateDir: string, workerName: string): boolean {
-  const pendingWakeups = loadPendingWakeups(stateDir).filter((wakeup) => wakeup.worker_name === workerName);
-  for (const wakeup of pendingWakeups) {
+  const outstandingWakeups = loadOutstandingWakeups(stateDir).filter((wakeup) => wakeup.worker_name === workerName);
+  for (const wakeup of outstandingWakeups) {
     const kind = typeof wakeup.payload?.kind === "string" ? wakeup.payload.kind : "";
     if (kind === "completion_requested" || kind === "fatal_error" || kind === "timeout") {
       return true;
@@ -86,6 +104,12 @@ export async function runConductorMaintenance(
   const stateDir = options.stateDir || `${SUPERTURTLE_DATA_DIR}/state`;
   const workingDir = options.workingDir || WORKING_DIR;
   const ctlPath = options.ctlPath || CTL_PATH;
+  const requeueState: RecoverProcessingWakeupsResult = options.recoverInFlightWakeups
+    ? recoverProcessingWakeups({
+        stateDir,
+        nowIso: options.nowIso,
+      })
+    : { requeuedWakeups: 0, reconciled: 0 };
 
   const recoveredState = recoverPendingWorkerWakeups({
     stateDir,
@@ -145,8 +169,12 @@ export async function runConductorMaintenance(
     skipped: supervisorTick.skipped,
     errors: supervisorTick.errors,
     reconciled:
-      supervisorTick.reconciled + recoveredState.reconciled + staleCronReconciled,
+      supervisorTick.reconciled +
+      requeueState.reconciled +
+      recoveredState.reconciled +
+      staleCronReconciled,
     recoveredWakeups: recoveredState.recoveredWakeups,
+    requeuedWakeups: requeueState.requeuedWakeups,
     staleCronRemoved,
     staleCronNotified,
   };

@@ -443,6 +443,7 @@ Current producer coverage:
 - the bot timer now runs deterministic silent supervision for structured SubTurtle cron jobs, comparing canonical checkpoint/backlog signatures across checks and emitting `worker.milestone_reached` / `worker.stuck_detected` plus notable wake-ups when policy thresholds are met
 - the bot timer now repairs missing `completion_requested`, `fatal_error`, and `timeout` wake-ups from canonical worker state before delivery, so pending terminal transitions can still complete after a bot restart or partial state loss
 - the bot now runs the same conductor maintenance pass once at startup and then on every timer tick, so wake-up recovery and stale recurring-cron cleanup happen immediately after a reboot instead of waiting for the first cron interval
+- startup conductor maintenance also requeues wake-ups stranded in `processing`, so a crash between the pre-send write and the final `sent` write becomes replayable recovery state instead of a permanent wedge
 - stale recurring SubTurtle cron cleanup is now persisted back into conductor state via `worker.cron_removed`, rather than existing only as an operator warning path
 
 The migration is still in a mixed mode:
@@ -452,7 +453,7 @@ The migration is still in a mixed mode:
 - `ctl spawn` now writes structured supervision cron metadata (`job_kind`, `worker_name`, `supervision_mode`) so recurring checks resolve workers from disk state first instead of depending on prompt regexes
 - silent SubTurtle cron is now a deterministic reconciliation trigger, not a prompt-driven inference path
 - milestone and stuck wake-ups now go through the same inbox + Telegram delivery flow as completion/failure wake-ups, while cron removal and cleanup verification remain terminal-only side effects
-- `handoff.md` now renders from canonical worker state plus pending wakeups, and dashboard lanes prefer conductor worker fields for currently listed SubTurtles
+- `handoff.md` now renders from canonical worker state plus outstanding pending/processing wakeups, and dashboard lanes prefer conductor worker fields for currently listed SubTurtles
 - preview/tunnel URLs are attached to milestone wake-ups when present, but they are not yet a standalone milestone trigger
 
 The next step is to keep expanding restart and multi-worker coverage around the shared maintenance path, not to add another orchestration layer.
