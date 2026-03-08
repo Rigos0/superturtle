@@ -1703,44 +1703,70 @@ Mara nodded, wrote it down, and marked the folder with red tape.
 
 The day moved from dark to bright without changing. In that office, every minute became a list.
 
-By evening, they had assembled a chain of names, seven living witnesses, one distributed key shard, and two routes for release that did not require a full city shutdown. The key itself, when tested in simulated lane, lit cleanly and gave the first cluster of Dock Nine records: signatures, overrides, payroll anomalies, and the line where Tomas’s chain-of-custody crossed the ministerial stamp.
+By evening, they had assembled a chain of seven living witnesses, one distributed key shard, and two release routes that did not require a city shutdown. In simulation the key lit cleanly and unlocked the first cluster of Dock Nine records: signatures, overrides, payroll anomalies, and the line where Tomas’s custody chain crossed the ministerial stamp.
 
-The room was quiet after the first confirmation. Even the monitor fan sounded too loud.
+The room was quiet after that first confirmation. Even the monitor fan sounded too loud.
 
-Mara looked at Silas.
+Mara leaned toward Silas.
 
-“One more thing.”
+“One more thing,” she said.
 
-“Yes.”
+“Yes?”
 
-“If this goes wrong, everyone blames us because we chose witnesses over mercy.”
+“If this goes wrong, everyone blames us for choosing witnesses over mercy.”
 
-He did not answer.
+Silas only breathed.
 
-“Good,” she said. “Then we have to be clear now, in writing, that mercy is not permission to erase history. That’s the whole reason they had to call me.”
+“Then we write it down clearly now,” Mara said. “Mercy is not permission to erase history.”
 
 She opened a fresh sheet and wrote at the top:
 
 `LIFE LINE: DO NOT PUBLISH A HALF WITNESS.`
 
-Below it she wrote three names and one name for every witness lane, leaving space for signatures that still had to be earned.
+Below it she left spaces for seven witness signatures and two delayed-consent fields.
 
 When she looked up, Silas gave a small, exhausted nod.
 
 “You changed your brother into a witness,” he said.
 
-Mara stood and shut down the monitor feed.
-
 “No,” she said. “I changed the way we owe the dead to the living.”
 
-She packed the drives before sunrise and turned out the screen.
+She shut down the monitor feed and packed the drives before sunrise.
 
-On the last line she wrote before leaving:
+On the final line of the sheet she wrote:
 
-`To expose the public harm, we must not manufacture new private harms on the route.`
+`To expose public harm, we must not create new private harms in its wake.`
 
-Outside, the city’s announcement strips began one by one, reciting weather, transit, and maintenance notices.
+Outside, the city strips resumed their routine—weather, transit, maintenance.
 
-Mara stood by the alley curb and made herself a promise in her own language:
+Mara stood at the alley curb and made herself a promise in her own language:
 
 `I will not call this mercy if it has no witnesses.`
+
+## Chapter 12 — Countermemory (continuity notes)
+
+### Mandatory continuity carry-forward
+
+`Silas remains physically weakened and off-line until medical support is clear, but he is still the clean technical witness to Node 13 custody branch manipulation and Tomas’s original chain.`
+
+`Nera Pell’s folder is in delayed consent and must be released only in a private witness room, after she signs the delayed lane.` 
+
+`Mara keeps the distributed key shard from Node 13; it can expose one suppressed branch at a time if not sequenced through the witness lanes.`
+
+`The city has already issued token `11-B/quiet` observation notices tied to the team’s transport behavior; future movement should account for active surveillance.` 
+
+`The core tactical goal for Chapter 12 is to move from evidence assembly to staged publication architecture, with one public failure point and one private grief point.` 
+
+### Structural plan for Chapter 12
+
+1. Open in the quiet office before dawn, showing the team deciding whether to risk a controlled release versus a total lock-down.
+2. Establish a small, accountable release ceremony where each witness signs a lane and the cost of inclusion is explicit.
+3. Escalate with a public counter-brief from the city that frames the disclosures as destabilizing to force a moral choice: protect process or protect lives.
+4. End on a hard operational question: who receives `LIFE LINE` once the first lane goes live and who absorbs the first retaliation.
+
+### Beat-level continuity guardrails
+
+- Keep the chapter’s tempo split between planning scenes and immediate consequence scenes; avoid pure exposition blocks longer than one paragraph.
+- Keep Silas visibly constrained by health/processing limits; no miracle recovery before at least one full chapter pass.
+- Keep Nera’s consent delay humanized, with full sentence-level clarity, not shorthand.
+- Preserve the distinction between “public release,” “sealed lane,” and “delayed lane” introduced in Chapter 11.
