@@ -58,11 +58,13 @@ Loop types:
 - **yolo** — single Claude Code call per iteration. Fast, autonomous ralph loop. The default for most tasks.
 - **slow** — plan, groom, execute, review. Four agent calls per iteration. More careful, better for complex or risky work.
 - **yolo-codex** — same as yolo but runs Codex instead of Claude.
+- **yolo-codex-spark** — same as yolo-codex but with Codex Spark for faster iterations.
 
 ## Architecture
 
 - **Meta Agent** — the bot itself. Plans, delegates, supervises.
-- **SubTurtles** — autonomous workers running in ralph loops (yolo, slow, yolo-codex).
+- **SubTurtles** — autonomous workers running in ralph loops (yolo, slow, yolo-codex, yolo-codex-spark).
+- **Conductor state** — durable worker lifecycle/event state in `.superturtle/state/` with wakeup/inbox delivery.
 - **MCP servers** — stickers, bot-control, ask-user (inline buttons).
 - **Drivers** — Claude Code (primary), Codex (optional).
 
@@ -72,11 +74,11 @@ Loop types:
 
 ## Dashboard
 
-SuperTurtle includes a local dashboard for operational visibility. It is enabled by default when you run `superturtle start`. On startup, the bot prints a local URL like `http://localhost:46xxx/dashboard`, with the exact port derived per bot instance so multiple bots on the same machine do not collide.
+SuperTurtle includes a local-only dashboard for operational visibility. It is enabled by default when you run `superturtle start`. On startup, the bot prints a local URL like `http://localhost:46xxx/dashboard`, with the exact port derived per bot instance so multiple bots on the same machine do not collide.
 
 Open the dashboard using the startup URL the bot prints. For normal local use, you do not need any extra dashboard settings. If you want to disable the dashboard entirely, set `DASHBOARD_ENABLED=false`.
 
-The dashboard shows active sessions, SubTurtle lanes, queued work, current jobs, and the latest conductor-driven worker state in one place.
+The dashboard shows active sessions, SubTurtle lanes, cron/current jobs, deferred queue pressure, and conductor views (`workers`, `wakeups`, `inbox`) in one place.
 
 <p align="center">
   <img src="assets/readme-screenshots/dashboard-overview.png" width="1200" alt="SuperTurtle dashboard showing sessions, SubTurtle lanes, queue, and current jobs" />
