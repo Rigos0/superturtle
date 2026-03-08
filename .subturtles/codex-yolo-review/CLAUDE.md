@@ -1,5 +1,5 @@
 # Current task
-Identify missing or insufficient automated tests for the reviewed runtime/dashboard/SubTurtle changes.
+Draft concise findings report for Super Turtle.
 
 # End goal with specs
 Produce an actionable review report that prioritizes high-severity issues, includes file/line references, identifies missing tests, and avoids broad stylistic feedback.
@@ -19,5 +19,5 @@ Produce an actionable review report that prioritizes high-severity issues, inclu
 - [x] Review runtime/session lifecycle changes for crash or stall risks
 - [x] Review observability and logging paths for missing failure signals
 - [x] Review SubTurtle orchestration changes for isolation regressions
-- [ ] Identify missing or insufficient automated tests <- current
-- [ ] Draft concise findings report for Super Turtle
+- [x] Identify missing or insufficient automated tests
+- [ ] Draft concise findings report for Super Turtle <- current

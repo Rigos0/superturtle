@@ -38,8 +38,26 @@ Ordered by severity.
 - Concrete fix: validate the incoming state before persisting it into the target workspace, or remove the workspace on any pre-start failure path (`state` validation, start failure, cron registration failure). `ctl list` should only surface workers that actually reached a managed state.
 - Missing test: replace the current assertion on `${ws}/CLAUDE.md` with coverage that `ctl spawn` failure leaves no workspace behind and that `ctl list` does not include the failed worker name.
 
+## Low
+
+### 5. The dashboard visual refresh shipped without assertions for the new session-row and lane rendering branches
+- File paths: `super_turtle/claude-telegram-bot/src/dashboard.ts`, `super_turtle/claude-telegram-bot/src/dashboard.test.ts`
+- Approximate lines: `805-836`, `1215-1315`, `654-680`
+- Issue: the refresh added new client-side behavior for truncating long session titles, constraining the session table layout, and rendering SubTurtle lane cards with milestone state and turtle position. The dashboard suite still stops at checking for a few static container classes and that the inline script parses, so none of the new rendering logic is exercised by automated assertions.
+- Why it matters: regressions in the main observability surface can now land silently. A broken `session-link` label, incorrect milestone state, or a lane card that drops the current backlog item would not fail the test suite even though the UI is the primary operator view for these changes.
+- Concrete fix: extract the session-row and lane-card formatting into testable helpers or add a `/dashboard` route test that loads mocked API payloads and asserts the emitted HTML for long titles, partially completed backlogs, zero-backlog lanes, and the "Show more sessions" toggle text.
+- Missing test: add coverage that asserts the rendered page contains truncated long titles, `lane-card` markup, the expected `lane-milestone done/current` classes, and a bounded `lane-turtle` `left:` style for representative backlog ratios.
+
 ## Verification
 
 - `bun test src/codex-session.test.ts src/session-observability.test.ts src/dashboard.test.ts`
-- Result: `98 pass, 0 fail`
+- Result when previously run for the runtime findings: `98 pass, 0 fail`
+- `bun test super_turtle/claude-telegram-bot/src/dashboard.test.ts super_turtle/claude-telegram-bot/src/codex-session.test.ts`
+- Result: `91 pass, 1 fail`; `GET /dashboard/sessions/:driver/:sessionId > renders transcript-backed Codex history and meta prompt evidence without turn logs` timed out after 5s in both suite and isolated reruns, so that coverage is currently not reliable.
+- `bash super_turtle/subturtle/claude-md-guard/tests/run.sh`
+- Result: `47 pass, 0 fail`
+- `bash super_turtle/subturtle/tests/test_ctl_integration.sh`
+- Result: `23 pass, 0 fail`
+- `bash super_turtle/subturtle/tests/smoke_spawn_status.sh`
+- Result: `pass`
 - Manual reproduction: `super_turtle/subturtle/ctl spawn review-invalid-<pid> --state-file <invalid.md>` exited non-zero, left `.subturtles/review-invalid-<pid>/CLAUDE.md` on disk, and `super_turtle/subturtle/ctl list` reported that name as a stopped worker.
