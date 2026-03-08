@@ -86,6 +86,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
 
   // 4. Start typing indicator for transcription
   const typing = startTypingIndicator(ctx);
+  session.typingController = typing;
 
   // NOTE: startProcessing() is called AFTER the queue check (step 10) to avoid
   // isAnyDriverRunning() seeing our own _isProcessing flag and always queueing.
@@ -230,6 +231,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
   } finally {
     stopProcessing?.();
     typing.stop();
+    session.typingController = null;
     await drainDeferredQueue(ctx, chatId, makeDrainItemNotifier(ctx, chatId));
 
     // Clean up voice file
