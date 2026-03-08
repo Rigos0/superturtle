@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-08
+
+### Fixed
+- npm package Python entrypoints: include missing Python package marker files so packaged `python -m subturtle` and `state/run_state_writer.py` imports work outside the monorepo
+- npm package smoke test: verify packaged Python entrypoints and import fallbacks from the packed tarball
+
 ## [0.2.1] - 2026-03-08
 
 ### Changed

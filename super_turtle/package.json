@@ -1,6 +1,6 @@
 {
   "name": "superturtle",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Code from anywhere with your voice. Autonomous coding system controlled from Telegram.",
   "scripts": {
     "test:pack": "bash tests/npm-package-smoke.sh",
@@ -21,7 +21,7 @@
     "url": "https://github.com/Rigos0"
   },
   "bin": {
-    "superturtle": "./bin/superturtle.js"
+    "superturtle": "bin/superturtle.js"
   },
   "files": [
     "__init__.py",
