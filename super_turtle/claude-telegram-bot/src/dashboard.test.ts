@@ -907,8 +907,8 @@ describe("GET /dashboard/sessions/:driver/:sessionId", () => {
       ],
       injectedArtifacts: [
         {
-          id: "meta-prompt",
-          label: "Meta system prompt",
+          id: "codex-bootstrap-prompt",
+          label: "Codex bootstrap prompt",
           order: 20,
           text: "meta prompt from transcript",
           applied: true,
@@ -936,7 +936,7 @@ describe("GET /dashboard/sessions/:driver/:sessionId", () => {
     expect(html).toContain("<div class=\"injected-heading\">");
     expect(html).toContain("<ol class=\"injected-list\">");
     expect(html).toContain("Project instructions");
-    expect(html).toContain("Meta system prompt");
+    expect(html).toContain("Codex bootstrap prompt");
     expect(html).toContain("Date/time prefix");
     expect(html).toContain("meta prompt from transcript");
     expect(html).toContain("How instructions are passed to this CLI");
@@ -971,8 +971,8 @@ describe("GET /dashboard/sessions/:driver/:sessionId", () => {
       ],
       injectedArtifacts: [
         {
-          id: "meta-prompt",
-          label: "Meta system prompt",
+          id: "codex-bootstrap-prompt",
+          label: "Codex bootstrap prompt",
           order: 20,
           text: "meta prompt from transcript",
           applied: true,
@@ -1039,7 +1039,7 @@ describe("GET /dashboard/sessions/:driver/:sessionId", () => {
 
     const html = await res.text();
     expect(html).toContain("CLAUDE.md context");
-    expect(html).toContain("Meta system prompt");
+    expect(html).toContain("Codex bootstrap prompt");
     expect(html).toContain("Date/time prefix");
     expect(html).toContain("meta prompt from transcript");
     expect(html).toContain("Stabilize session detail");

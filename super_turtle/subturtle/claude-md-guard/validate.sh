@@ -6,8 +6,40 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name')
+
+json_value() {
+  local key="$1"
+  INPUT_JSON="$INPUT" python3 - "$key" <<'PY'
+import json
+import os
+import sys
+
+key = sys.argv[1]
+try:
+    data = json.loads(os.environ.get("INPUT_JSON", ""))
+except json.JSONDecodeError:
+    print("")
+    raise SystemExit(0)
+
+value = data
+for part in key.split("."):
+    if isinstance(value, dict):
+        value = value.get(part)
+    else:
+        value = None
+        break
+
+if value is None:
+    print("")
+elif isinstance(value, bool):
+    print("true" if value else "false")
+else:
+    print(value)
+PY
+}
+
+FILE_PATH="$(json_value "tool_input.file_path")"
+TOOL_NAME="$(json_value "tool_name")"
 
 TARGET_FILE="$(basename "$FILE_PATH")"
 
@@ -21,14 +53,17 @@ TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
 
 if [ "$TOOL_NAME" = "Write" ]; then
-  echo "$INPUT" | jq -r '.tool_input.content // empty' > "$TMP"
+  json_value "tool_input.content" > "$TMP"
 elif [ "$TOOL_NAME" = "Edit" ]; then
   if [ ! -f "$FILE_PATH" ]; then
     exit 0  # new file, nothing to validate against
   fi
-  OLD_STRING=$(echo "$INPUT" | jq -r '.tool_input.old_string // empty')
-  NEW_STRING=$(echo "$INPUT" | jq -r '.tool_input.new_string // empty')
-  REPLACE_ALL=$(echo "$INPUT" | jq -r '.tool_input.replace_all // false')
+  OLD_STRING="$(json_value "tool_input.old_string")"
+  NEW_STRING="$(json_value "tool_input.new_string")"
+  REPLACE_ALL="$(json_value "tool_input.replace_all")"
+  if [ -z "$REPLACE_ALL" ]; then
+    REPLACE_ALL="false"
+  fi
 
   # Build proposed content by applying the edit
   if [ "$REPLACE_ALL" = "true" ]; then

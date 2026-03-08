@@ -14,6 +14,7 @@ RUN_STATE_DIR="${PROJECT_DIR}/.superturtle/state"
 RUNS_JSONL_FILE="${RUN_STATE_DIR}/runs.jsonl"
 HANDOFF_MD_FILE="${RUN_STATE_DIR}/handoff.md"
 RUN_STATE_WRITER="${SUPER_TURTLE_DIR}/state/run_state_writer.py"
+CLAUDE_MD_GUARD_VALIDATE="${SCRIPT_DIR}/claude-md-guard/validate.sh"
 
 # Use subturtle venv if available, otherwise system python3
 PYTHON="${SCRIPT_DIR}/.venv/bin/python3"
@@ -232,6 +233,50 @@ ensure_workspace() {
   if [[ ! -L "$ws/AGENTS.md" ]]; then
     ln -sf CLAUDE.md "$ws/AGENTS.md"
   fi
+}
+
+validate_spawn_state_file() {
+  local name="$1"
+  local state_path="$2"
+  local validation_err
+  local validation_status=0
+
+  if [[ ! -x "$CLAUDE_MD_GUARD_VALIDATE" ]]; then
+    echo "[subturtle:${name}] ERROR: state validator not found: ${CLAUDE_MD_GUARD_VALIDATE}" >&2
+    exit 1
+  fi
+
+  validation_err="$(mktemp)"
+  "$PYTHON" - "$state_path" <<'PY' \
+    | "$CLAUDE_MD_GUARD_VALIDATE" 2>"$validation_err" || validation_status=$?
+import json
+import sys
+from pathlib import Path
+
+state_path = Path(sys.argv[1])
+json.dump(
+    {
+        "tool_name": "Write",
+        "tool_input": {
+            "file_path": str(state_path),
+            "content": state_path.read_text(encoding="utf-8"),
+        },
+    },
+    sys.stdout,
+)
+sys.stdout.write("\n")
+PY
+
+  if (( validation_status != 0 )); then
+    echo "[subturtle:${name}] ERROR: generated CLAUDE.md failed validation" >&2
+    if [[ -s "$validation_err" ]]; then
+      sed 's/^/  /' "$validation_err" >&2
+    fi
+    rm -f "$validation_err"
+    exit 1
+  fi
+
+  rm -f "$validation_err"
 }
 
 is_running() {
@@ -817,6 +862,7 @@ do_spawn() {
     exit 1
   fi
 
+  validate_spawn_state_file "$name" "$ws/CLAUDE.md"
   ln -sf CLAUDE.md "$ws/AGENTS.md"
 
   local -a start_args=("$name" --type "$loop_type" --timeout "$timeout_str")

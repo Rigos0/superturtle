@@ -24,10 +24,25 @@ mkdir -p "${FAKE_BIN_DIR}"
 mkdir -p "$(dirname "${STATE_FILE}")"
 cat > "${STATE_FILE}" <<'STATE'
 # Current task
+
 spawn/status smoke test
 
-## Backlog
-- [ ] Verify process is running
+# End goal with specs
+- Verify spawn/status works end-to-end.
+
+# Roadmap (Completed)
+- Prepared fake Codex CLI.
+
+# Roadmap (Upcoming)
+- Spawn the worker.
+- Check status output.
+
+# Backlog
+- [x] 1. Prepare fake Codex CLI
+- [x] 2. Seed the worker state
+- [ ] 3. Verify process is running <- current
+- [ ] 4. Stop the worker cleanly
+- [ ] 5. Confirm status reports not running
 STATE
 
 cat > "${FAKE_BIN_DIR}/codex" <<'SH'

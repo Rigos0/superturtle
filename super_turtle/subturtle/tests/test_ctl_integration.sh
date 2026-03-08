@@ -286,16 +286,72 @@ stop_subturtle_if_running() {
   "$CTL" stop "$name" >/dev/null 2>&1 || true
 }
 
+write_valid_state_file() {
+  local path="$1"
+  local task="$2"
+
+  cat > "$path" <<STATE
+# Current task
+
+$task
+
+# End goal with specs
+- Keep the SubTurtle focused on the assigned work.
+- Preserve a valid CLAUDE.md for spawn-time validation and dashboard parsing.
+
+# Roadmap (Completed)
+- Seed the worker workspace.
+- Capture the requested task in state.
+
+# Roadmap (Upcoming)
+- Start the worker loop.
+- Register cron supervision.
+
+# Backlog
+- [x] 1. Seed the worker workspace
+- [x] 2. Capture the requested task in state
+- [ ] 3. Start the worker loop <- current
+- [ ] 4. Register cron supervision
+- [ ] 5. Surface status back to the meta agent
+STATE
+}
+
+print_valid_state() {
+  local task="$1"
+
+  cat <<STATE
+# Current task
+
+$task
+
+# End goal with specs
+- Keep the SubTurtle focused on the assigned work.
+- Preserve a valid CLAUDE.md for spawn-time validation and dashboard parsing.
+
+# Roadmap (Completed)
+- Seed the worker workspace.
+- Capture the requested task in state.
+
+# Roadmap (Upcoming)
+- Start the worker loop.
+- Register cron supervision.
+
+# Backlog
+- [x] 1. Seed the worker workspace
+- [x] 2. Capture the requested task in state
+- [ ] 3. Start the worker loop <- current
+- [ ] 4. Register cron supervision
+- [ ] 5. Surface status back to the meta agent
+STATE
+}
+
 test_spawn_creates_workspace() {
   local name state_path ws pid meta cron_job_id
   name="$(make_test_name "spawn-workspace")"
   state_path="${TMP_DIR}/${name}.md"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-spawn workspace creation test
-STATE
+  write_valid_state_file "$state_path" "spawn workspace creation test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -329,7 +385,7 @@ test_spawn_stdin_state() {
   name="$(make_test_name "spawn-stdin")"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  if ! printf '%s\n' '# Current Task' 'stdin state test' '' '## Backlog' '- [ ] item' | \
+  if ! print_valid_state "stdin state test" | \
     "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file - >/dev/null; then
     fail "spawn with stdin state failed for ${name}"
     return 1
@@ -338,7 +394,7 @@ test_spawn_stdin_state() {
 
   assert_file_exists "${ws}/CLAUDE.md" || return 1
   assert_file_contains "${ws}/CLAUDE.md" "stdin state test" || return 1
-  assert_file_contains "${ws}/CLAUDE.md" "- [ ] item" || return 1
+  assert_file_contains "${ws}/CLAUDE.md" "Start the worker loop <- current" || return 1
 
   stop_subturtle_if_running "$name"
   return 0
@@ -350,13 +406,7 @@ test_spawn_file_state() {
   state_path="${TMP_DIR}/${name}.md"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-file state test
-
-## Backlog
-- [ ] one
-STATE
+  write_valid_state_file "$state_path" "file state test"
   expected="$(cat "$state_path")"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
@@ -378,10 +428,7 @@ test_spawn_with_skills() {
   state_path="${TMP_DIR}/${name}.md"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-spawn skills test
-STATE
+  write_valid_state_file "$state_path" "spawn skills test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" --skill frontend --skill testing >/dev/null; then
     fail "spawn with skills failed for ${name}"
@@ -415,10 +462,7 @@ test_status_running() {
   state_path="${TMP_DIR}/${name}.md"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-status running test
-STATE
+  write_valid_state_file "$state_path" "status running test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -445,10 +489,7 @@ test_status_mocked_shell_output() {
   ws="${SUBTURTLES_DIR}/${name}"
   mock_bin="${TMP_DIR}/mock-shell-${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-status mocked shell output test
-STATE
+  write_valid_state_file "$state_path" "status mocked shell output test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -502,10 +543,7 @@ test_status_stopped() {
   name="$(make_test_name "status-stopped")"
   state_path="${TMP_DIR}/${name}.md"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-status stopped test
-STATE
+  write_valid_state_file "$state_path" "status stopped test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -537,16 +575,53 @@ test_spawn_missing_state_file() {
   return 0
 }
 
+test_spawn_rejects_invalid_state_file() {
+  local name state_path ws out_file err_file output
+  name="$(make_test_name "spawn-invalid-state-file")"
+  state_path="${TMP_DIR}/${name}.md"
+  ws="${SUBTURTLES_DIR}/${name}"
+  out_file="${TMP_DIR}/${name}.out"
+  err_file="${TMP_DIR}/${name}.err"
+
+  cat > "$state_path" <<'STATE'
+# Current task
+
+spawn invalid state file test
+
+# End goal with specs
+- Validate invalid SubTurtle state.
+
+# Roadmap (Completed)
+- Drafted the state file.
+
+# Roadmap (Upcoming)
+- Attempt the spawn.
+
+# Backlog
+- [ ] Only backlog item <- current
+STATE
+
+  if run_and_capture "$out_file" "$err_file" "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path"; then
+    fail "spawn unexpectedly succeeded with invalid state file for ${name}"
+    return 1
+  fi
+
+  output="$(cat "$out_file" "$err_file")"
+  assert_contains "$output" "generated CLAUDE.md failed validation" || return 1
+  assert_contains "$output" "Backlog has 1 items (minimum 5)" || return 1
+  assert_file_exists "${ws}/CLAUDE.md" || return 1
+  [[ ! -f "${ws}/subturtle.pid" ]] || fail "expected no PID file for invalid spawn"
+  [[ ! -f "${ws}/subturtle.meta" ]] || fail "expected no meta file for invalid spawn"
+  return 0
+}
+
 test_stop_kills_process() {
   local name state_path ws pid
   name="$(make_test_name "stop-kills-process")"
   state_path="${TMP_DIR}/${name}.md"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-stop kills process test
-STATE
+  write_valid_state_file "$state_path" "stop kills process test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -571,10 +646,7 @@ test_stop_cleans_cron() {
   name="$(make_test_name "stop-cleans-cron")"
   state_path="${TMP_DIR}/${name}.md"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-stop cleans cron test
-STATE
+  write_valid_state_file "$state_path" "stop cleans cron test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -602,10 +674,7 @@ test_stop_archives_workspace() {
   ws="${SUBTURTLES_DIR}/${name}"
   archive_ws="${ARCHIVE_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-stop archives workspace test
-STATE
+  write_valid_state_file "$state_path" "stop archives workspace test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -631,10 +700,7 @@ test_stop_already_dead() {
   state_path="${TMP_DIR}/${name}.md"
   ws="${SUBTURTLES_DIR}/${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-stop already dead test
-STATE
+  write_valid_state_file "$state_path" "stop already dead test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -666,15 +732,8 @@ test_list_shows_subturtles() {
   state_one="${TMP_DIR}/${name_one}.md"
   state_two="${TMP_DIR}/${name_two}.md"
 
-  cat > "$state_one" <<'STATE'
-# Current Task
-list shows subturtles A
-STATE
-
-  cat > "$state_two" <<'STATE'
-# Current Task
-list shows subturtles B
-STATE
+  write_valid_state_file "$state_one" "list shows subturtles A"
+  write_valid_state_file "$state_two" "list shows subturtles B"
 
   if ! "$CTL" spawn "$name_one" --type yolo-codex --timeout 2m --state-file "$state_one" >/dev/null; then
     fail "spawn failed for ${name_one}"
@@ -714,10 +773,7 @@ test_list_parses_current_task_with_mocked_time() {
   ws="${SUBTURTLES_DIR}/${name}"
   mock_bin="${TMP_DIR}/mock-shell-${name}"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-list parses current task test
-STATE
+  write_valid_state_file "$state_path" "list parses current task test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -771,10 +827,7 @@ test_list_shows_tunnel_url() {
   ws="${SUBTURTLES_DIR}/${name}"
   tunnel_url="https://${name}.example.com"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-list shows tunnel URL
-STATE
+  write_valid_state_file "$state_path" "list shows tunnel URL"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -799,10 +852,7 @@ test_watchdog_timeout() {
   ws="${SUBTURTLES_DIR}/${name}"
   log_path="${ws}/subturtle.log"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-watchdog timeout test
-STATE
+  write_valid_state_file "$state_path" "watchdog timeout test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 5 --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -841,10 +891,7 @@ test_gc_archives_old() {
   old_stamp="${TMP_DIR}/old-stamp-${name}"
 
   mkdir -p "$ws"
-  cat > "${ws}/CLAUDE.md" <<'STATE'
-# Current Task
-gc archives old test
-STATE
+  write_valid_state_file "${ws}/CLAUDE.md" "gc archives old test"
   track_subturtle "$name"
 
   if ! touch -t 200001010000 "$old_stamp" "$ws"; then
@@ -872,10 +919,7 @@ test_reschedule_cron() {
   name="$(make_test_name "reschedule-cron")"
   state_path="${TMP_DIR}/${name}.md"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-reschedule cron test
-STATE
+  write_valid_state_file "$state_path" "reschedule cron test"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -907,10 +951,7 @@ test_spawn_validates_cli() {
   err_file="${TMP_DIR}/${name}.err"
   restricted_path="/usr/bin:/bin:/usr/sbin:/sbin"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-spawn validates missing codex CLI
-STATE
+  write_valid_state_file "$state_path" "spawn validates missing codex CLI"
 
   if run_and_capture "$out_file" "$err_file" env PATH="$restricted_path" "$CTL" spawn "$name" --type yolo-codex --timeout 2m --state-file "$state_path"; then
     fail "spawn unexpectedly succeeded without codex for ${name}"
@@ -930,10 +971,7 @@ test_spawn_preserves_existing_cron_jobs() {
   name="$(make_test_name "spawn-preserves-existing-cron")"
   state_path="${TMP_DIR}/${name}.md"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-spawn preserves existing cron jobs
-STATE
+  write_valid_state_file "$state_path" "spawn preserves existing cron jobs"
 
   cat > "$CRON_JOBS_FILE" <<'JOBS'
 [
@@ -974,10 +1012,7 @@ test_spawn_orchestrator_cron_mode() {
   name="$(make_test_name "spawn-orchestrator-cron")"
   state_path="${TMP_DIR}/${name}.md"
 
-  cat > "$state_path" <<'STATE'
-# Current Task
-spawn orchestrator cron mode
-STATE
+  write_valid_state_file "$state_path" "spawn orchestrator cron mode"
 
   if ! "$CTL" spawn "$name" --type yolo-codex --timeout 2m --cron-mode orchestrator --cron-interval 20m --state-file "$state_path" >/dev/null; then
     fail "spawn failed for ${name}"
@@ -1067,6 +1102,7 @@ register_test test_status_running
 register_test test_status_mocked_shell_output
 register_test test_status_stopped
 register_test test_spawn_missing_state_file
+register_test test_spawn_rejects_invalid_state_file
 register_test test_stop_kills_process
 register_test test_stop_cleans_cron
 register_test test_stop_archives_workspace

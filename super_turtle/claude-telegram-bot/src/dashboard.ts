@@ -674,21 +674,27 @@ function renderDashboardHtml(): string {
       html, body { height: 100%; }
       :root {
         color-scheme: light;
-        --bg: #f4f6fb;
-        --panel: #ffffff;
-        --line: #d9e1ef;
-        --text: #1f2430;
-        --muted: #5f697d;
-        --chip: #eef3ff;
-        --chip-line: #cfdbf8;
+        --bg: #f7f4ee;
+        --panel: #fffdfa;
+        --line: rgba(86, 108, 75, 0.2);
+        --text: #161412;
+        --muted: #6f675d;
+        --chip: #f2ede3;
+        --chip-line: rgba(86, 108, 75, 0.25);
+        --accent-olive: #556c4b;
+        --accent-terracotta: #b66d4b;
+        --accent-sage: #8aa67c;
+        --track-line: rgba(86, 108, 75, 0.16);
+        --track-bg: #f3efe6;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         padding: 12px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
         color: var(--text);
-        background: var(--bg);
+        background:
+          radial-gradient(circle at 8% 12%, #fefaf2 0%, var(--bg) 52%, #f1eadf 100%);
         line-height: 1.45;
         overflow: hidden;
       }
@@ -719,7 +725,7 @@ function renderDashboardHtml(): string {
         font-size: 12px;
       }
       a {
-        color: #1e5cc8;
+        color: var(--accent-olive);
         text-decoration: none;
       }
       a:hover { text-decoration: underline; }
@@ -737,12 +743,13 @@ function renderDashboardHtml(): string {
         border-radius: 999px;
         background: var(--chip);
         font-size: 13px;
-        color: #2e3a52;
+        color: #4d473f;
       }
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 12px;
+        box-shadow: 0 14px 40px -36px rgba(34, 30, 25, 0.5);
         padding: 10px;
         display: flex;
         flex-direction: column;
@@ -795,6 +802,38 @@ function renderDashboardHtml(): string {
         vertical-align: top;
         overflow-wrap: anywhere;
       }
+      .sessions-table th:nth-child(1),
+      .sessions-table td:nth-child(1) {
+        width: 52%;
+      }
+      .sessions-table th:nth-child(2),
+      .sessions-table td:nth-child(2) {
+        width: 10%;
+      }
+      .sessions-table th:nth-child(3),
+      .sessions-table td:nth-child(3) {
+        width: 14%;
+      }
+      .sessions-table th:nth-child(4),
+      .sessions-table td:nth-child(4) {
+        width: 8%;
+      }
+      .sessions-table th:nth-child(5),
+      .sessions-table td:nth-child(5) {
+        width: 16%;
+      }
+      .session-cell {
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .session-link {
+        display: inline-block;
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: top;
+      }
       th {
         color: var(--muted);
         font-size: 12px;
@@ -802,7 +841,7 @@ function renderDashboardHtml(): string {
         text-transform: uppercase;
       }
       tbody tr:hover td {
-        background: #fafcff;
+        background: #f8f2e8;
       }
       .status-chip {
         display: inline-block;
@@ -812,12 +851,12 @@ function renderDashboardHtml(): string {
         font-size: 12px;
         font-weight: 600;
       }
-      .status-running { background: #ecf9f0; color: #166534; border-color: #b7e7c4; }
-      .status-queued { background: #fff7e9; color: #9a6700; border-color: #f0d39a; }
-      .status-idle { background: #f2f4f8; color: #4a5568; border-color: #d6dce8; }
+      .status-running { background: #eaf4e4; color: #3e5137; border-color: #bad1ad; }
+      .status-queued { background: #faebdf; color: #93593d; border-color: #e6c6b3; }
+      .status-idle { background: #f3eee7; color: #5f564a; border-color: #dbd1c3; }
       .status-error { background: #fdecec; color: #a61b1b; border-color: #f2bcbc; }
-      .status-stopped { background: #f7f7f9; color: #636b76; border-color: #d8dce3; }
-      .status-muted { background: #f5f6fa; color: #6e7785; border-color: #dde1ea; }
+      .status-stopped { background: #f5f1eb; color: #756b5e; border-color: #d8cec1; }
+      .status-muted { background: #f2eee8; color: #71675b; border-color: #ddd3c5; }
       .lane-list {
         list-style: none;
         padding: 0;
@@ -825,17 +864,108 @@ function renderDashboardHtml(): string {
         overflow: auto;
         min-height: 0;
         flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
-      .lane-list li {
-        border: 1px solid var(--line);
+      .lane-card {
+        border: 1px solid rgba(86, 108, 75, 0.2);
         border-radius: 10px;
-        padding: 8px 10px;
-        background: #fcfdff;
+        padding: 9px 10px;
+        background: linear-gradient(180deg, #fffdfa 0%, #faf5eb 100%);
       }
-      .lane-list li + li { margin-top: 8px; }
+      .lane-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .lane-main {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .lane-main a {
+        color: var(--accent-olive);
+      }
+      .lane-main .lane-type {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .lane-meta {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .lane-progress {
+        position: relative;
+        border: 1px solid var(--track-line);
+        border-radius: 999px;
+        min-height: 32px;
+        padding: 4px 12px;
+        background: var(--track-bg);
+        overflow: hidden;
+      }
+      .lane-progress::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 50%;
+        height: 2px;
+        transform: translateY(-50%);
+        background: linear-gradient(90deg, rgba(85,108,75,0.25), rgba(138,166,124,0.35));
+      }
+      .lane-milestones {
+        position: absolute;
+        inset: 0 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+      .lane-milestone {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #d0c7b9;
+        border: 1px solid rgba(86, 108, 75, 0.18);
+      }
+      .lane-milestone.done {
+        background: var(--accent-sage);
+        border-color: rgba(86, 108, 75, 0.5);
+      }
+      .lane-milestone.current {
+        background: var(--accent-terracotta);
+        border-color: rgba(182, 109, 75, 0.6);
+      }
+      .lane-turtle {
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 20px;
+        filter: drop-shadow(0 2px 1px rgba(22, 20, 18, 0.22));
+      }
+      .lane-finish {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 14px;
+        color: #544c40;
+      }
+      .lane-current {
+        margin-top: 5px;
+        font-size: 12px;
+        color: #534b40;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .status-line {
         margin: 0;
-        color: #344055;
+        color: #4f473c;
         font-size: 13px;
       }
       .panel-actions {
@@ -845,14 +975,14 @@ function renderDashboardHtml(): string {
         display: inline-block;
         border: 1px solid var(--chip-line);
         background: var(--chip);
-        color: #2e3a52;
+        color: #4d473f;
         border-radius: 999px;
         padding: 5px 12px;
         font-size: 13px;
         cursor: pointer;
       }
       .panel-btn:hover {
-        background: #e7eeff;
+        background: #ece4d7;
       }
       .panel-btn[hidden] {
         display: none;
@@ -897,7 +1027,7 @@ function renderDashboardHtml(): string {
       <section class="panel panel-sessions">
         <h2>Sessions</h2>
         <div class="table-wrap">
-          <table>
+          <table class="sessions-table">
             <thead>
               <tr><th>Session</th><th>Driver</th><th>Status</th><th>Messages</th><th>Last seen</th></tr>
             </thead>
@@ -1056,6 +1186,12 @@ function renderDashboardHtml(): string {
         return "status-muted";
       }
 
+      function laneTurtleLeftPct(done, total) {
+        if (!total || total <= 0) return 2;
+        const progress = Math.max(0, Math.min(1, done / total));
+        return 2 + (progress * 94);
+      }
+
       function escapeHtml(text) {
         return String(text)
           .replace(/&/g, "&amp;")
@@ -1082,14 +1218,18 @@ function renderDashboardHtml(): string {
         if (!visible.length) {
           sessionRows.innerHTML = "<tr><td colspan='5'>No sessions found.</td></tr>";
         } else {
+          const maxTitleChars = 44;
           const rows = visible.map((s) => {
             const shortId = s.sessionId.length > 8 ? s.sessionId.slice(0, 8) + "…" : s.sessionId;
             const title = s.title ? s.title : "(untitled)";
+            const compactTitle = title.length > maxTitleChars
+              ? title.slice(0, maxTitleChars - 1) + "…"
+              : title;
             const lastSeen = formatDateTime(s.lastActivity || s.savedAt);
+            const displayLabel = compactTitle + " (" + shortId + ")";
             return "<tr>" +
-              "<td><a href='/dashboard/sessions/" + encodeURIComponent(s.driver) + "/" + encodeURIComponent(s.sessionId) + "'>" +
-              escapeHtml(title) +
-              " (" + escapeHtml(shortId) + ")" +
+              "<td class='session-cell'><a class='session-link' href='/dashboard/sessions/" + encodeURIComponent(s.driver) + "/" + encodeURIComponent(s.sessionId) + "'>" +
+              escapeHtml(displayLabel) +
               "</a></td>" +
               "<td>" + escapeHtml(s.driver) + "</td>" +
               "<td><span class='status-chip " + sessionStatusClass(s.status) + "'>" + escapeHtml(s.status) + "</span></td>" +
@@ -1145,23 +1285,31 @@ function renderDashboardHtml(): string {
             laneRows.innerHTML = "<li>No SubTurtle lanes yet.</li>";
           } else {
             const rows = data.lanes.map((lane) => {
-              const progressLabel = lane.backlogTotal > 0
-                ? lane.backlogDone + "/" + lane.backlogTotal + " (" + lane.progressPct + "%)"
-                : "No backlog";
-              const task = lane.task ? " · Task: " + lane.task : "";
-              return "<li>" +
-                '<a href="/dashboard/subturtles/' + encodeURIComponent(lane.name) + '">' +
-                escapeHtml(lane.name) +
-                "</a> " +
-                escapeHtml(lane.type) +
-                " · " +
-                escapeHtml(lane.status) +
-                " · " +
-                escapeHtml(lane.elapsed) +
-                " · " +
-                progressLabel +
-                (lane.backlogCurrent ? " · Current: " + escapeHtml(lane.backlogCurrent) : "") +
-                escapeHtml(task) +
+              const total = Number(lane.backlogTotal || 0);
+              const done = Math.max(0, Math.min(total, Number(lane.backlogDone || 0)));
+              const milestones = total > 0
+                ? Array.from({ length: total }, (_, idx) => {
+                    const isDone = idx < done;
+                    const isCurrent = idx === done && done < total;
+                    const cls = isCurrent ? "lane-milestone current" : (isDone ? "lane-milestone done" : "lane-milestone");
+                    return "<span class='" + cls + "'></span>";
+                  }).join("")
+                : "";
+              const turtleLeft = laneTurtleLeftPct(done, total);
+              const currentLine = lane.backlogCurrent
+                ? "Current: " + escapeHtml(lane.backlogCurrent)
+                : (lane.task ? "Task: " + escapeHtml(lane.task) : "No current item");
+              return "<li class='lane-card'>" +
+                "<div class='lane-head'>" +
+                "<div class='lane-main'><a href='/dashboard/subturtles/" + encodeURIComponent(lane.name) + "'>" + escapeHtml(lane.name) + "</a> <span class='lane-type'>· " + escapeHtml(lane.type) + "</span></div>" +
+                "<div class='lane-meta'>" + done + "/" + total + " · " + escapeHtml(lane.status) + " · " + escapeHtml(lane.elapsed) + "</div>" +
+                "</div>" +
+                "<div class='lane-progress'>" +
+                (total > 0 ? "<div class='lane-milestones'>" + milestones + "</div>" : "") +
+                "<span class='lane-turtle' style='left:" + turtleLeft.toFixed(2) + "%'>🐢</span>" +
+                "<span class='lane-finish'>🏁</span>" +
+                "</div>" +
+                "<div class='lane-current'>" + currentLine + "</div>" +
                 "</li>";
             });
             laneRows.innerHTML = rows.join("");
@@ -1398,6 +1546,64 @@ async function buildCurrentJobDetail(id: string): Promise<JobDetailResponse | nu
   };
 }
 
+const DETAIL_THEME_CSS = `
+      :root {
+        color-scheme: light;
+        --bg: #f7f4ee;
+        --panel: #fffdfa;
+        --line: rgba(86, 108, 75, 0.2);
+        --text: #161412;
+        --muted: #6f675d;
+        --code: #f2ede3;
+        --accent-olive: #556c4b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 22px;
+        font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at 8% 12%, #fefaf2 0%, var(--bg) 52%, #f1eadf 100%);
+        color: var(--text);
+        line-height: 1.45;
+      }
+      .page {
+        max-width: 1360px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      h1, h2 { margin: 0; }
+      h2 { margin-bottom: 8px; font-size: 18px; }
+      p { margin: 0; }
+      a { color: var(--accent-olive); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 14px 40px -36px rgba(34, 30, 25, 0.5);
+        padding: 14px;
+      }
+      ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      li + li { margin-top: 4px; }
+      pre {
+        margin: 0;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--code);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+`;
+
 function renderSubturtleDetailHtml(detail: SubturtleDetailResponse, logs: SubturtleLogsResponse | null): string {
   return `<!doctype html>
 <html lang="en">
@@ -1405,28 +1611,43 @@ function renderSubturtleDetailHtml(detail: SubturtleDetailResponse, logs: Subtur
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SubTurtle ${escapeHtml(detail.name)} detail</title>
+    <style>
+${DETAIL_THEME_CSS}
+    </style>
   </head>
   <body>
-    <h1>SubTurtle ${escapeHtml(detail.name)} detail</h1>
-    <p><a href="/dashboard">← Back to dashboard</a></p>
-    <h2>Core fields</h2>
-    <ul>
-      <li>Status: ${escapeHtml(detail.status)}</li>
-      <li>Type: ${escapeHtml(detail.type)}</li>
-      <li>PID: ${escapeHtml(detail.pid || "n/a")}</li>
-      <li>Elapsed: ${escapeHtml(detail.elapsed)}</li>
-      <li>Task: ${escapeHtml(detail.task || "none")}</li>
-      <li>Backlog: ${detail.backlogSummary.done}/${detail.backlogSummary.total} (${detail.backlogSummary.progressPct}%)</li>
-      <li>Current backlog item: ${escapeHtml(detail.backlogSummary.current || "none")}</li>
-    </ul>
-    <h2>Backlog (JSON)</h2>
-    ${renderJsonPre(detail.backlog)}
-    <h2>subturtle.meta (JSON)</h2>
-    ${renderJsonPre(detail.meta)}
-    <h2>Claude.md</h2>
-    <pre>${escapeHtml(detail.claudeMd || "(empty)")}</pre>
-    <h2>Logs</h2>
-    <pre>${escapeHtml(logs?.lines.join("\\n") || "No logs")}</pre>
+    <main class="page">
+      <h1>SubTurtle ${escapeHtml(detail.name)} detail</h1>
+      <p><a href="/dashboard">← Back to dashboard</a></p>
+      <section class="card">
+        <h2>Core fields</h2>
+        <ul>
+          <li>Status: ${escapeHtml(detail.status)}</li>
+          <li>Type: ${escapeHtml(detail.type)}</li>
+          <li>PID: ${escapeHtml(detail.pid || "n/a")}</li>
+          <li>Elapsed: ${escapeHtml(detail.elapsed)}</li>
+          <li>Task: ${escapeHtml(detail.task || "none")}</li>
+          <li>Backlog: ${detail.backlogSummary.done}/${detail.backlogSummary.total} (${detail.backlogSummary.progressPct}%)</li>
+          <li>Current backlog item: ${escapeHtml(detail.backlogSummary.current || "none")}</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Backlog (JSON)</h2>
+        ${renderJsonPre(detail.backlog)}
+      </section>
+      <section class="card">
+        <h2>subturtle.meta (JSON)</h2>
+        ${renderJsonPre(detail.meta)}
+      </section>
+      <section class="card">
+        <h2>Claude.md</h2>
+        <pre>${escapeHtml(detail.claudeMd || "(empty)")}</pre>
+      </section>
+      <section class="card">
+        <h2>Logs</h2>
+        <pre>${escapeHtml(logs?.lines.join("\\n") || "No logs")}</pre>
+      </section>
+    </main>
   </body>
 </html>`;
 }
@@ -1512,7 +1733,7 @@ function renderSessionDetailHtml(
   }): void => {
     const fallbackOrder = artifact.id === "claude-md"
       ? 10
-      : artifact.id === "meta-prompt"
+      : artifact.id === "meta-prompt" || artifact.id === "codex-bootstrap-prompt"
         ? 20
         : artifact.id === "date-prefix"
           ? 30
@@ -1624,10 +1845,16 @@ function renderSessionDetailHtml(
   const conversationBody = conversationRows.length > 0
     ? conversationRows.map((row) => {
         const turn = row.turn;
+        const runtimePromptFlag = detail.session.driver === "codex"
+          ? "codex-bootstrap"
+          : "meta-prompt";
+        const runtimePromptContextLabel = detail.session.driver === "codex"
+          ? "Codex bootstrap"
+          : "META";
         const injectedFlags = turn
           ? [
               turn.injections.datePrefixApplied ? "date-prefix" : "",
-              turn.injections.metaPromptApplied ? "meta-prompt" : "",
+              turn.injections.metaPromptApplied ? runtimePromptFlag : "",
               turn.injections.cronScheduledPromptApplied ? "cron-scheduled" : "",
               turn.injections.backgroundSnapshotPromptApplied ? "background-snapshot" : "",
             ].filter((value) => value.length > 0).join(", ") || "none"
@@ -1641,7 +1868,7 @@ function renderSessionDetailHtml(
               `Effort: ${turn.effort}`,
               `Elapsed: ${turn.elapsedMs}ms`,
               `Injected flags: ${injectedFlags}`,
-              `Context flags: CLAUDE.md=${turn.context.claudeMdLoaded ? "loaded" : "missing"}, META=${turn.context.metaSharedLoaded ? "loaded" : "missing"}`,
+              `Context flags: CLAUDE.md=${turn.context.claudeMdLoaded ? "loaded" : "missing"}, ${runtimePromptContextLabel}=${turn.context.metaSharedLoaded ? "loaded" : "missing"}`,
               `Effective prompt follows:`,
               turn.effectivePrompt || "(none)",
               `Error: ${turn.error || "none"}`,
@@ -1665,38 +1892,12 @@ function renderSessionDetailHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Session ${escapeHtml(detail.session.sessionId)} detail</title>
     <style>
-      :root {
-        color-scheme: light;
-        --bg: #f7f8fc;
-        --panel: #ffffff;
-        --line: #dfe3ee;
-        --text: #1f2430;
-        --muted: #5d6475;
-        --code: #f3f5fb;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        padding: 24px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        line-height: 1.45;
-      }
-      .page {
-        max-width: 1400px;
-        margin: 0 auto;
-      }
+${DETAIL_THEME_CSS}
       h1, h2 {
         margin: 0 0 12px 0;
       }
       h2 { margin-top: 20px; }
-      a { color: #1c5fd3; text-decoration: none; }
-      a:hover { text-decoration: underline; }
       .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 12px;
         padding: 14px;
       }
       .conversation {
@@ -1727,7 +1928,7 @@ function renderSessionDetailHtml(
         padding: 2px 8px;
         border-radius: 999px;
         border: 1px solid var(--line);
-        background: #f6f8ff;
+        background: #f2ede3;
         font-size: 12px;
       }
       details {
@@ -1787,10 +1988,10 @@ function renderSessionDetailHtml(
         padding: 12px 14px;
         border: 1px solid var(--line);
         border-radius: 12px;
-        background: #172033;
-        color: #f7f8fc;
+        background: #1e1b17;
+        color: #f7f4ee;
         text-align: left;
-        box-shadow: 0 20px 40px rgba(23, 32, 51, 0.18);
+        box-shadow: 0 20px 40px rgba(34, 30, 25, 0.25);
         z-index: 10;
       }
       .info-btn:hover .info-popover,
@@ -1884,22 +2085,31 @@ function renderProcessDetailHtml(detail: ProcessDetailResponse, logs: SubturtleL
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Process ${escapeHtml(detail.process.id)} detail</title>
+    <style>
+${DETAIL_THEME_CSS}
+    </style>
   </head>
   <body>
-    <h1>Process ${escapeHtml(detail.process.id)} detail</h1>
-    <p><a href="/dashboard">← Back to dashboard</a></p>
-    <h2>Core fields</h2>
-    <ul>
-      <li>Name: ${escapeHtml(detail.process.label)}</li>
-      <li>Kind: ${escapeHtml(detail.process.kind)}</li>
-      <li>Status: ${escapeHtml(detail.process.status)}</li>
-      <li>PID: ${escapeHtml(detail.process.pid)}</li>
-      <li>Elapsed: ${escapeHtml(detail.process.elapsed)}</li>
-      <li>Detail: ${escapeHtml(detail.process.detail || "n/a")}</li>
-    </ul>
-    <h2>Detail JSON</h2>
-    ${renderJsonPre(detail)}
-    ${logs ? `<h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre>` : ""}
+    <main class="page">
+      <h1>Process ${escapeHtml(detail.process.id)} detail</h1>
+      <p><a href="/dashboard">← Back to dashboard</a></p>
+      <section class="card">
+        <h2>Core fields</h2>
+        <ul>
+          <li>Name: ${escapeHtml(detail.process.label)}</li>
+          <li>Kind: ${escapeHtml(detail.process.kind)}</li>
+          <li>Status: ${escapeHtml(detail.process.status)}</li>
+          <li>PID: ${escapeHtml(detail.process.pid)}</li>
+          <li>Elapsed: ${escapeHtml(detail.process.elapsed)}</li>
+          <li>Detail: ${escapeHtml(detail.process.detail || "n/a")}</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Detail JSON</h2>
+        ${renderJsonPre(detail)}
+      </section>
+      ${logs ? `<section class="card"><h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre></section>` : ""}
+    </main>
   </body>
 </html>`;
 }
@@ -1911,21 +2121,30 @@ function renderJobDetailHtml(detail: JobDetailResponse, logs: SubturtleLogsRespo
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Job ${escapeHtml(detail.job.id)} detail</title>
+    <style>
+${DETAIL_THEME_CSS}
+    </style>
   </head>
   <body>
-    <h1>Job ${escapeHtml(detail.job.id)} detail</h1>
-    <p><a href="/dashboard">← Back to dashboard</a></p>
-    <h2>Core fields</h2>
-    <ul>
-      <li>Name: ${escapeHtml(detail.job.name)}</li>
-      <li>Owner: <a href="/dashboard/processes/${encodeURIComponent(detail.job.ownerId)}">${escapeHtml(detail.job.ownerId)}</a></li>
-      <li>Owner API link: <a href="${escapeHtml(detail.ownerLink)}">${escapeHtml(detail.ownerLink)}</a></li>
-      <li>Owner type: ${escapeHtml(detail.job.ownerType)}</li>
-      <li>Elapsed: ${escapeHtml(detail.extra.elapsed || "n/a")}</li>
-    </ul>
-    <h2>Detail JSON</h2>
-    ${renderJsonPre(detail)}
-    ${logs ? `<h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre>` : ""}
+    <main class="page">
+      <h1>Job ${escapeHtml(detail.job.id)} detail</h1>
+      <p><a href="/dashboard">← Back to dashboard</a></p>
+      <section class="card">
+        <h2>Core fields</h2>
+        <ul>
+          <li>Name: ${escapeHtml(detail.job.name)}</li>
+          <li>Owner: <a href="/dashboard/processes/${encodeURIComponent(detail.job.ownerId)}">${escapeHtml(detail.job.ownerId)}</a></li>
+          <li>Owner API link: <a href="${escapeHtml(detail.ownerLink)}">${escapeHtml(detail.ownerLink)}</a></li>
+          <li>Owner type: ${escapeHtml(detail.job.ownerType)}</li>
+          <li>Elapsed: ${escapeHtml(detail.extra.elapsed || "n/a")}</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Detail JSON</h2>
+        ${renderJsonPre(detail)}
+      </section>
+      ${logs ? `<section class="card"><h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre></section>` : ""}
+    </main>
   </body>
 </html>`;
 }

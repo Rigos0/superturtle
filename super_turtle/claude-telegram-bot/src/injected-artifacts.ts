@@ -6,6 +6,7 @@ import { SCHEDULED_PROMPT_INSTRUCTION } from "./cron-scheduled-prompt";
 export type InjectedArtifactId =
   | "claude-md"
   | "meta-prompt"
+  | "codex-bootstrap-prompt"
   | "date-prefix"
   | "cron-scheduled"
   | "background-snapshot";
@@ -54,6 +55,8 @@ export function buildInjectedArtifacts(params: {
   claudeMdLoaded: boolean;
   claudeMdText: string;
   metaPromptText: string;
+  metaPromptArtifactId?: InjectedArtifactId;
+  metaPromptLabel?: string;
 }): InjectedArtifact[] {
   const artifacts: InjectedArtifact[] = [];
 
@@ -69,8 +72,8 @@ export function buildInjectedArtifacts(params: {
 
   if (params.metaPromptApplied && params.metaPromptText.length > 0) {
     artifacts.push({
-      id: "meta-prompt",
-      label: "Meta system prompt",
+      id: params.metaPromptArtifactId || "meta-prompt",
+      label: params.metaPromptLabel || "Meta system prompt",
       order: 20,
       text: params.metaPromptText,
       applied: true,

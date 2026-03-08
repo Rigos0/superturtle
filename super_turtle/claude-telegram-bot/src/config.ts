@@ -258,6 +258,26 @@ try {
 
 export { META_PROMPT };
 
+// Load the Codex Telegram bootstrap prompt separately so Codex sessions can
+// receive runtime-only meta-agent instructions without making them repo-global.
+let CODEX_META_BOOTSTRAP_PROMPT = "";
+try {
+  const codexBootstrapPath = resolve(SUPER_TURTLE_DIR, "meta/CODEX_TELEGRAM_BOOTSTRAP.md");
+  CODEX_META_BOOTSTRAP_PROMPT = readFileSync(codexBootstrapPath, "utf-8")
+    .replace(/\{\{SUPER_TURTLE_DIR\}\}/g, SUPER_TURTLE_DIR)
+    .replace(/\{\{CTL_PATH\}\}/g, CTL_PATH)
+    .replace(/\{\{DATA_DIR\}\}/g, SUPERTURTLE_DATA_DIR)
+    .trim();
+  configLog.info(
+    { codexBootstrapPath },
+    `Loaded Codex bootstrap prompt from ${codexBootstrapPath}`
+  );
+} catch {
+  configLog.warn("Failed to load CODEX_TELEGRAM_BOOTSTRAP.md - Codex bootstrap prompt unavailable");
+}
+
+export { CODEX_META_BOOTSTRAP_PROMPT };
+
 // Load ORCHESTRATOR_PROMPT.md for full-auto overnight mode cron jobs
 let ORCHESTRATOR_PROMPT = "";
 try {
