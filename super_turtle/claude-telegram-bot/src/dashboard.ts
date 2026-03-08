@@ -1709,7 +1709,7 @@ ${DETAIL_THEME_CSS}
       </section>
       <section class="card">
         <h2>Logs</h2>
-        <pre>${escapeHtml(logs?.lines.join("\\n") || "No logs")}</pre>
+        <pre>${escapeHtml(logs?.lines.join("\n") || "No logs")}</pre>
       </section>
     </main>
   </body>
@@ -2172,7 +2172,7 @@ ${DETAIL_THEME_CSS}
         <h2>Detail JSON</h2>
         ${renderJsonPre(detail)}
       </section>
-      ${logs ? `<section class="card"><h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre></section>` : ""}
+      ${logs ? `<section class="card"><h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\n") || "No logs")}</pre></section>` : ""}
     </main>
   </body>
 </html>`;
@@ -2207,7 +2207,7 @@ ${DETAIL_THEME_CSS}
         <h2>Detail JSON</h2>
         ${renderJsonPre(detail)}
       </section>
-      ${logs ? `<section class="card"><h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\\n") || "No logs")}</pre></section>` : ""}
+      ${logs ? `<section class="card"><h2>Logs</h2><pre>${escapeHtml(logs.lines.join("\n") || "No logs")}</pre></section>` : ""}
     </main>
   </body>
 </html>`;
