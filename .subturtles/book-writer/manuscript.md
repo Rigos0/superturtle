@@ -761,7 +761,7 @@ When she stepped back into the stairwell, the first drops of rain came back, sha
 
 Rian followed her to the stairs. He held out the old flash drive.
 
-"Not all of it," he said. "Enough for now. But we need to corroborate this with Dock Nine hospital and housing records. There were too many hands. Too many signatures." 
+"Not all of it," he said. "Enough for now. But we need to corroborate this with Dock Nine hospital and housing records. There were too many hands. Too many signatures."
 
 Mara closed the stair door and looked up at the dead clocks on her phone as if she could force them to move.
 
@@ -831,11 +831,11 @@ Mara read the line aloud before she could stop herself: “Grace subtype three.�
 
 Rara slid open a steel cart and revealed six shelves of binders marked in white labels:
 
-*Emergency Casualty Register*  
-*Temporary Residency Transfers*  
-*Family Notification Exceptions*  
-*Dock Nine Mortality Correspondence*  
-*Public Narrative Guidance*  
+*Emergency Casualty Register*
+*Temporary Residency Transfers*
+*Family Notification Exceptions*
+*Dock Nine Mortality Correspondence*
+*Public Narrative Guidance*
 *Residual Cases Ledger.*
 
 Rian whispered, “That last shelf is the one.”
@@ -864,18 +864,18 @@ Rara came behind them with two mugs of coffee so thick it could stand. “You wa
 
 On page after page, the same pattern repeated:
 
-`Family support initiated.`  
-`Remembrance grant approved.`  
-`Memory redaction requested.`  
-`State of grace applied.`  
+`Family support initiated.`
+`Remembrance grant approved.`
+`Memory redaction requested.`
+`State of grace applied.`
 `Case closed.`
 
 In the margin, someone had added pencil notes that did not match the official tone:
 
-`No body sighted in transfer block.`  
-`No burial record.`  
-`No legal witness.`  
-`Reroute at 03:14 / 03:16.`  
+`No body sighted in transfer block.`
+`No burial record.`
+`No legal witness.`
+`Reroute at 03:14 / 03:16.`
 
 Mara felt the old fear she had spent months trying to turn into method come back as heat in her chest.
 
@@ -889,9 +889,9 @@ Rara did not answer directly. She reached across and held up another binder: *Pu
 
 The first page was not records. It was policy language drafted in that same patient bureaucratic tone of someone who had practiced being calm under pressure.
 
-`DO NOT RELEASE UNCONFIRMED DEATH COUNT.`  
-`UNCONFIRMED DEATHS SHOULD BE COMMUNICATED AS ADMINISTRATIVE DISPLACEMENTS.`  
-`IF FAMILY DEMANDS TESTIMONY, OFFER RECORDING FRAME WITH LIMITS.`  
+`DO NOT RELEASE UNCONFIRMED DEATH COUNT.`
+`UNCONFIRMED DEATHS SHOULD BE COMMUNICATED AS ADMINISTRATIVE DISPLACEMENTS.`
+`IF FAMILY DEMANDS TESTIMONY, OFFER RECORDING FRAME WITH LIMITS.`
 `GRACE SUBTYPE 3: protect fragile districts from repetitive recall trauma.`
 
 Underlined:
@@ -922,18 +922,18 @@ She reached beneath the counter and brought out a folder with a green card.
 
 `INTERNAL COMMUNICATIONS: POST-FLOOD DIVERSION AUTHORIZATION`
 
-`Prepared by: SILAS VENN`  
+`Prepared by: SILAS VENN`
 `Review committee: closed`
 
 Mara skimmed it and saw the red-ink initial in the lower-right corner. Not Silas’s signature. An approval chain collapsed into one word:
 
-`APPROVED FOR QUIET IMPLEMENTATION`  
-`By: BOARD OF RESONANCE`  
+`APPROVED FOR QUIET IMPLEMENTATION`
+`By: BOARD OF RESONANCE`
 `No witness signature required.`
 
 Underneath, the same phrase from Silas’s recorded message appeared in block:
 
-`Temporary filter. Temporary only.` 
+`Temporary filter. Temporary only.`
 
 “Board of Resonance?” Rian repeated.
 
@@ -957,8 +957,8 @@ She felt her own pulse in the paper.
 
 Nina’s face came up on the internal terminal as if summoned. Not in person, only a message line and the sound of a dry, careful voice.
 
-`You are at Dock Nine archive. Why is the city in your room?`  
-`Mara, pull your team out.`  
+`You are at Dock Nine archive. Why is the city in your room?`
+`Mara, pull your team out.`
 `This is not a room for heroics. Come back to active layer.`
 
 Mara did not answer immediately.
@@ -975,11 +975,11 @@ She opened a fresh page in her notebook and wrote the sequence as plain text:
 
 `Dock Nine deaths = State of Grace classifications.`
 
-`Dock Nine deaths reclassified as administrative errors.`  
+`Dock Nine deaths reclassified as administrative errors.`
 
 `Approver field: Board of Resonance (no person).`
 
-`Primary filter rationale: mercy / public stability.`  
+`Primary filter rationale: mercy / public stability.`
 
 `Time windows align with 03:14 and 03:16 reroutes.`
 
@@ -1049,19 +1049,19 @@ At the edge of the room, Rian had resumed scanning metadata from the hard drive.
 
 Mara lifted the notebook and wrote in hard lines:
 
-`We cannot keep mercy as governance and call it healing.`  
-`We cannot erase what happened at Dock Nine and then ask families to trust the archive.`  
-`The witness office receives records only if they can be publicly traced.`  
+`We cannot keep mercy as governance and call it healing.`
+`We cannot erase what happened at Dock Nine and then ask families to trust the archive.`
+`The witness office receives records only if they can be publicly traced.`
 
 Then she added one last line at the bottom:
 
-`I will not file this as error anymore.`  
+`I will not file this as error anymore.`
 
 The room felt very still.
 
 Outside, a second announcement crackled through the street speakers:
 
-`Dock Nine status update: all pending recollection proceedings remain unresolved.`  
+`Dock Nine status update: all pending recollection proceedings remain unresolved.`
 `Residents are advised to consult approved remembrance channels.`
 
 Mara turned the page in the notebook and wrote one word at the top in thick block:
@@ -1126,7 +1126,7 @@ She pulled the raw layer tool, opened the memory graph, and requested the earlie
 
 Under restricted, there was a small icon shaped like an eye and a line of policy text.
 
-`Redaction in effect: public stability protocol.`  
+`Redaction in effect: public stability protocol.`
 `Reason: sensory descriptors linked to civic trauma index.`
 
 She had seen policy lines before. She had copied them for strangers in the Registry. She had even defended them sometimes. Never on her mother.
@@ -1143,11 +1143,11 @@ Mara opened two tabs. One was the finalized version, one was an internal copy fr
 
 On the final line, the raw clip held the missing sentence:
 
-`...keep those of you awake because if you smell the copper tang and the cooling line, you do not have to trust who says it was rain.`  
+`...keep those of you awake because if you smell the copper tang and the cooling line, you do not have to trust who says it was rain.`
 
 The edited layer replaced it with:
 
-`...keep those of you awake because sometimes the body needs gentle air.`  
+`...keep those of you awake because sometimes the body needs gentle air.`
 
 Rian’s voice on speaker was soft from the next room. “There it is.”
 
@@ -1199,7 +1199,7 @@ Mara copied this into a new file labeled:
 
 and drew one sentence beneath it:
 
-`If they rewrite grief in families, families become the archive’s second witness.`  
+`If they rewrite grief in families, families become the archive’s second witness.`
 
 She did not call the city that night.
 
@@ -1224,7 +1224,7 @@ The city might not be the first to deny truth; it would almost always be the fir
 In the quiet after the call, Mara opened a fresh page and wrote, as cleanly as she could:
 
 `My mother’s memory had been curated for my mercy.`
-`Mercy now is no longer enough.`  
+`Mercy now is no longer enough.`
 `Public witness is the only correction that cannot be privately negotiated.`
 
 She placed the page inside the folder marked **NOISE RETURNS**, then added one last line at the bottom:
@@ -1246,3 +1246,278 @@ In the notebook margin beneath the chapter title, she wrote the next chapter’s
 `Chapter 10: The Living Ghost`
 
 The fan in her wall clicked once, then stopped, then started again.
+
+## Chapter 10 — The Living Ghost
+
+At 3:17 a.m., the old courier channel rang with a tone Mara had not heard since her grandmother’s apartment, and one word came through between static bursts.
+
+`RETURN.`
+
+No sender. No address. Just a return packet with a checksum that matched the hidden sequence she had found in Tomas’s final record and nowhere else in the city.
+
+She opened the attachment alone, on the same battery screen she used to compare witness edits. A simple map of outlying roads filled the display, and at the center was a rectangle ringed in red.
+
+**HOSPICE NODE 13**
+
+Subtext: **Abandoned after flood triage expansion.**
+Subtext: **Non-civic data transfer point.**
+
+Underneath was a second line in blue, as if hand-typed then digitized:
+
+`If you look for a patient, look at the systems first.`
+`No record asks for itself.`
+
+Mara stared at that line for several minutes. The city had tried to make each erased person into a missing entry. This one looked like a person sending direction to an old stranger.
+
+At 5:42 she left her apartment. Rian insisted on coming. Ione came because she knew where the old hospice buses still slept. She said the buses were the only safe transport to Node 13 and warned Mara not to speak to any municipal channel about the departure. They rode in silence through side streets that kept changing their names depending on who asked.
+
+Outside the bus, Mara wrote three coordinates on her palm in ink.
+
+`07:16`
+`03:14`
+`03:16`
+
+Rian saw her look and nodded. “The numbers are doing what numbers do,” he said. “They become doors.”
+
+By dawn the city thinned into low, industrial blocks and old utility towers. Node 13 sat behind a weathered fence on an estate road nobody had used since flood season. The sign at the gate still carried a faded emblem of a dove-shaped bolt—a private design from the old hospice era.
+
+Two men in gray coats greeted them before they stepped fully into the yard. One held a clipboard and wore a wrist light that flickered amber.
+
+“Visitor list?” he asked.
+
+“No one’s list can hold this,” Mara said, and held up her receiver.
+
+Rara, from the witness line, appeared in an emergency feed from her wrist unit. `ALLOW TRANSIENT VISITOR` appeared across a narrow strip of light and disappeared as quickly as it had come.
+
+“You’re not allowed,” Mara said.
+
+“Nobody is,” Rara said. “You came because the city forgot to close one corridor. Stay on marked paths, keep notes by hand, and do not touch the core bay doors.”
+
+The gate opened with a scrape and a delay long enough to sound like thought.
+
+Inside, the hospice had been stripped to shell and machine hum. Beds had been folded into wall racks, some with names painted over in pale green. Monitors sat dark. Water dripped through ceiling seams in a rhythm almost as controlled as clockwork.
+
+Sera met them near the loading door. She had dark circles under her eyes and the same expression she wore when she was pretending this was all logistics.
+
+“You came faster than I thought,” she said.
+
+“The map was old,” Mara replied. “The message was new.”
+
+Sera handed her a wrapped scarf and pointed to a narrow corridor. “There are two levels. The upper is public treatment history. The lower is private transfer history. We can’t prove which is which without the key.”
+
+Rian asked, “Where’s he?”
+
+Sera looked at the corridor doors and said, quietly, “In the lower level. Don’t call him a ghost to his face. It unsettles him.”
+
+The lower level had no windows and a single low light. In a room at the far end, a man sat facing a wall scanner, both hands folded over a blanket and knees drawn to his chest. His hair had gone iron-gray. His posture held the same rigid stillness Mara knew from memory.
+
+Silas looked up when they entered.
+
+It was both recognition and a startle. A few heartbeats later, he looked like someone who had rehearsed this moment and no longer believed in it.
+
+“Mara.”
+
+She had expected tears and got a hard inhale instead.
+
+“You’re alive,” she said. It sounded like accusation.
+
+“You made that sentence true,” he answered. “You should have done the arithmetic sooner.”
+
+He stood with effort and reached for a card on the table. The card had his face printed over a different name.
+
+`ELIAS VAYNER / TEMPORARY CARE ID: 14B`
+
+His thumb hovered over the barcode.
+
+“You were moved into this place after Dock Nine,” he said before she could ask anything else. “Not for treatment. For witness control.”
+
+Mara stepped closer and saw the faint outlines of old ports on his forearm.
+
+“It isn’t all pain,” she said. “There is a pattern. That matters.”
+
+He smiled once, without comfort. “Patterns can be kinder than names.”
+
+The room was warm enough to be a warning. Someone had kept climate control alive for specific racks.
+
+Rian plugged in a local analyzer. Data rose in threads on a projection board.
+
+`PATIENT FILES: PARTITIONED`
+`MEMORY INTEGRITY: DEGRADED`
+`ANOMALY FILTER APPLIED`
+`CONSENT TAG: MUTABLE`
+
+“Your files were rewritten,” Rian said. “Not removed. Rewritten in place.”
+
+Silas nodded. “I knew that before I left the city records wing. They called it therapeutic stabilization. What it does is carve out the edges where testimony becomes inconvenient.”
+
+Mara sat on a rolling stool opposite him. “Why didn’t you contact me?”
+
+“I tried,” he said, and he sounded older than the room. “I sent fragments. They came back as noise and then as correction requests. You know how the city reacts to a direct confession.”
+
+Rian turned a corner of the display.
+
+`TOMAS PELL / FINAL ENTRY`
+
+`TIMESTAMP REFERENCE: 03:14 // 03:16`
+
+`CHAIN OF CUSTODY LINK: NODE 11-B`
+
+Mara reached out. “This is the same as the fragment from your message.”
+
+Silas’s jaw tightened. “The last one with his uncut name was in this room.”
+
+“Where?” she asked.
+
+He gestured to a sealed panel.
+
+“You won’t see full chain-of-custody from the public mirror,” he said. “Not if it’s routed through me.” He looked at her, then at Rian. “The same logic that reroutes deaths also reroutes truth through people with less visibility than it has.”
+
+He was breathless for the first time, not from exertion but from reliving.
+
+“I built the first version,” he said.
+
+Mara felt the room sharpen. “The filter.”
+
+“The Quiet Index routing logic. Temporary emergency patch. It moved the most sensitive records out of active civic layer so panic couldn’t spread before the flood response stabilized.”
+
+“Who signed that?” she asked.
+
+“Nobody,” he said. “A protocol can be approved by omission when urgency is named enough times. We did not pass a law. We built a habit.”
+
+She hated that sentence and wrote it down anyway.
+
+He took a folded paper from beneath the blanket. It looked like a hospital consent form, except the line between the boxes had been filled in by machine.
+
+`If this file remains under my care for more than eleven cycles,
+all memory surfaces must be smoothed to recovery-compatible profile.`
+
+“That’s not my signature,” he said. “That is the hospital contract after I was moved here. They gave me this and said it was for my protection.”
+
+Ione had stood at the door, silent all this time. She came forward and set two glass jars on a shelf.
+
+“These are from his old dormitory assignment,” she said to Mara. “Sedation residues, no active compounds. Exposure damage could have done this too. But protocol is worse than any chemical.”
+
+Mara opened one jar. The liquid held a paper scrap wrapped in cellophane. She unrolled it.
+
+`DO NOT LET THE RECORD BE THE FIRST WITNESS.`
+`IF YOU ARE UNWRITTEN, YOU ARE STILL TRUE.`
+`3:14 // 3:16`
+
+“You wrote this?”
+
+He shook his head. “Maybe. I don’t know which parts are mine anymore. They cut away enough and gave me a stable version. Not the right version.”
+
+The projector beeped. Rara had pulled back to a station near the stairwell and sent a new message.
+
+`Patrol drones are in radius. You have ninety minutes before sweep.`
+
+“We leave now,” Sera said from the hall.
+
+Mara shook her head. “No. We came for Tomas’s chain, and for Tomas’s daughter. I need proof you can verify.”
+
+Silas touched the desk to steady himself. “That’s why I kept the transfer mirror.”
+
+He pointed to the sealed lower cabinet in the far corner.
+
+Rian forced the cabinet open with a bypass script. Inside was an old titanium briefcase, heat-sealed and still lockable.
+
+`NODE 11-B KEYFRAG — DISTRIBUTED`
+
+`ACCESS TIER: CUSTODIAL`
+
+`FAILSAFE: personal witness only`
+
+Inside the case sat three modules and one folded sheet with no header.
+
+`Do not use this unless you can protect the people behind it.`
+`If used on core without witness lane, it will publish only half the ledger and still clear the active layer.`
+`Use with someone who can stand in public room, in daylight.`
+
+Mara read that line twice and set the case down.
+
+“That’s not enough?” she asked.
+
+“Enough to unlock raw records from archive mirrors,” he said. “Not to prove anything by itself. You need two lanes: this, and people willing to testify that the signatures were real.”
+
+She looked at him hard. “You still have those people?”
+
+“Some,” he said. “Not all. Ionia, maybe. A few families. Anja.”
+
+“Anja,” she repeated.
+
+He nodded. “Her husband was right. You can’t tell a city to tell the truth if everyone is still trying not to drown in it.”
+
+“Why are you here?” she asked, softer.
+
+Silas closed his eyes and nodded once as if acknowledging a debt.
+
+“Because you were the only one who still wrote full sentences in the margins.”
+
+Rian backed away from the panel and made notes. “Can he travel?” he asked.
+
+“No,” Silas said. “Not yet. Exposure took memory first, then sleep. They gave me half doses and called it treatment.”
+
+His words settled over them like dust.
+
+“Then we can’t leave you behind,” Mara said.
+
+“You didn’t come here for that,” he said. “You came for files. Tomas. The branch. The line from 03:14 where it turns and never comes back.”
+“You can come for files and leave.”
+
+Mara stood and looked down into the briefcase once more. She had expected confrontation, maybe relief. She got a task.
+
+She met Sera’s eyes. “Can he come?”
+
+Sera shook her head once. “Not today.”
+
+Outside the corridor lights flickered and then steadied. The sweep timer made everyone in the room listen more carefully to silence.
+
+Mara folded the consent-like sheet and tucked it into her coat.
+
+“Then we do this in layers,” she said.
+
+She addressed Silas directly. “I’m taking the key fragment and Tomas’s chain notes. I’m naming what happened in my own words, not yours.”
+
+Silas gave a tired, rueful laugh. “That’s the only reason this is still possible.”
+
+At the loading bay, while Rian copied the modules to encrypted drives and Ione logged environmental signatures, Mara took one last look through the ward windows.
+
+The beds were still lined as if occupied. Old patient tags hung beside each by metal clips.
+
+On a wall-mounted monitor, one tag flickered to life for two seconds before the light went out:
+
+`BED 14B`
+
+`STATUS: ALIVE`
+
+`MEMORY: PARTIAL`
+
+No one said anything.
+
+They left Node 13 through the same service gate they had entered. Outside, the morning had broken into a hard, ordinary brightness that made every warning board look like a legal document.
+
+At the checkpoint perimeter, Rara’s feed cracked open again:
+
+`You are being observed.`
+
+`Do not use witness channel for transport.`
+`Return token requested by registry.`
+`Token: 11-B/quiet`
+
+Mara held the carbon card she kept folded in her palm and wrote three quick words on the back.
+
+`He is alive.`
+`He knows.`
+`He can testify.`
+
+By the time the bus turned toward the city, Silas’s voice was still in her head:
+
+Do not publish a half witness.
+
+Mara opened the case and confirmed the modules were warm, active, and unbroken.
+
+She watched her own city unfold in the rear glass and finally wrote a complete sentence on the recorder:
+
+`This is no longer a private search for a missing brother. This is a public request for a witness the city thought could be quarantined into mercy.`
+
+She let the page end there, before the line could decide the ending for her.
