@@ -1,5 +1,5 @@
 # Current task
-Start the final prose edit pass and publish manuscript files in workspace.
+Publish the finalized manuscript files and close the current writing cycle.
 
 # End goal with specs
 Produce a full original book manuscript with coherent structure, consistent voice, and clean chapter-level progression. Deliverables include: a complete outline, chapter drafts, revision passes for clarity and pacing, and a final manuscript-ready document in Markdown inside the worker workspace.
@@ -20,5 +20,8 @@ Produce a full original book manuscript with coherent structure, consistent voic
 - [x] Create a complete chapter outline with key beats and arcs
 - [x] Write the first three chapters and refine voice consistency
 - [x] Continue drafting remaining chapters to complete the manuscript (progressed: Chapters 4–11 drafted in `manuscript.md`)
-- [x] Perform a structural edit pass for pacing and continuity <- current
-- [ ] Perform a final prose edit pass and publish manuscript files in workspace
+- [x] Perform a structural edit pass for pacing and continuity
+- [x] Perform a final prose edit pass and publish manuscript files in workspace
+
+## Loop Control
+STOP

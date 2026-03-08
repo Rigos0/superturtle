@@ -369,7 +369,7 @@ At the bottom, in smaller font, were three words:
 
 “Those are not theft notices,” Mara said. “Those are legal terms. Someone made her a liability then removed the body from the file.”
 
-Lina nodded. “Not removed. converted.”
+Lina nodded. “Not removed. Converted.”
 
 “What does converted mean?”
 
