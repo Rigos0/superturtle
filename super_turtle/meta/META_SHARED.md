@@ -384,7 +384,7 @@ Use quota signals to keep the system autonomous and cost-efficient without askin
 
 **How to check usage:**
 - Call `bot_control` with action `usage`.
-- Use `getUsageLines()` (Claude Code usage) and `getCodexQuotaLines()` (Codex usage) as the decision inputs.
+- The output includes Claude Code usage and Codex quota data — use those numbers as the decision inputs for the matrix below.
 
 **Decision matrix when `codex_available=true`:**
 
