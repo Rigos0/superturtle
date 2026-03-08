@@ -1,5 +1,5 @@
 # Current task
-Review `super_turtle/subturtle/` — Python loop runner, ctl CLI, helpers for big, easy-to-fix issues. Append findings to `reviews/claude-review.md`.
+Review `super_turtle/meta/` — prompt files for inconsistencies or stale references. Append findings to `reviews/claude-review.md`.
 
 # End goal with specs
 A concise review document listing the biggest issues found across the codebase that would be straightforward to fix. Focus on:
@@ -21,8 +21,8 @@ Skip nitpicks, style issues, and minor refactors. Only report issues where the i
 
 # Backlog
 - [x] Review `super_turtle/claude-telegram-bot/src/` — all TypeScript source files (10 findings)
-- [ ] Review `super_turtle/subturtle/` — Python loop runner, ctl CLI, helpers <- current
-- [ ] Review `super_turtle/meta/` — prompt files for inconsistencies or stale references
+- [x] Review `super_turtle/subturtle/` — Python loop runner, ctl CLI, helpers (10 findings)
+- [ ] Review `super_turtle/meta/` — prompt files for inconsistencies or stale references <- current
 - [ ] Review root config files (CLAUDE.md, package.json, tsconfig, etc.)
 - [ ] Write final `reviews/claude-review.md` with prioritized findings
 - [ ] Commit the review file
