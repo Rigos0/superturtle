@@ -6,7 +6,68 @@ Scope: `super_turtle/claude-telegram-bot/src/`, `super_turtle/subturtle/`, `supe
 
 ---
 
-## Findings
+## Prioritized Summary (all 33 findings)
+
+Findings ranked by severity and impact. Items marked ⚠️ were also independently flagged by the Codex review.
+
+### Medium severity — fix first
+
+| # | Type | File(s) | Issue | Fix effort |
+|---|------|---------|-------|------------|
+| 8 | Bug | text.ts + driver-routing.ts | Double retry loop causes up to 4 attempts instead of 2 | 15 min |
+| 4 | Security | session.ts | Tool safety checks run *after* execution — misleading defense | 10 min |
+| 2 | Bug | formatting.ts | Blockquote `#` strip corrupts URLs and code content | 5 min |
+| 1 | Bug | voice.ts | Missing `typingController` assignment — stop can't kill typing | 5 min |
+| 15 | Bug | __main__.py (all loops) | Infinite retry on repeated agent crashes — no max failure count | 15 min |
+| 16 | Bug | ctl | `do_reschedule_cron` references undefined variable — crashes on error path | 1 min |
+| 12 | Bug | claude-md-guard/validate.sh | Shell arg passing breaks on special characters in CLAUDE.md content | 20 min |
+| 20 | Bug | ctl (cron-jobs.json) | ⚠️ Concurrent read-modify-write can corrupt cron job entries | 20 min |
+| 22 | Inconsistency | claude-meta vs session.ts | `--append-system-prompt` vs `--system-prompt` — different agent behavior | 5 min |
+| 25 | Stale pattern | ORCHESTRATOR_PROMPT.md | ⚠️ Orchestrator ignores conductor system entirely | 20 min |
+| 26 | Possibly stale | claude-meta | Allowed tools list uses `Task` instead of `Agent` — may block subagents | 2 min |
+| 28 | Bug | setup | `.env` written to legacy location — triggers warning on first run | 10 min |
+
+### Low severity — fix when convenient
+
+| # | Type | File(s) | Issue | Fix effort |
+|---|------|---------|-------|------------|
+| 3 | Bug | streaming.ts | HTML chunk splitting breaks mid-tag — causes format fallback | 20 min |
+| 5 | Dead code | text.ts | Stall/spawn recovery prompts duplicated (also in driver-routing.ts) | 10 min |
+| 6 | Dead code | streaming.ts | Unused `PINO_LOG_PATH` import | 1 min |
+| 7 | Duplication | 4+ files | `isObjectRecord`, `readJsonObject`, `atomicWriteJson`, `getErrorMessage` copy-pasted | 20 min |
+| 9 | Race condition | index.ts | Instance lock has TOCTOU window on concurrent startup | 10 min |
+| 10 | Error handling | security.ts | `rm` path parsing easily bypassed by shell metacharacters | 5 min |
+| 11 | Dead code | start-tunnel.sh | Subshell `wait` on parent's children is a no-op | 5 min |
+| 13 | Race condition | ctl (watchdog) | Log file writes race between watchdog subshell and worker process | 15 min |
+| 14 | Dead code | __main__.py | `_write_completion_notification` (116 lines) is never called | 5 min |
+| 17 | Security | claude-md-guard/validate.sh | JSON passed via env var — can silently truncate on large content | 10 min |
+| 18 | Bug | browser-screenshot.sh | Legacy flags `shift 2` consumes next argument — swallows URLs | 2 min |
+| 19 | Dead code | subturtle_loop/__main__.py | Entire unused entrypoint with disconnected prompts | 5 min |
+| 21 | Bug | claude-meta | Hardcoded `/agentic` path in error hint | 2 min |
+| 23 | Stale reference | META_SHARED.md | Tells agent to "use" internal TypeScript functions it can't call | 2 min |
+| 24 | Incomplete docs | META_SHARED.md | Cron job format docs omit `silent` field | 2 min |
+| 27 | Dead code | ORCHESTRATOR_PROMPT.md (config.ts) | `ORCHESTRATOR_PROMPT` loaded and exported but never imported | 5 min |
+| 29 | Bug | package.json (npm) | `files` glob ships test files in published package | 2 min |
+| 30 | Bug | pyproject.toml | CLI entry point runs stale/dead code module | 2 min |
+| 31 | Maintenance | both package.json | Dependencies duplicated between two manifests with no sync check | 15 min |
+| 32 | Naming | mcp-config.ts | `REPO_ROOT` points to bot dir, not repo root | 2 min |
+| 33 | Bug | superturtle.js | Unescaped paths in shell string — breaks on `$`/`"` in paths | 10 min |
+
+### Quick wins (< 5 min, low risk)
+
+Findings #1, #2, #6, #16, #18, #21, #23, #24, #26, #29, #30, #32 — twelve fixes, each under 5 minutes, mostly one-line changes.
+
+### Overlap with Codex review
+
+Two findings were independently flagged by both Claude and Codex reviews:
+- **Cron-jobs.json race** (#20 here, Codex subturtle #4) — concurrent writers can corrupt entries
+- **Orchestrator ignores conductor** (#25 here, Codex meta #2) — progress checks use repo-global git history instead of per-worker conductor state
+
+The Codex review also found additional issues not covered here, particularly around archive extraction path traversal (Codex TS #1), document filename collisions (Codex TS #2), fire-and-forget state writes (Codex TS #3), and temp file cleanup (Codex TS #4). See `reviews/codex-review.md` for details.
+
+---
+
+## Detailed Findings — TypeScript bot (`super_turtle/claude-telegram-bot/src/`)
 
 ### 1. Bug: Voice handler missing `typingController` assignment
 
@@ -183,7 +244,7 @@ const args = rmMatch[1]!.split(/\s+/);
 
 ---
 
-## Findings — `super_turtle/subturtle/` (Python loop runner, ctl CLI, helpers)
+## Detailed Findings — Python subturtle (`super_turtle/subturtle/`)
 
 Scope: `ctl` (bash CLI, 1581 lines), `__main__.py` (Python loop runner, 909 lines), `subturtle_loop/agents.py` (agent wrappers), `start-tunnel.sh`, `browser-screenshot.sh`, `claude-md-guard/` (validate, stats, config), tests.
 
@@ -364,7 +425,7 @@ cron_jobs_path.write_text(json.dumps(jobs, indent=2))  # Write — no lock
 
 ---
 
-## Findings — `super_turtle/meta/` (prompt files and CLI launcher)
+## Detailed Findings — Meta prompts (`super_turtle/meta/`)
 
 Scope: `META_SHARED.md` (526 lines, system prompt for meta agent), `ORCHESTRATOR_PROMPT.md` (105 lines, overnight orchestrator cron), `DECOMPOSITION_PROMPT.md` (110 lines, task splitting protocol), `CODEX_TELEGRAM_BOOTSTRAP.md` (24 lines, Codex driver bootstrap), `claude-meta` (36 lines, standalone CLI launcher).
 
@@ -474,7 +535,7 @@ allowed_tools="Task,TaskOutput,TaskStop,Bash,Glob,Grep,Read,Edit,Write,..."
 
 ---
 
-## Findings — Root config files (package.json, setup scripts, shell wrappers, pyproject.toml, .gitignore)
+## Detailed Findings — Root config files
 
 Scope: `super_turtle/package.json` (npm package manifest), `super_turtle/claude-telegram-bot/package.json` (bot runtime), `super_turtle/setup` (onboarding script), `super_turtle/bin/superturtle.js` (CLI entrypoint), `super_turtle/claude-telegram-bot/live.sh` (tmux launcher), `super_turtle/claude-telegram-bot/run-loop.sh` (restart loop), `super_turtle/subturtle/pyproject.toml`, `super_turtle/claude-telegram-bot/mcp-config.ts`, `.gitignore`, `super_turtle/templates/`.
 
