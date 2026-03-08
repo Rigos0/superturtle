@@ -172,7 +172,7 @@ function extractLegacyCheckedSubturtleName(prompt: string): string | null {
 
 function resolveSubturtleSupervisionTarget(
   job: Pick<CronJob, "prompt" | "silent" | "job_kind" | "worker_name" | "supervision_mode">
-): { workerName: string; mode: "silent" | "orchestrator" | null } | null {
+): { workerName: string; mode: "silent" | null } | null {
   if (job.job_kind === "subturtle_supervision" && typeof job.worker_name === "string") {
     const workerName = job.worker_name.trim();
     if (workerName.length > 0) {
@@ -205,7 +205,6 @@ function resolveSilentSubturtleSupervisorWorker(
   if (!job.silent) return null;
   const target = resolveSubturtleSupervisionTarget(job);
   if (!target) return null;
-  if (target.mode && target.mode !== "silent") return null;
   return target.workerName;
 }
 
