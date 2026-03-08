@@ -192,6 +192,63 @@ Recover missing completion wakeup
     expect(wakeup.payload.message).toBe("recovered boom");
     expect(wakeup.category).toBe("critical");
   });
+
+  it("ignores stale wakeups from a previous run when recovering the current run", () => {
+    const baseDir = makeStateDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    const workspace = join(baseDir, ".subturtles", "worker-reused");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+    mkdirSync(workspace, { recursive: true });
+
+    writeJson(join(stateDir, "workers", "worker-reused.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-reused",
+      run_id: "run-new",
+      lifecycle_state: "completion_pending",
+      workspace,
+      cron_job_id: "cron-new",
+      current_task: "Recover the current reused run",
+      metadata: {},
+    });
+    writeJson(join(stateDir, "wakeups", "wake-old-run.json"), {
+      kind: "wakeup",
+      schema_version: 1,
+      id: "wake-old-run",
+      worker_name: "worker-reused",
+      run_id: "run-old",
+      category: "notable",
+      delivery_state: "pending",
+      summary: "old run finished",
+      created_at: "2026-03-08T00:00:00Z",
+      updated_at: "2026-03-08T00:00:00Z",
+      delivery: { attempts: 0 },
+      payload: { kind: "completion_requested" },
+      metadata: {},
+    });
+
+    const recovered = recoverPendingWorkerWakeups({
+      stateDir,
+      nowIso: () => "2026-03-08T01:06:00Z",
+    });
+
+    expect(recovered.recoveredWakeups).toBe(1);
+
+    const wakeupFiles = readdirSync(join(stateDir, "wakeups")).sort();
+    expect(wakeupFiles).toHaveLength(2);
+    const wakeups = wakeupFiles.map((name) =>
+      JSON.parse(readFileSync(join(stateDir, "wakeups", name), "utf-8"))
+    );
+    expect(
+      wakeups.some(
+        (wakeup) =>
+          wakeup.id !== "wake-old-run" &&
+          wakeup.run_id === "run-new" &&
+          wakeup.payload.kind === "completion_requested"
+      )
+    ).toBe(true);
+  });
 });
 
 describe("recoverProcessingWakeups", () => {
@@ -507,6 +564,92 @@ Recover from a bad crash <- current
     expect(events).toContain('"event_type":"worker.failed"');
     expect(events).toContain('"event_type":"worker.inbox_enqueued"');
     expect(events).toContain('"event_type":"worker.notification_sent"');
+  });
+
+  it("does not mutate a new run when delivering a stale wakeup from an older run with the same worker name", async () => {
+    const baseDir = makeStateDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    const currentWorkspace = join(baseDir, ".subturtles", "worker-reused");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+    mkdirSync(currentWorkspace, { recursive: true });
+
+    writeFileSync(
+      join(currentWorkspace, "CLAUDE.md"),
+      `# Current task
+
+New run task
+
+# Backlog
+- [ ] Keep working
+`,
+      "utf-8"
+    );
+
+    writeJson(join(stateDir, "workers", "worker-reused.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-reused",
+      run_id: "run-new",
+      lifecycle_state: "running",
+      workspace: currentWorkspace,
+      cron_job_id: "cron-new",
+      current_task: "New run task",
+      metadata: {},
+    });
+    writeJson(join(stateDir, "wakeups", "wake-old.json"), {
+      kind: "wakeup",
+      schema_version: 1,
+      id: "wake-old",
+      worker_name: "worker-reused",
+      run_id: "run-old",
+      category: "notable",
+      delivery_state: "pending",
+      summary: "old run completed",
+      created_at: "2026-03-08T00:00:00Z",
+      updated_at: "2026-03-08T00:00:00Z",
+      delivery: { attempts: 0 },
+      payload: { kind: "completion_requested" },
+      metadata: {},
+    });
+
+    const jobs = [{ id: "cron-new" }];
+    const sentMessages: string[] = [];
+
+    const result = await processPendingConductorWakeups({
+      stateDir,
+      defaultChatId: 123,
+      listJobs: () => [...jobs],
+      removeJob: () => false,
+      sendMessage: async (_chatId, text) => {
+        sentMessages.push(text);
+      },
+      isWorkerRunning: () => true,
+      nowIso: () => "2026-03-08T02:10:00Z",
+    });
+
+    expect(result.sent).toBe(1);
+    expect(sentMessages[0]).toContain("🎉 Finished: worker-reused");
+    expect(sentMessages[0]).not.toContain("New run task");
+
+    const updatedWorker = JSON.parse(
+      readFileSync(join(stateDir, "workers", "worker-reused.json"), "utf-8")
+    );
+    expect(updatedWorker.run_id).toBe("run-new");
+    expect(updatedWorker.lifecycle_state).toBe("running");
+    expect(updatedWorker.metadata).toEqual({});
+
+    const inboxItem = JSON.parse(
+      readFileSync(join(stateDir, "inbox", "inbox_wake-old.json"), "utf-8")
+    );
+    expect(inboxItem.run_id).toBe("run-old");
+    expect(inboxItem.metadata.run_mismatch).toBe(true);
+
+    const events = readFileSync(join(stateDir, "events.jsonl"), "utf-8");
+    expect(events).toContain('"event_type":"worker.inbox_enqueued"');
+    expect(events).toContain('"event_type":"worker.notification_sent"');
+    expect(events).toContain('"run_id":"run-old"');
+    expect(events).not.toContain('"event_type":"worker.completed"');
   });
 
   it("preserves multi-worker inbox delivery across recovery until an interactive turn acknowledges it", async () => {

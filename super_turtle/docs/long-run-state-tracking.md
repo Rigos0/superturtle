@@ -447,6 +447,7 @@ Current producer coverage:
 - the 10-second bot cron loop is now single-flight and is armed only after boot-time maintenance completes, so restart recovery runs before recurring ticks and slow maintenance/delivery work cannot overlap the next timer tick
 - starting a new run with a reused worker name now resets prior checkpoint, supervisor metadata, and terminal residue instead of inheriting the previous run's progress signature
 - `ctl stop` now persists `worker.cron_removed` on successful stop-path cron cleanup, removes `CRON_JOB_ID` from the runtime meta file, and clears the canonical worker `cron_job_id` field before archive
+- wakeup recovery, stale-cron cleanup gating, and pending wakeup delivery now match by `worker_name` plus `run_id`, so a stale wakeup from an older run with the same worker name cannot reconcile against the current run's state
 - stale recurring SubTurtle cron cleanup is now persisted back into conductor state via `worker.cron_removed`, rather than existing only as an operator warning path
 
 The migration is still in a mixed mode:

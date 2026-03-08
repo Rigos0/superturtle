@@ -282,7 +282,8 @@ function appendWorkerEvent(
   eventType: string,
   lifecycleState: string | null,
   payload: Record<string, unknown>,
-  timestamp: string
+  timestamp: string,
+  runIdOverride?: string | null
 ): WorkerEventRecord {
   const event: WorkerEventRecord = {
     kind: "worker_event",
@@ -290,7 +291,8 @@ function appendWorkerEvent(
     id: newRecordId("evt"),
     timestamp,
     worker_name: workerName,
-    run_id: workerState?.run_id ?? null,
+    run_id:
+      runIdOverride !== undefined ? runIdOverride : workerState?.run_id ?? null,
     event_type: eventType,
     emitted_by: EVENT_EMITTED_BY,
     lifecycle_state: lifecycleState,
@@ -631,14 +633,49 @@ function stringMetadataValue(metadata: Record<string, unknown>, key: string): st
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function existingWakeupKindsByWorker(stateDir: string): Map<string, Set<string>> {
+function normalizedRunId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function workerRunKey(workerName: string, runId: string | null): string {
+  return `${workerName}::${runId || ""}`;
+}
+
+function wakeupTargetsWorkerState(
+  wakeup: WakeupRecord,
+  workerState: WorkerStateRecord | null
+): boolean {
+  if (!workerState) return false;
+  return normalizedRunId(wakeup.run_id) === normalizedRunId(workerState.run_id);
+}
+
+function loadWakeupWorkerState(
+  stateDir: string,
+  wakeup: WakeupRecord
+): { workerState: WorkerStateRecord | null; runMismatch: boolean } {
+  const workerState = loadWorkerState(stateDir, wakeup.worker_name);
+  if (!workerState) {
+    return { workerState: null, runMismatch: false };
+  }
+  if (!wakeupTargetsWorkerState(wakeup, workerState)) {
+    return { workerState: null, runMismatch: true };
+  }
+  return { workerState, runMismatch: false };
+}
+
+function existingWakeupKindsByRun(stateDir: string): Map<string, Set<string>> {
   const byWorker = new Map<string, Set<string>>();
   for (const wakeup of loadWakeups(stateDir)) {
     const kind = wakeupKind(wakeup);
     if (!kind) continue;
-    const current = byWorker.get(wakeup.worker_name) || new Set<string>();
+    const current = byWorker.get(
+      workerRunKey(wakeup.worker_name, normalizedRunId(wakeup.run_id))
+    ) || new Set<string>();
     current.add(kind);
-    byWorker.set(wakeup.worker_name, current);
+    byWorker.set(
+      workerRunKey(wakeup.worker_name, normalizedRunId(wakeup.run_id)),
+      current
+    );
   }
   return byWorker;
 }
@@ -667,10 +704,11 @@ function workerRecoveryChatId(workerState: WorkerStateRecord | null): number | n
 
 function isWakeupReady(
   wakeup: WakeupRecord,
-  running: boolean
+  running: boolean,
+  hasMatchingWorkerState: boolean
 ): boolean {
   if (isTerminalWakeup(wakeup)) {
-    return !running;
+    return hasMatchingWorkerState ? !running : true;
   }
   return true;
 }
@@ -707,12 +745,16 @@ export function recoverPendingWorkerWakeups(
   const stateDir = options.stateDir || join(SUPERTURTLE_DATA_DIR, "state");
   const nowIso = options.nowIso || utcNowIso;
   const now = nowIso();
-  const wakeupKindsByWorker = existingWakeupKindsByWorker(stateDir);
+  const wakeupKindsByRun = existingWakeupKindsByRun(stateDir);
   let recoveredWakeups = 0;
   let reconciled = 0;
 
   for (const workerState of loadWorkerStates(stateDir)) {
     const lifecycleState = workerState.lifecycle_state;
+    const runKey = workerRunKey(
+      workerState.worker_name,
+      normalizedRunId(workerState.run_id)
+    );
     let recoveryKind = "";
     let eventType = "";
     let category: "critical" | "notable" = "notable";
@@ -721,7 +763,7 @@ export function recoverPendingWorkerWakeups(
 
     if (
       lifecycleState === "completion_pending" &&
-      !(wakeupKindsByWorker.get(workerState.worker_name)?.has("completion_requested"))
+      !(wakeupKindsByRun.get(runKey)?.has("completion_requested"))
     ) {
       recoveryKind = "completion_requested";
       eventType = "worker.completion_requested";
@@ -730,7 +772,7 @@ export function recoverPendingWorkerWakeups(
       payload = { kind: "completion_requested" };
     } else if (
       lifecycleState === "failure_pending" &&
-      !(wakeupKindsByWorker.get(workerState.worker_name)?.has("fatal_error"))
+      !(wakeupKindsByRun.get(runKey)?.has("fatal_error"))
     ) {
       const fatalErrorEvent = latestWorkerEvent(stateDir, workerState.worker_name, "worker.fatal_error");
       const message =
@@ -744,7 +786,7 @@ export function recoverPendingWorkerWakeups(
       payload = { kind: "fatal_error", message };
     } else if (
       lifecycleState === "timed_out" &&
-      !(wakeupKindsByWorker.get(workerState.worker_name)?.has("timeout"))
+      !(wakeupKindsByRun.get(runKey)?.has("timeout"))
     ) {
       recoveryKind = "timeout";
       eventType = "worker.timed_out";
@@ -788,9 +830,9 @@ export function recoverPendingWorkerWakeups(
       })
     );
 
-    const nextKinds = wakeupKindsByWorker.get(workerState.worker_name) || new Set<string>();
+    const nextKinds = wakeupKindsByRun.get(runKey) || new Set<string>();
     nextKinds.add(recoveryKind);
-    wakeupKindsByWorker.set(workerState.worker_name, nextKinds);
+    wakeupKindsByRun.set(runKey, nextKinds);
 
     writeWorkerState(stateDir, {
       ...workerState,
@@ -822,7 +864,7 @@ export function recoverProcessingWakeups(
   let reconciled = 0;
 
   for (const wakeup of loadWakeupsByDeliveryStates(stateDir, new Set(["processing"]))) {
-    const workerState = loadWorkerState(stateDir, wakeup.worker_name);
+    const { workerState } = loadWakeupWorkerState(stateDir, wakeup);
     const recoveryEvent = appendWorkerEvent(
       stateDir,
       workerState,
@@ -835,7 +877,8 @@ export function recoverProcessingWakeups(
         wakeup_kind: wakeupKind(wakeup) || null,
         previous_delivery_state: wakeup.delivery_state,
       },
-      now
+      now,
+      normalizedRunId(wakeup.run_id)
     );
 
     writeWakeup(stateDir, {
@@ -1137,9 +1180,10 @@ export async function processPendingConductorWakeups(
 
   for (const wakeup of loadPendingWakeups(stateDir)) {
     const now = nowIso();
-    const workerState = loadWorkerState(stateDir, wakeup.worker_name);
+    const { workerState, runMismatch } = loadWakeupWorkerState(stateDir, wakeup);
     const running = isWorkerRunning(wakeup.worker_name);
-    if (!isWakeupReady(wakeup, running)) {
+    const wakeupRunId = normalizedRunId(wakeup.run_id);
+    if (!isWakeupReady(wakeup, running, workerState !== null)) {
       result.skipped += 1;
       continue;
     }
@@ -1162,7 +1206,8 @@ export async function processPendingConductorWakeups(
             "worker.cron_removed",
             workingState?.lifecycle_state || null,
             { cron_job_id: cronJobId },
-            now
+            now,
+            wakeupRunId
           );
           if (workingState) {
             workingState = {
@@ -1194,7 +1239,8 @@ export async function processPendingConductorWakeups(
             cron_removed: !cronJobId || !cronJobIds.has(cronJobId),
             wakeup_id: wakeup.id,
           },
-          now
+          now,
+          wakeupRunId
         );
         workingState = {
           ...workingState,
@@ -1218,7 +1264,8 @@ export async function processPendingConductorWakeups(
           "worker.completed",
           "completed",
           { wakeup_id: wakeup.id },
-          now
+          now,
+          wakeupRunId
         );
         workingState = {
           ...workingState,
@@ -1247,7 +1294,8 @@ export async function processPendingConductorWakeups(
           "worker.failed",
           "failed",
           { wakeup_id: wakeup.id, reason: "fatal_error" },
-          now
+          now,
+          wakeupRunId
         );
         workingState = {
           ...workingState,
@@ -1309,6 +1357,7 @@ export async function processPendingConductorWakeups(
             delivery: {},
             metadata: {
               lifecycle_state: workingState?.lifecycle_state ?? null,
+              run_mismatch: runMismatch || undefined,
             },
           },
         });
@@ -1320,7 +1369,8 @@ export async function processPendingConductorWakeups(
             "worker.inbox_enqueued",
             workingState?.lifecycle_state || null,
             { inbox_id: inboxItem.id, wakeup_id: wakeup.id, chat_id: chatId },
-            now
+            now,
+            wakeupRunId
           );
           if (workingState) {
             workingState = {
@@ -1356,7 +1406,8 @@ export async function processPendingConductorWakeups(
         "worker.notification_sent",
         workingState?.lifecycle_state || null,
         { wakeup_id: wakeup.id, category: wakeup.category, chat_id: chatId },
-        now
+        now,
+        wakeupRunId
       );
       if (workingState) {
         writeWorkerState(stateDir, {

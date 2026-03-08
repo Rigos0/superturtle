@@ -57,8 +57,13 @@ function readJsonObject<T>(path: string): T | null {
   }
 }
 
+function normalizedRunId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 function loadOutstandingWakeups(stateDir: string): Array<{
   worker_name: string;
+  run_id?: string | null;
   delivery_state?: string;
   payload?: Record<string, unknown>;
 }> {
@@ -67,33 +72,39 @@ function loadOutstandingWakeups(stateDir: string): Array<{
   return readdirSync(wakeupsDir)
     .filter((name) => name.endsWith(".json"))
     .map((name) =>
-      readJsonObject<{ worker_name: string; delivery_state?: string; payload?: Record<string, unknown> }>(
+      readJsonObject<{ worker_name: string; run_id?: string | null; delivery_state?: string; payload?: Record<string, unknown> }>(
         join(wakeupsDir, name)
       )
     )
     .filter(
       (
         value
-      ): value is { worker_name: string; delivery_state?: string; payload?: Record<string, unknown> } =>
+      ): value is { worker_name: string; run_id?: string | null; delivery_state?: string; payload?: Record<string, unknown> } =>
         value !== null &&
         (value.delivery_state === "pending" || value.delivery_state === "processing") &&
         typeof value.worker_name === "string"
     );
 }
 
-function loadWorkerState(stateDir: string, workerName: string): { lifecycle_state?: string } | null {
-  return readJsonObject<{ lifecycle_state?: string }>(join(stateDir, "workers", `${workerName}.json`));
+function loadWorkerState(stateDir: string, workerName: string): { lifecycle_state?: string; run_id?: string | null } | null {
+  return readJsonObject<{ lifecycle_state?: string; run_id?: string | null }>(join(stateDir, "workers", `${workerName}.json`));
 }
 
 function shouldSkipStaleCleanupForWorker(stateDir: string, workerName: string): boolean {
-  const outstandingWakeups = loadOutstandingWakeups(stateDir).filter((wakeup) => wakeup.worker_name === workerName);
+  const workerState = loadWorkerState(stateDir, workerName);
+  if (!workerState) return false;
+
+  const workerRunId = normalizedRunId(workerState.run_id);
+  const outstandingWakeups = loadOutstandingWakeups(stateDir).filter((wakeup) => {
+    if (wakeup.worker_name !== workerName) return false;
+    return normalizedRunId(wakeup.run_id) === workerRunId;
+  });
   for (const wakeup of outstandingWakeups) {
     const kind = typeof wakeup.payload?.kind === "string" ? wakeup.payload.kind : "";
     if (kind === "completion_requested" || kind === "fatal_error" || kind === "timeout") {
       return true;
     }
   }
-  const workerState = loadWorkerState(stateDir, workerName);
   const lifecycleState = workerState?.lifecycle_state || "";
   return lifecycleState === "completion_pending" || lifecycleState === "failure_pending" || lifecycleState === "timed_out";
 }

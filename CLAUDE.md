@@ -49,7 +49,7 @@ git checkout dev && git merge main
 ---
 
 ## Current task
-Redesign SubTurtle orchestration so durable state, not chat/session memory, is the control plane. Current focus: push the next confidence layer after the `book-writer` validation by adding broader end-to-end recovery coverage on top of the now-correct worker reset, stop cleanup, and handoff rendering semantics.
+Redesign SubTurtle orchestration so durable state, not chat/session memory, is the control plane. Current focus: keep widening end-to-end recovery coverage now that reused worker names, stop cleanup, handoff rendering, and run-aware wakeup delivery are no longer corrupting live state.
 
 ## SubTurtle orchestration redesign scope
 
@@ -144,6 +144,7 @@ We are redesigning the weak parts:
 - Current conductor coverage now includes recreated pending-wakeup recovery, `processing` wakeup replay on startup, stale recurring-cron cleanup, startup maintenance idempotency, multi-worker inbox recovery, and driver-level interactive acknowledgment tests for both Claude and Codex session paths
 - Live `book-writer` validation confirmed the end-to-end completion path works, but also surfaced three follow-ups: stale supervisor metadata survives reused worker names, stop-path cron removal is not always persisted canonically, and archived completions are missing from `handoff.md` recent updates
 - `put-worker` now resets checkpoint/metadata/terminal residue when a reused worker name starts a new `run_id`, `ctl stop` now persists `worker.cron_removed` and clears stale cron metadata, and `handoff.md` recent updates now render archived completed/failed workers by canonical resolved terminal outcome
+- Wakeup recovery, stale-cron gating, and pending delivery are now `run_id`-aware, so an old completion/failure wakeup from a previous run with the same worker name no longer mutates or blocks the current run
 - TOKEN_PREFIX lives in `src/token-prefix.ts` (standalone leaf module, no circular deps)
 - MCP IPC files are isolated in `/tmp/superturtle-{tokenPrefix}/`, passed to MCP servers via `SUPERTURTLE_IPC_DIR`
 - The bot is the meta agent; system prompt injection still lives in `super_turtle/claude-telegram-bot/src/config.ts`

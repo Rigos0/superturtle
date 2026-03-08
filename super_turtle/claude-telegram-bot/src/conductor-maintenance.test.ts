@@ -268,4 +268,71 @@ Replay in-flight completion
     expect(events).toContain('"recovery_kind":"requeued_processing_wakeup"');
     expect(events).toContain('"event_type":"worker.completed"');
   });
+
+  it("does not let an old-run wakeup block stale cron cleanup for a new run with the same worker name", async () => {
+    const baseDir = makeStateDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+
+    writeJson(join(stateDir, "workers", "worker-reused.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-reused",
+      run_id: "run-new",
+      lifecycle_state: "running",
+      workspace: join(baseDir, ".subturtles", "worker-reused"),
+      cron_job_id: "cron-new",
+      current_task: "Current reused run",
+      metadata: {},
+    });
+    writeJson(join(stateDir, "wakeups", "wake-old-run.json"), {
+      kind: "wakeup",
+      schema_version: 1,
+      id: "wake-old-run",
+      worker_name: "worker-reused",
+      run_id: "run-old",
+      category: "notable",
+      delivery_state: "pending",
+      summary: "old run completed",
+      created_at: "2026-03-08T00:00:00Z",
+      updated_at: "2026-03-08T00:00:00Z",
+      delivery: { attempts: 0 },
+      payload: { kind: "completion_requested" },
+      metadata: {},
+    });
+
+    const jobs = [
+      {
+        id: "cron-new",
+        type: "recurring" as const,
+        job_kind: "subturtle_supervision" as const,
+        worker_name: "worker-reused",
+        chat_id: 123,
+      },
+    ];
+    const sentMessages: string[] = [];
+
+    const result = await runConductorMaintenance({
+      stateDir,
+      defaultChatId: 123,
+      listJobs: () => [...jobs],
+      removeJob: (id) => {
+        const index = jobs.findIndex((job) => job.id === id);
+        if (index === -1) return false;
+        jobs.splice(index, 1);
+        return true;
+      },
+      sendMessage: async (_chatId, text) => {
+        sentMessages.push(text);
+      },
+      isWorkerRunning: () => false,
+      nowIso: () => "2026-03-08T01:40:00Z",
+    });
+
+    expect(result.staleCronRemoved).toBe(1);
+    expect(result.staleCronNotified).toBe(1);
+    expect(jobs).toHaveLength(0);
+    expect(sentMessages[0]).toContain("⚠️ SubTurtle worker-reused is not running");
+  });
 });
