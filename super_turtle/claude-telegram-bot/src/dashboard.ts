@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync } from "fs";
 import { join, resolve } from "path";
-import { WORKING_DIR, CTL_PATH, DASHBOARD_ENABLED, DASHBOARD_AUTH_TOKEN, DASHBOARD_BIND_ADDR, DASHBOARD_PORT, META_PROMPT, SUPER_TURTLE_DIR, SUPERTURTLE_DATA_DIR } from "./config";
+import { WORKING_DIR, CTL_PATH, DASHBOARD_ENABLED, DASHBOARD_AUTH_TOKEN, DASHBOARD_BIND_ADDR, DASHBOARD_PORT, DASHBOARD_PUBLIC_BASE_URL, META_PROMPT, SUPER_TURTLE_DIR, SUPERTURTLE_DATA_DIR } from "./config";
 import { getJobs } from "./cron";
 import {
   parseCtlListOutput,
@@ -23,10 +23,12 @@ import {
   getSessionObservabilityProviders,
 } from "./session-observability";
 import type { RecentMessage, SavedSession } from "./types";
-import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, SessionDriver, SessionListItem, SessionListResponse, SessionMessageView, SessionMetaView, SessionDetailResponse, SessionTurnView, SessionTurnsResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse, QueueResponse } from "./dashboard-types";
+import type { TurtleView, ProcessView, DeferredChatView, SubturtleLaneView, DashboardState, DashboardOverviewResponse, SubturtleListResponse, SubturtleDetailResponse, SubturtleLogsResponse, CronListResponse, CronJobView, SessionResponse, SessionDriver, SessionListItem, SessionListResponse, SessionMessageView, SessionMetaView, SessionDetailResponse, SessionTurnView, SessionTurnsResponse, ContextResponse, ProcessDetailView, ProcessDetailResponse, DriverExtra, SubturtleExtra, BackgroundExtra, CurrentJobView, CurrentJobsResponse, JobDetailResponse, QueueResponse, ConductorResponse } from "./dashboard-types";
 
 const dashboardLog = logger.child({ module: "dashboard" });
 const CONDUCTOR_STATE_DIR = join(SUPERTURTLE_DATA_DIR, "state");
+const DASHBOARD_STICKER_URL = "https://www.gstatic.com/android/keyboard/emojikitchen/20201001/u1f60e/u1f60e_u1f422.png";
+const DASHBOARD_OVERVIEW_CACHE_TTL_MS = 1200;
 
 /* ── Shared response helpers ────────────────────────────────────────── */
 
@@ -192,6 +194,12 @@ function readConductorWorkerState(name: string): ConductorWorkerLaneState | null
   }
 }
 
+function isArchivedConductorState(state: ConductorWorkerLaneState | null): boolean {
+  if (!state) return false;
+  if (state.lifecycle_state === "archived") return true;
+  return typeof state.workspace === "string" && state.workspace.includes("/.subturtles/.archive/");
+}
+
 function parseIsoDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
@@ -347,8 +355,30 @@ type SessionSnapshot = {
   meta: SessionMetaView;
 };
 
+type PreparedDashboardTurtle = TurtleView & {
+  backlogDone: number;
+  backlogTotal: number;
+  backlogCurrent: string;
+  laneStatus: string;
+  laneType: string;
+  laneElapsed: string;
+  laneTask: string;
+};
+
+const dashboardOverviewCache: {
+  value: DashboardOverviewResponse | null;
+  expiresAt: number;
+  promise: Promise<DashboardOverviewResponse> | null;
+} = {
+  value: null,
+  expiresAt: 0,
+  promise: null,
+};
+
 export function resetDashboardSessionCachesForTests(): void {
-  // No-op; retained for test compatibility.
+  dashboardOverviewCache.value = null;
+  dashboardOverviewCache.expiresAt = 0;
+  dashboardOverviewCache.promise = null;
 }
 
 const SESSION_STATUS_ORDER: Record<SessionListItem["status"], number> = {
@@ -610,52 +640,107 @@ async function buildSessionTurns(
   };
 }
 
-async function buildSubturtleLanes(turtles: TurtleView[]): Promise<SubturtleLaneView[]> {
-  const conductorStates = new Map<string, ConductorWorkerLaneState | null>();
-  for (const turtle of turtles) {
-    conductorStates.set(turtle.name, readConductorWorkerState(turtle.name));
-  }
+function hasElapsedValue(turtle: ListedSubTurtle | TurtleView): turtle is TurtleView {
+  return typeof (turtle as TurtleView).elapsed === "string";
+}
+
+function buildBacklogSummary(backlogItems: ClaudeBacklogItem[]): {
+  backlogDone: number;
+  backlogTotal: number;
+  backlogCurrent: string;
+} {
+  const backlogTotal = backlogItems.length;
+  const backlogDone = backlogItems.filter((item) => item.done).length;
+  const backlogCurrent =
+    backlogItems.find((item) => item.current && !item.done)?.text ||
+    backlogItems.find((item) => !item.done)?.text ||
+    "";
+
+  return {
+    backlogDone,
+    backlogTotal,
+    backlogCurrent,
+  };
+}
+
+async function buildPreparedDashboardTurtles(
+  turtles?: Array<ListedSubTurtle | TurtleView>
+): Promise<PreparedDashboardTurtle[]> {
+  const sourceTurtles = turtles || await readSubturtles();
 
   return Promise.all(
-    turtles.map(async (turtle) => {
-      const conductorState = conductorStates.get(turtle.name) || null;
+    sourceTurtles.map(async (turtle) => {
+      const rawConductorState = readConductorWorkerState(turtle.name);
+      const conductorState = isArchivedConductorState(rawConductorState) ? null : rawConductorState;
       const workspacePath = conductorState?.workspace || `${WORKING_DIR}/.subturtles/${turtle.name}`;
       const statePath = `${workspacePath}/CLAUDE.md`;
-      const backlogItems = await readClaudeBacklogItems(statePath);
-      const backlogTotal = backlogItems.length;
-      const backlogDone = backlogItems.filter((item) => item.done).length;
-      const backlogCurrent =
-        backlogItems.find((item) => item.current && !item.done)?.text ||
-        backlogItems.find((item) => !item.done)?.text ||
-        "";
+      const [elapsed, backlogItems] = await Promise.all([
+        hasElapsedValue(turtle)
+          ? Promise.resolve(turtle.elapsed)
+          : turtle.status === "running"
+            ? getSubTurtleElapsed(turtle.name)
+            : Promise.resolve("0s"),
+        readClaudeBacklogItems(statePath),
+      ]);
+      const { backlogDone, backlogTotal, backlogCurrent } = buildBacklogSummary(backlogItems);
       const conductorElapsed = elapsedFrom(
         parseIsoDate(conductorState?.created_at || conductorState?.updated_at)
       );
 
       return {
-        name: turtle.name,
-        status: conductorState?.lifecycle_state || turtle.status,
-        type: conductorState?.loop_type || turtle.type || "unknown",
-        elapsed: turtle.status === "running" ? turtle.elapsed : conductorElapsed,
-        task: conductorState?.current_task || turtle.task || "",
+        ...turtle,
+        elapsed,
         backlogDone,
         backlogTotal,
         backlogCurrent,
-        progressPct: computeProgressPct(backlogDone, backlogTotal),
+        laneStatus: conductorState?.lifecycle_state || turtle.status,
+        laneType: conductorState?.loop_type || turtle.type || "unknown",
+        laneElapsed: turtle.status === "running" ? elapsed : conductorElapsed,
+        laneTask: conductorState?.current_task || turtle.task || "",
       };
     })
   );
 }
 
-async function buildDashboardState(): Promise<DashboardState> {
-  const turtles = await readSubturtles();
-  const elapsedByName = await Promise.all(
-    turtles.map(async (turtle) => {
-      const elapsed = turtle.status === "running" ? await getSubTurtleElapsed(turtle.name) : "0s";
-      return { ...turtle, elapsed };
-    })
-  );
-  const lanes = await buildSubturtleLanes(elapsedByName);
+function buildLaneView(turtle: PreparedDashboardTurtle): SubturtleLaneView {
+  return {
+    name: turtle.name,
+    status: turtle.laneStatus,
+    type: turtle.laneType,
+    elapsed: turtle.laneElapsed,
+    task: turtle.laneTask,
+    backlogDone: turtle.backlogDone,
+    backlogTotal: turtle.backlogTotal,
+    backlogCurrent: turtle.backlogCurrent,
+    progressPct: computeProgressPct(turtle.backlogDone, turtle.backlogTotal),
+  };
+}
+
+function sortSubturtleLanes(lanes: SubturtleLaneView[]): SubturtleLaneView[] {
+  return [...lanes].sort((a, b) => {
+    if (a.status === b.status) return a.name.localeCompare(b.name);
+    if (a.status === "running") return -1;
+    if (b.status === "running") return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+async function buildSubturtleLanes(turtles: TurtleView[]): Promise<SubturtleLaneView[]> {
+  return (await buildPreparedDashboardTurtles(turtles)).map(buildLaneView);
+}
+
+function buildDashboardStateFromPreparedTurtles(preparedTurtles: PreparedDashboardTurtle[]): DashboardState {
+  const turtles = preparedTurtles.map((turtle) => ({
+    name: turtle.name,
+    status: turtle.status,
+    type: turtle.type,
+    pid: turtle.pid,
+    timeRemaining: turtle.timeRemaining,
+    task: turtle.task,
+    tunnelUrl: turtle.tunnelUrl,
+    elapsed: turtle.elapsed,
+  }));
+  const lanes = preparedTurtles.map(buildLaneView);
 
   const allJobs = getJobs();
   const cronJobs = allJobs.map(buildCronJobView);
@@ -707,7 +792,7 @@ async function buildDashboardState(): Promise<DashboardState> {
       elapsed: "n/a",
       detail: isBackgroundRunActive() ? "cron snapshot supervision active" : "idle",
     },
-    ...elapsedByName.map((turtle) => ({
+    ...preparedTurtles.map((turtle) => ({
       id: `subturtle-${turtle.name}`,
       kind: "subturtle" as const,
       label: turtle.name,
@@ -720,14 +805,9 @@ async function buildDashboardState(): Promise<DashboardState> {
 
   return {
     generatedAt: new Date().toISOString(),
-    turtles: elapsedByName,
+    turtles,
     processes,
-    lanes: lanes.sort((a, b) => {
-      if (a.status === b.status) return a.name.localeCompare(b.name);
-      if (a.status === "running") return -1;
-      if (b.status === "running") return 1;
-      return a.name.localeCompare(b.name);
-    }),
+    lanes: sortSubturtleLanes(lanes),
     deferredQueue: {
       totalChats: chats.length,
       totalMessages,
@@ -742,7 +822,11 @@ async function buildDashboardState(): Promise<DashboardState> {
   };
 }
 
-function buildConductorResponse() {
+async function buildDashboardState(): Promise<DashboardState> {
+  return buildDashboardStateFromPreparedTurtles(await buildPreparedDashboardTurtles());
+}
+
+function buildConductorResponse(): ConductorResponse {
   return {
     generatedAt: new Date().toISOString(),
     workers: loadWorkerStates(CONDUCTOR_STATE_DIR),
@@ -754,13 +838,87 @@ function buildConductorResponse() {
   };
 }
 
+function buildCurrentJobsFromPreparedTurtles(preparedTurtles: PreparedDashboardTurtle[]): CurrentJobView[] {
+  const jobs: CurrentJobView[] = [];
+
+  for (const driverState of getDriverProcessStates()) {
+    if (!driverState.runningState.isRunning || !driverState.currentJobName) {
+      continue;
+    }
+    jobs.push({
+      id: `driver:${driverState.driver}:active`,
+      name: driverState.currentJobName,
+      ownerType: "driver",
+      ownerId: driverState.processId,
+      detailLink: `/api/jobs/${encodeURIComponent(`driver:${driverState.driver}:active`)}`,
+    });
+  }
+
+  for (const turtle of preparedTurtles) {
+    if (turtle.status !== "running") continue;
+    const current = turtle.backlogCurrent || turtle.laneTask || turtle.task || "";
+    if (!current) continue;
+    jobs.push({
+      id: `subturtle:${turtle.name}:current`,
+      name: current,
+      ownerType: "subturtle",
+      ownerId: `subturtle-${turtle.name}`,
+      detailLink: `/api/jobs/${encodeURIComponent(`subturtle:${turtle.name}:current`)}`,
+    });
+  }
+
+  return jobs;
+}
+
+async function buildDashboardOverviewResponse(): Promise<DashboardOverviewResponse> {
+  const [preparedTurtles, sessions] = await Promise.all([
+    buildPreparedDashboardTurtles(),
+    buildSessionListResponse(),
+  ]);
+  const dashboard = buildDashboardStateFromPreparedTurtles(preparedTurtles);
+  const jobs: CurrentJobsResponse = {
+    generatedAt: dashboard.generatedAt,
+    jobs: buildCurrentJobsFromPreparedTurtles(preparedTurtles),
+  };
+
+  return {
+    generatedAt: dashboard.generatedAt,
+    dashboard,
+    sessions,
+    jobs,
+  };
+}
+
+async function getDashboardOverviewResponse(): Promise<DashboardOverviewResponse> {
+  const now = Date.now();
+  if (dashboardOverviewCache.value && dashboardOverviewCache.expiresAt > now) {
+    return dashboardOverviewCache.value;
+  }
+  if (dashboardOverviewCache.promise) {
+    return dashboardOverviewCache.promise;
+  }
+
+  const promise = buildDashboardOverviewResponse()
+    .then((value) => {
+      dashboardOverviewCache.value = value;
+      dashboardOverviewCache.expiresAt = Date.now() + DASHBOARD_OVERVIEW_CACHE_TTL_MS;
+      return value;
+    })
+    .finally(() => {
+      dashboardOverviewCache.promise = null;
+    });
+
+  dashboardOverviewCache.promise = promise;
+  return promise;
+}
+
 function renderDashboardHtml(): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐢</text></svg>" />
+    <link rel="icon" href="${DASHBOARD_STICKER_URL}" type="image/png" />
     <title>SuperTurtle Dashboard</title>
     <style>
       html, body { height: 100%; }
@@ -789,14 +947,67 @@ function renderDashboardHtml(): string {
           radial-gradient(circle at 8% 12%, #fefaf2 0%, var(--bg) 52%, #f1eadf 100%);
         line-height: 1.45;
         overflow: hidden;
+        zoom: 0.75;
       }
       .page {
-        max-width: 1400px;
+        max-width: 1800px;
         margin: 0 auto;
         height: 100%;
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+      .page-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .page-title {
+        min-width: 0;
+      }
+      .dashboard-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at 12% 10%, rgba(255, 250, 242, 0.98) 0%, rgba(247, 244, 238, 0.98) 55%, rgba(241, 234, 223, 0.98) 100%);
+        z-index: 20;
+        transition: opacity 180ms ease, visibility 180ms ease;
+      }
+      .dashboard-loading.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .loading-card {
+        text-align: center;
+      }
+      .loading-sticker {
+        width: 72px;
+        height: 72px;
+        display: block;
+        margin: 0 auto 8px;
+        filter: drop-shadow(0 10px 24px rgba(34, 30, 25, 0.18));
+        animation: turtle-float 1.8s ease-in-out infinite;
+      }
+      .loading-brand {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--accent-olive);
+      }
+      .loading-copy {
+        margin: 6px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      @keyframes turtle-float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-5px); }
       }
       h1 {
         margin: 0;
@@ -821,21 +1032,27 @@ function renderDashboardHtml(): string {
         text-decoration: none;
       }
       a:hover { text-decoration: underline; }
-      .badge-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 0;
+      .update-indicator {
+        flex: 0 0 auto;
+        min-width: 240px;
+        margin-top: 8px;
+        margin-right: 12px;
+        text-align: right;
       }
-      .badge-row .badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 5px 10px;
-        border: 1px solid var(--chip-line);
-        border-radius: 999px;
-        background: var(--chip);
-        font-size: 13px;
-        color: #4d473f;
+      .update-label {
+        display: block;
+        margin: 0 0 2px;
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .update-value {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
       }
       .panel {
         background: var(--panel);
@@ -859,6 +1076,8 @@ function renderDashboardHtml(): string {
       .panel-lanes {
         grid-column: span 12;
         grid-row: 1;
+        min-height: 0;
+        height: clamp(180px, 26vh, 300px);
       }
       .panel-sessions {
         grid-column: 1 / span 7;
@@ -894,27 +1113,30 @@ function renderDashboardHtml(): string {
       }
       .sessions-table th:nth-child(1),
       .sessions-table td:nth-child(1) {
-        width: 52%;
+        width: 44%;
       }
       .sessions-table th:nth-child(2),
       .sessions-table td:nth-child(2) {
-        width: 10%;
+        width: 9%;
       }
       .sessions-table th:nth-child(3),
       .sessions-table td:nth-child(3) {
-        width: 14%;
+        width: 15%;
       }
       .sessions-table th:nth-child(4),
       .sessions-table td:nth-child(4) {
-        width: 8%;
+        width: 9%;
       }
       .sessions-table th:nth-child(5),
       .sessions-table td:nth-child(5) {
-        width: 16%;
+        width: 23%;
       }
       .session-cell {
         white-space: nowrap;
         overflow: hidden;
+      }
+      .sessions-table td:nth-child(5) {
+        white-space: nowrap;
       }
       .session-link {
         display: inline-block;
@@ -940,6 +1162,7 @@ function renderDashboardHtml(): string {
         border: 1px solid transparent;
         font-size: 12px;
         font-weight: 600;
+        white-space: nowrap;
       }
       .status-running { background: #eaf4e4; color: #3e5137; border-color: #bad1ad; }
       .status-queued { background: #faebdf; color: #93593d; border-color: #e6c6b3; }
@@ -1034,6 +1257,15 @@ function renderDashboardHtml(): string {
         position: absolute;
         top: 50%;
         transform: translate(-50%, -50%);
+        width: 28px;
+        height: 28px;
+        filter: drop-shadow(0 2px 1px rgba(22, 20, 18, 0.22));
+        image-rendering: auto;
+      }
+      .lane-turtle-fallback {
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
         font-size: 20px;
         filter: drop-shadow(0 2px 1px rgba(22, 20, 18, 0.22));
       }
@@ -1052,11 +1284,6 @@ function renderDashboardHtml(): string {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-      }
-      .status-line {
-        margin: 0;
-        color: #4f473c;
-        font-size: 13px;
       }
       .panel-actions {
         margin-top: 10px;
@@ -1077,12 +1304,21 @@ function renderDashboardHtml(): string {
       .panel-btn[hidden] {
         display: none;
       }
-      @media (max-width: 1100px) {
+      @media (max-width: 1200px) {
         body {
           overflow: auto;
+          zoom: 1;
         }
         .page {
           height: auto;
+        }
+        .page-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .update-indicator {
+          min-width: 0;
+          text-align: left;
         }
         .dashboard-grid {
           grid-template-rows: auto;
@@ -1101,18 +1337,23 @@ function renderDashboardHtml(): string {
     </style>
   </head>
   <body>
+    <div id="loadingOverlay" class="dashboard-loading">
+      <div class="loading-card">
+        <img class="loading-sticker" src="${DASHBOARD_STICKER_URL}" alt="SuperTurtle loading" />
+        <p class="loading-brand">SuperTurtle</p>
+        <p id="loadingMessage" class="loading-copy">Loading dashboard...</p>
+      </div>
+    </div>
     <main class="page">
-      <h1>SuperTurtle Dashboard</h1>
-      <p class="badge-row">
-        <span id="updateBadge" class="badge">Loading…</span>
-        <span id="sessionBadge" class="badge">Sessions: 0</span>
-        <span id="countBadge" class="badge">SubTurtles: 0</span>
-        <span id="processBadge" class="badge">Processes: 0</span>
-        <span id="queueBadge" class="badge">Queued messages: 0</span>
-        <span id="cronBadge" class="badge">Cron jobs: 0</span>
-        <span id="bgBadge" class="badge">Background checks: 0</span>
-        <span id="jobBadge" class="badge">Current jobs: 0</span>
-      </p>
+      <header class="page-header">
+        <div class="page-title">
+          <h1>SuperTurtle Dashboard</h1>
+        </div>
+        <div class="update-indicator">
+          <span class="update-label">Last updated</span>
+          <span id="updateBadge" class="update-value">Waiting for first sync</span>
+        </div>
+      </header>
       <div class="dashboard-grid">
       <section class="panel panel-sessions">
         <h2>Sessions</h2>
@@ -1201,7 +1442,6 @@ function renderDashboardHtml(): string {
         </div>
       </section>
       </div>
-      <p id="statusLine" class="status-line">Status: waiting for first sync…</p>
     </main>
     <script>
       const laneRows = document.getElementById("laneRows");
@@ -1212,44 +1452,28 @@ function renderDashboardHtml(): string {
       const jobRows = document.getElementById("jobRows");
       const updateBadge = document.getElementById("updateBadge");
       const sessionToggleBtn = document.getElementById("sessionToggleBtn");
-      const sessionBadge = document.getElementById("sessionBadge");
-      const countBadge = document.getElementById("countBadge");
-      const processBadge = document.getElementById("processBadge");
-      const queueBadge = document.getElementById("queueBadge");
-      const cronBadge = document.getElementById("cronBadge");
-      const jobBadge = document.getElementById("jobBadge");
-      const bgBadge = document.getElementById("bgBadge");
-      const statusLine = document.getElementById("statusLine");
+      const loadingOverlay = document.getElementById("loadingOverlay");
+      const loadingMessage = document.getElementById("loadingMessage");
+      const page = document.querySelector(".page");
+      const dashboardToken = new URLSearchParams(window.location.search).get("token");
+      const POLL_INTERVAL_MS = 5000;
+      const RETRY_INTERVAL_MS = 2000;
+
+      // Turtle sticker images per loop type (emoji kitchen combos hosted on gstatic)
+      const LANE_STICKERS = {
+        "yolo": "https://www.gstatic.com/android/keyboard/emojikitchen/20201001/u1f422/u1f422_u1f525.png",
+        "yolo-codex": "https://www.gstatic.com/android/keyboard/emojikitchen/20201001/u1f916/u1f916_u1f422.png",
+        "yolo-codex-spark": "https://www.gstatic.com/android/keyboard/emojikitchen/20250430/u1f329-ufe0f/u1f329-ufe0f_u1f422.png",
+        "slow": "https://www.gstatic.com/android/keyboard/emojikitchen/20250130/u1f52c/u1f52c_u1f422.png",
+      };
+      function laneSticker(type) {
+        return LANE_STICKERS[type] || LANE_STICKERS["yolo"];
+      }
       let sessionsExpanded = false;
       let latestSessions = [];
-
-      function setSubturtleBadge(value) {
-        countBadge.textContent = "SubTurtles: " + value;
-      }
-
-      function setSessionBadge(value) {
-        sessionBadge.textContent = "Sessions: " + value;
-      }
-
-      function setProcessBadge(value) {
-        processBadge.textContent = "Processes: " + value;
-      }
-
-      function setQueueBadge(value) {
-        queueBadge.textContent = "Queued messages: " + value;
-      }
-
-      function setCronBadge(value) {
-        cronBadge.textContent = "Cron jobs: " + value;
-      }
-
-      function setJobBadge(value) {
-        jobBadge.textContent = "Current jobs: " + value;
-      }
-
-      function setBackgroundBadge(isActive, queueSize) {
-        bgBadge.textContent = "Background checks: " + (isActive ? "running" : "idle") + " (queue " + queueSize + ")";
-      }
+      let refreshTimer = null;
+      let refreshInFlight = false;
+      let hasLoadedOnce = false;
 
       function humanMs(ms) {
         if (ms <= 0) return "0s";
@@ -1302,6 +1526,33 @@ function renderDashboardHtml(): string {
         return day + "." + month + "." + year + " " + hour + ":" + minute + ":" + second;
       }
 
+      function buildApiUrl(path) {
+        if (!dashboardToken) return path;
+        const url = new URL(path, window.location.origin);
+        url.searchParams.set("token", dashboardToken);
+        return url.pathname + url.search;
+      }
+
+      function setLoadingState(isLoading, message) {
+        if (loadingMessage && message) {
+          loadingMessage.textContent = message;
+        }
+        if (page) {
+          page.setAttribute("aria-busy", isLoading ? "true" : "false");
+        }
+        if (!loadingOverlay) return;
+        loadingOverlay.classList.toggle("hidden", !isLoading);
+      }
+
+      function scheduleNextRefresh(delayMs) {
+        if (refreshTimer !== null) {
+          window.clearTimeout(refreshTimer);
+        }
+        refreshTimer = window.setTimeout(() => {
+          void loadData();
+        }, delayMs);
+      }
+
       function renderSessionRows(sessions) {
         const list = Array.isArray(sessions) ? sessions : [];
         const visible = sessionsExpanded ? list : list.slice(0, 4);
@@ -1343,38 +1594,47 @@ function renderDashboardHtml(): string {
       }
 
       async function loadData() {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
+
+        if (!hasLoadedOnce) {
+          setLoadingState(true, "Loading dashboard...");
+        }
+
         try {
-          const [dashboardRes, jobsRes, sessionsRes] = await Promise.all([
-            fetch("/api/dashboard", { cache: "no-store" }),
-            fetch("/api/jobs/current", { cache: "no-store" }),
-            fetch("/api/sessions", { cache: "no-store" }),
-          ]);
-          if (!dashboardRes.ok) throw new Error("Failed dashboard request");
-          if (!jobsRes.ok) throw new Error("Failed jobs request");
-          if (!sessionsRes.ok) throw new Error("Failed sessions request");
-          const data = await dashboardRes.json();
-          const jobsData = await jobsRes.json();
-          const sessionsData = await sessionsRes.json();
+          const overviewRes = await fetch(buildApiUrl("/api/dashboard/overview"), { cache: "no-store" });
+          if (!overviewRes.ok) throw new Error("Failed dashboard overview request");
+          const overview = await overviewRes.json();
+          const data = overview && typeof overview.dashboard === "object" && overview.dashboard
+            ? overview.dashboard
+            : {};
+          const jobsData = overview && typeof overview.jobs === "object" && overview.jobs
+            ? overview.jobs
+            : {};
+          const sessionsData = overview && typeof overview.sessions === "object" && overview.sessions
+            ? overview.sessions
+            : {};
+          const sessions = Array.isArray(sessionsData.sessions) ? sessionsData.sessions : [];
+          const processes = Array.isArray(data.processes) ? data.processes : [];
+          const lanes = Array.isArray(data.lanes) ? data.lanes : [];
+          const cronJobs = Array.isArray(data.cronJobs) ? data.cronJobs : [];
+          const currentJobs = Array.isArray(jobsData.jobs) ? jobsData.jobs : [];
+          const deferredQueue = data.deferredQueue && typeof data.deferredQueue === "object"
+            ? data.deferredQueue
+            : { totalMessages: 0, chats: [] };
 
-          updateBadge.textContent = "Updated " + formatDateTime(data.generatedAt);
-          setSessionBadge(sessionsData.sessions.length);
-          setSubturtleBadge(data.turtles.length);
-          setProcessBadge(data.processes.length);
-          setQueueBadge(data.deferredQueue.totalMessages);
-          setCronBadge(data.cronJobs.length);
-          setJobBadge(jobsData.jobs.length);
-          setBackgroundBadge(data.background.runActive, data.background.supervisionQueue);
+          updateBadge.textContent = formatDateTime(overview.generatedAt || data.generatedAt);
 
-          latestSessions = Array.isArray(sessionsData.sessions) ? sessionsData.sessions : [];
+          latestSessions = sessions;
           if (latestSessions.length <= 4) {
             sessionsExpanded = false;
           }
           renderSessionRows(latestSessions);
 
-          if (!data.lanes.length) {
+          if (!lanes.length) {
             laneRows.innerHTML = "<li>No SubTurtle lanes yet.</li>";
           } else {
-            const rows = data.lanes.map((lane) => {
+            const rows = lanes.map((lane) => {
               const total = Number(lane.backlogTotal || 0);
               const done = Math.max(0, Math.min(total, Number(lane.backlogDone || 0)));
               const milestones = total > 0
@@ -1396,7 +1656,7 @@ function renderDashboardHtml(): string {
                 "</div>" +
                 "<div class='lane-progress'>" +
                 (total > 0 ? "<div class='lane-milestones'>" + milestones + "</div>" : "") +
-                "<span class='lane-turtle' style='left:" + turtleLeft.toFixed(2) + "%'>🐢</span>" +
+                "<img class='lane-turtle' src='" + laneSticker(lane.type) + "' style='left:" + turtleLeft.toFixed(2) + "%' onerror=\\"this.outerHTML='<span class=lane-turtle-fallback style=left:" + turtleLeft.toFixed(2) + "%>🐢</span>'\\" />" +
                 "<span class='lane-finish'>🏁</span>" +
                 "</div>" +
                 "<div class='lane-current'>" + currentLine + "</div>" +
@@ -1405,10 +1665,10 @@ function renderDashboardHtml(): string {
             laneRows.innerHTML = rows.join("");
           }
 
-          if (!data.processes.length) {
+          if (!processes.length) {
             processRows.innerHTML = "<tr><td colspan='5'>No processes found.</td></tr>";
           } else {
-            const rows = data.processes.map((p) => {
+            const rows = processes.map((p) => {
               return "<tr>" +
                 "<td><a href='/dashboard/processes/" + encodeURIComponent(p.id) + "'>" +
                 escapeHtml(p.label) +
@@ -1424,10 +1684,11 @@ function renderDashboardHtml(): string {
             processRows.innerHTML = rows.join("");
           }
 
-          if (!data.deferredQueue.chats.length) {
+          const queueChats = Array.isArray(deferredQueue.chats) ? deferredQueue.chats : [];
+          if (!queueChats.length) {
             queueRows.innerHTML = "<tr><td colspan='4'>No queued messages.</td></tr>";
           } else {
-            const rows = data.deferredQueue.chats.map((q) => {
+            const rows = queueChats.map((q) => {
               return "<tr>" +
                 "<td>" + q.chatId + "</td>" +
                 "<td>" + q.size + "</td>" +
@@ -1438,10 +1699,10 @@ function renderDashboardHtml(): string {
             queueRows.innerHTML = rows.join("");
           }
 
-          if (!data.cronJobs.length) {
+          if (!cronJobs.length) {
             cronRows.innerHTML = "<tr><td colspan='3'>No jobs scheduled.</td></tr>";
           } else {
-            const rows = data.cronJobs.map((j) => {
+            const rows = cronJobs.map((j) => {
               return "<tr>" +
                 "<td>" + j.type + "</td>" +
                 "<td>" + humanMs(j.fireInMs) + "</td>" +
@@ -1451,10 +1712,10 @@ function renderDashboardHtml(): string {
             cronRows.innerHTML = rows.join("");
           }
 
-          if (!jobsData.jobs.length) {
+          if (!currentJobs.length) {
             jobRows.innerHTML = "<tr><td colspan='3'>No current jobs.</td></tr>";
           } else {
-            const rows = jobsData.jobs.map((job) => {
+            const rows = currentJobs.map((job) => {
               const ownerLink = "/dashboard/processes/" + encodeURIComponent(job.ownerId);
               return "<tr>" +
                 "<td><a href='/dashboard/jobs/" + encodeURIComponent(job.id) + "'>" +
@@ -1468,23 +1729,19 @@ function renderDashboardHtml(): string {
             });
             jobRows.innerHTML = rows.join("");
           }
-
-          statusLine.textContent =
-            "Status: " +
-            sessionsData.sessions.length +
-            " sessions, " +
-            data.turtles.length +
-            " turtles, " +
-            data.processes.length +
-            " processes, " +
-            data.deferredQueue.totalMessages +
-            " queued msgs, " +
-            data.cronJobs.length +
-            " cron jobs, " +
-            jobsData.jobs.length +
-            " current jobs";
+          hasLoadedOnce = true;
+          setLoadingState(false);
+          scheduleNextRefresh(POLL_INTERVAL_MS);
         } catch (error) {
-          statusLine.textContent = "Status: failed to fetch data";
+          if (!hasLoadedOnce) {
+            updateBadge.textContent = "Waiting for first sync";
+          }
+          if (!hasLoadedOnce) {
+            setLoadingState(true, "Dashboard unavailable. Retrying...");
+          }
+          scheduleNextRefresh(RETRY_INTERVAL_MS);
+        } finally {
+          refreshInFlight = false;
         }
       }
 
@@ -1495,11 +1752,77 @@ function renderDashboardHtml(): string {
         });
       }
 
-      loadData();
-      setInterval(loadData, 5000);
+      void loadData();
     </script>
   </body>
 </html>`;
+}
+
+function loadWorkerEventsForDetail(workerName: string, maxEvents = 20): Array<{
+  id: string;
+  timestamp: string;
+  eventType: string;
+  emittedBy: string;
+  lifecycleState: string | null;
+}> {
+  const eventsPath = join(CONDUCTOR_STATE_DIR, "events.jsonl");
+  if (!existsSync(eventsPath)) return [];
+  try {
+    return readFileSync(eventsPath, "utf-8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            !Array.isArray(parsed) &&
+            parsed.worker_name === workerName
+          ) {
+            return [{
+              id: String(parsed.id || ""),
+              timestamp: String(parsed.timestamp || ""),
+              eventType: String(parsed.event_type || ""),
+              emittedBy: String(parsed.emitted_by || ""),
+              lifecycleState: parsed.lifecycle_state ? String(parsed.lifecycle_state) : null,
+            }];
+          }
+          return [];
+        } catch {
+          return [];
+        }
+      })
+      .slice(-maxEvents);
+  } catch {
+    return [];
+  }
+}
+
+function readAgentsMdInfo(workspaceDir: string): { exists: boolean; target: string | null } | null {
+  const agentsMdPath = join(workspaceDir, "AGENTS.md");
+  try {
+    const stat = lstatSync(agentsMdPath);
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(agentsMdPath);
+      return { exists: true, target };
+    }
+    return { exists: true, target: null };
+  } catch {
+    return { exists: false, target: null };
+  }
+}
+
+function readFullWorkerState(name: string): Record<string, unknown> | null {
+  const path = join(CONDUCTOR_STATE_DIR, "workers", `${name}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 async function buildSubturtleDetail(name: string): Promise<SubturtleDetailResponse | null> {
@@ -1509,14 +1832,20 @@ async function buildSubturtleDetail(name: string): Promise<SubturtleDetailRespon
 
   const elapsed = turtle.status === "running" ? await getSubTurtleElapsed(name) : "0s";
 
-  const claudeMdPath = `${WORKING_DIR}/.subturtles/${name}/CLAUDE.md`;
-  const metaPath = `${WORKING_DIR}/.subturtles/${name}/subturtle.meta`;
-  const tunnelPath = `${WORKING_DIR}/.subturtles/${name}/.tunnel-url`;
+  // Use conductor state to find correct workspace (handles archived SubTurtles)
+  const workerState = readFullWorkerState(name);
+  const workspaceDir = (workerState?.workspace as string) || `${WORKING_DIR}/.subturtles/${name}`;
 
-  const [claudeMd, metaContent, tunnelUrl] = await Promise.all([
+  const claudeMdPath = join(workspaceDir, "CLAUDE.md");
+  const metaPath = join(workspaceDir, "subturtle.meta");
+  const tunnelPath = join(workspaceDir, ".tunnel-url");
+  const rootClaudeMdPath = `${WORKING_DIR}/CLAUDE.md`;
+
+  const [claudeMd, metaContent, tunnelUrl, rootClaudeMd] = await Promise.all([
     readFileOr(claudeMdPath, ""),
     readFileOr(metaPath, ""),
     readFileOr(tunnelPath, ""),
+    readFileOr(rootClaudeMdPath, ""),
   ]);
 
   const meta = parseMetaFile(metaContent);
@@ -1526,6 +1855,37 @@ async function buildSubturtleDetail(name: string): Promise<SubturtleDetailRespon
     backlog.find((item) => item.current && !item.done)?.text ||
     backlog.find((item) => !item.done)?.text ||
     "";
+
+  // Extract skills from meta
+  const skills: string[] = [];
+  const rawSkills = typeof meta.SKILLS === "string" ? meta.SKILLS : "";
+  if (rawSkills) {
+    try {
+      const parsed = JSON.parse(rawSkills);
+      if (Array.isArray(parsed)) {
+        for (const s of parsed) {
+          if (typeof s === "string" && s.length > 0) skills.push(s);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Build conductor view
+  const conductor = workerState
+    ? {
+        lifecycleState: String(workerState.lifecycle_state || "unknown"),
+        runId: (workerState.run_id as string) || null,
+        checkpoint: (workerState.checkpoint as Record<string, unknown>) || null,
+        createdAt: (workerState.created_at as string) || null,
+        updatedAt: (workerState.updated_at as string) || null,
+        stopReason: (workerState.stop_reason as string) || null,
+        terminalAt: (workerState.terminal_at as string) || null,
+      }
+    : null;
+
+  // Load events and AGENTS.md info
+  const events = loadWorkerEventsForDetail(name);
+  const agentsMdInfo = readAgentsMdInfo(workspaceDir);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1538,6 +1898,9 @@ async function buildSubturtleDetail(name: string): Promise<SubturtleDetailRespon
     task: turtle.task || "",
     tunnelUrl: tunnelUrl.trim(),
     claudeMd,
+    rootClaudeMd,
+    agentsMdInfo,
+    skills,
     meta,
     backlog,
     backlogSummary: {
@@ -1546,6 +1909,8 @@ async function buildSubturtleDetail(name: string): Promise<SubturtleDetailRespon
       current: backlogCurrent,
       progressPct: computeProgressPct(backlogDone, backlog.length),
     },
+    conductor,
+    events,
   };
 }
 
@@ -1749,46 +2114,379 @@ const DETAIL_THEME_CSS = `
 `;
 
 function renderSubturtleDetailHtml(detail: SubturtleDetailResponse, logs: SubturtleLogsResponse | null): string {
+  const statusEmoji: Record<string, string> = {
+    running: "🟢",
+    stopped: "⏹️",
+    completed: "✅",
+    failed: "❌",
+    timed_out: "⏰",
+    archived: "📦",
+  };
+  const lifecycleState = detail.conductor?.lifecycleState || detail.status;
+  const statusIcon = statusEmoji[lifecycleState] || statusEmoji[detail.status] || "⚪";
+
+  const countWords = (text: string): number => {
+    const matches = text.match(/[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?/g);
+    return matches?.length || 0;
+  };
+
+  // Build injected context items
+  const injectedItems: Array<{ label: string; wordCount: number; content: string; open?: boolean }> = [];
+
+  if (detail.claudeMd) {
+    injectedItems.push({
+      label: "SubTurtle CLAUDE.md",
+      wordCount: countWords(detail.claudeMd),
+      content: detail.claudeMd,
+    });
+  }
+
+  if (detail.rootClaudeMd) {
+    injectedItems.push({
+      label: "Root Project CLAUDE.md",
+      wordCount: countWords(detail.rootClaudeMd),
+      content: detail.rootClaudeMd,
+    });
+  }
+
+  const agentsMdDesc = detail.agentsMdInfo
+    ? detail.agentsMdInfo.exists
+      ? detail.agentsMdInfo.target
+        ? `Symlink → ${detail.agentsMdInfo.target}`
+        : "Regular file (not a symlink)"
+      : "Not found"
+    : "Unknown";
+
+  if (detail.skills.length > 0) {
+    injectedItems.push({
+      label: `Skills (${detail.skills.length})`,
+      wordCount: 0,
+      content: detail.skills.map((s) => `• ${s}`).join("\n"),
+      open: true,
+    });
+  }
+
+  const injectedHtml = injectedItems.length > 0
+    ? injectedItems.map((item) => {
+        const wordLabel = item.wordCount > 0 ? ` (${item.wordCount} words)` : "";
+        const openAttr = item.open ? " open" : "";
+        return `<details${openAttr}>` +
+          `<summary>${escapeHtml(item.label)}${escapeHtml(wordLabel)}</summary>` +
+          `<pre>${escapeHtml(item.content)}</pre>` +
+          `</details>`;
+      }).join("")
+    : `<p class="empty-state">No injected context captured.</p>`;
+
+  // Build conductor state section
+  const conductorHtml = detail.conductor
+    ? (() => {
+        const cp = detail.conductor.checkpoint;
+        const cpLines: string[] = [];
+        if (cp) {
+          if (cp.iteration !== undefined && cp.iteration !== null) cpLines.push(`Iteration: ${cp.iteration}`);
+          if (cp.loop_type) cpLines.push(`Loop: ${cp.loop_type}`);
+          if (cp.head_sha) cpLines.push(`Git SHA: ${String(cp.head_sha).slice(0, 12)}`);
+          if (cp.current_task) cpLines.push(`Task: ${String(cp.current_task).slice(0, 80)}`);
+          if (cp.recorded_at) cpLines.push(`Recorded: ${formatTimestamp(String(cp.recorded_at))}`);
+        }
+        return `<div class="conductor-grid">` +
+          `<div class="conductor-field"><span class="conductor-label">Lifecycle</span><span class="conductor-value">${statusIcon} ${escapeHtml(detail.conductor.lifecycleState)}</span></div>` +
+          `<div class="conductor-field"><span class="conductor-label">Run ID</span><span class="conductor-value mono">${escapeHtml(detail.conductor.runId || "n/a")}</span></div>` +
+          (detail.conductor.stopReason ? `<div class="conductor-field"><span class="conductor-label">Stop reason</span><span class="conductor-value">${escapeHtml(detail.conductor.stopReason)}</span></div>` : "") +
+          `<div class="conductor-field"><span class="conductor-label">Created</span><span class="conductor-value">${escapeHtml(formatTimestamp(detail.conductor.createdAt))}</span></div>` +
+          `<div class="conductor-field"><span class="conductor-label">Updated</span><span class="conductor-value">${escapeHtml(formatTimestamp(detail.conductor.updatedAt))}</span></div>` +
+          (detail.conductor.terminalAt ? `<div class="conductor-field"><span class="conductor-label">Terminal at</span><span class="conductor-value">${escapeHtml(formatTimestamp(detail.conductor.terminalAt))}</span></div>` : "") +
+          `</div>` +
+          (cpLines.length > 0
+            ? `<details open><summary>Last checkpoint</summary><ul class="checkpoint-list">${cpLines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul></details>`
+            : `<p class="empty-state">No checkpoint recorded.</p>`);
+      })()
+    : `<p class="empty-state">No conductor state found for this worker.</p>`;
+
+  // Build event timeline
+  const eventsHtml = detail.events.length > 0
+    ? `<div class="timeline">${detail.events.map((evt) => {
+        const evtEmoji: Record<string, string> = {
+          "worker.started": "🚀",
+          "worker.stop_requested": "🛑",
+          "worker.stopped": "⏹️",
+          "worker.archived": "📦",
+          "worker.completed": "✅",
+          "worker.failed": "❌",
+          "worker.timed_out": "⏰",
+          "worker.cron_removed": "🗑️",
+          "worker.checkpoint": "📍",
+          "worker.milestone_reached": "🏁",
+          "worker.stalled_check": "⚠️",
+        };
+        const icon = evtEmoji[evt.eventType] || "•";
+        return `<div class="timeline-event">` +
+          `<span class="timeline-icon">${icon}</span>` +
+          `<div class="timeline-body">` +
+          `<span class="timeline-type">${escapeHtml(evt.eventType.replace("worker.", ""))}</span>` +
+          `<span class="timeline-meta">${escapeHtml(formatTimestamp(evt.timestamp))} · ${escapeHtml(evt.emittedBy)}</span>` +
+          `</div>` +
+          `</div>`;
+      }).join("")}</div>`
+    : `<p class="empty-state">No events recorded.</p>`;
+
+  // Progress bar
+  const pct = detail.backlogSummary.progressPct;
+  const progressHtml = detail.backlog.length > 0
+    ? `<div class="progress-bar-container">` +
+      `<div class="progress-bar" style="width:${pct}%"></div>` +
+      `<span class="progress-label">${detail.backlogSummary.done}/${detail.backlogSummary.total} (${pct}%)</span>` +
+      `</div>`
+    : "";
+
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SubTurtle ${escapeHtml(detail.name)} detail</title>
+    <title>${escapeHtml(detail.name)} — SubTurtle detail</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🐢</text></svg>" />
     <style>
 ${DETAIL_THEME_CSS}
+      /* ── Detail page extensions ──────────────────────────────── */
+      .header-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .header-row h1 { flex: none; margin: 0; }
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        border: 1px solid var(--line);
+        background: rgba(255, 252, 245, 0.96);
+      }
+      .status-badge.running { border-color: rgba(85, 108, 75, 0.4); color: var(--accent-olive); }
+      .status-badge.stopped { border-color: rgba(111, 103, 93, 0.3); color: var(--muted); }
+      .status-badge.completed { border-color: rgba(85, 108, 75, 0.4); color: var(--accent-olive); }
+      .status-badge.failed { border-color: rgba(180, 60, 50, 0.3); color: #a83830; }
+
+      .meta-pills {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+      .meta-pill {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        border: 1px solid var(--line);
+        background: var(--code);
+        color: var(--muted);
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 800px) {
+        .two-col { grid-template-columns: 1fr; }
+      }
+
+      .progress-bar-container {
+        position: relative;
+        height: 24px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--code);
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(135deg, rgba(85, 108, 75, 0.35), rgba(85, 108, 75, 0.2));
+        transition: width 0.3s;
+      }
+      .progress-label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: 0.03em;
+      }
+
+      .conductor-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .conductor-field {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .conductor-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+      .conductor-value {
+        font-size: 13px;
+        color: var(--text);
+      }
+      .conductor-value.mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+      }
+      .checkpoint-list {
+        margin: 6px 0 0 0;
+        padding-left: 18px;
+        font-size: 13px;
+      }
+      .checkpoint-list li + li { margin-top: 2px; }
+
+      .timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        border-left: 2px solid var(--line);
+        margin-left: 10px;
+        padding-left: 0;
+      }
+      .timeline-event {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 6px 0 6px 12px;
+        position: relative;
+      }
+      .timeline-event::before {
+        content: "";
+        position: absolute;
+        left: -5px;
+        top: 10px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--panel);
+        border: 2px solid var(--line);
+      }
+      .timeline-icon {
+        font-size: 14px;
+        flex: none;
+        width: 20px;
+        text-align: center;
+      }
+      .timeline-body {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+      }
+      .timeline-type {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .timeline-meta {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .injected-context details {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+      .injected-context details + details { margin-top: 8px; }
+      .injected-context summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .agents-md-note {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 8px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: var(--code);
+        border: 1px solid var(--line);
+      }
+      .agents-md-note code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+      }
     </style>
   </head>
   <body>
     <main class="page">
-      <h1>SubTurtle ${escapeHtml(detail.name)} detail</h1>
-      <p><a href="/dashboard">← Back to dashboard</a></p>
-      <section class="card">
-        <h2>Core fields</h2>
-        <ul>
-          <li>Status: ${escapeHtml(detail.status)}</li>
-          <li>Type: ${escapeHtml(detail.type)}</li>
-          <li>PID: ${escapeHtml(detail.pid || "n/a")}</li>
-          <li>Elapsed: ${escapeHtml(detail.elapsed)}</li>
-          <li>Task: ${escapeHtml(detail.task || "none")}</li>
-          <li>Backlog: ${detail.backlogSummary.done}/${detail.backlogSummary.total} (${detail.backlogSummary.progressPct}%)</li>
-          <li>Current backlog item: ${escapeHtml(detail.backlogSummary.current || "none")}</li>
-        </ul>
+      <p style="margin:0"><a href="/dashboard">← Dashboard</a></p>
+
+      <div class="header-row">
+        <h1>${escapeHtml(detail.name)}</h1>
+        <span class="status-badge ${escapeHtml(lifecycleState)}">${statusIcon} ${escapeHtml(lifecycleState)}</span>
+      </div>
+
+      <div class="meta-pills">
+        <span class="meta-pill">${escapeHtml(detail.type)}</span>
+        ${detail.pid ? `<span class="meta-pill">PID ${escapeHtml(detail.pid)}</span>` : ""}
+        ${detail.elapsed && detail.elapsed !== "0s" ? `<span class="meta-pill">${escapeHtml(detail.elapsed)} elapsed</span>` : ""}
+        ${detail.timeRemaining ? `<span class="meta-pill">${escapeHtml(detail.timeRemaining)} remaining</span>` : ""}
+        ${detail.tunnelUrl ? `<span class="meta-pill"><a href="${escapeHtml(detail.tunnelUrl)}" target="_blank">🔗 Preview</a></span>` : ""}
+        ${detail.skills.length > 0 ? detail.skills.map((s) => `<span class="meta-pill">⚡ ${escapeHtml(s)}</span>`).join("") : ""}
+      </div>
+
+      ${detail.task ? `<section class="card"><p style="margin:0;font-size:14px"><strong>Task:</strong> ${escapeHtml(detail.task)}</p></section>` : ""}
+
+      ${progressHtml ? `<section class="card"><h2>Progress</h2>${progressHtml}${renderBacklogChecklist(detail.backlog)}</section>` : `<section class="card"><h2>Backlog</h2>${renderBacklogChecklist(detail.backlog)}</section>`}
+
+      <div class="two-col">
+        <section class="card">
+          <h2>Conductor state</h2>
+          ${conductorHtml}
+        </section>
+
+        <section class="card">
+          <h2>Event timeline</h2>
+          ${eventsHtml}
+        </section>
+      </div>
+
+      <section class="card injected-context">
+        <h2>Injected context</h2>
+        <div class="agents-md-note">
+          <code>AGENTS.md</code>: ${escapeHtml(agentsMdDesc)}
+        </div>
+        ${injectedHtml}
       </section>
+
       <section class="card">
-        <h2>Backlog</h2>
-        ${renderBacklogChecklist(detail.backlog)}
+        <h2>subturtle.meta</h2>
+        <details>
+          <summary>Raw metadata (JSON)</summary>
+          ${renderJsonPre(detail.meta)}
+        </details>
       </section>
+
       <section class="card">
-        <h2>subturtle.meta (JSON)</h2>
-        ${renderJsonPre(detail.meta)}
-      </section>
-      <section class="card">
-        <h2>Claude.md</h2>
-        <pre>${escapeHtml(detail.claudeMd || "(empty)")}</pre>
-      </section>
-      <section class="card">
-        <h2>Logs</h2>
+        <h2>Logs${logs ? ` <span style="font-size:12px;color:var(--muted);font-weight:400">(${logs.totalLines} total lines)</span>` : ""}</h2>
         <pre>${escapeHtml(logs?.lines.join("\n") || "No logs")}</pre>
       </section>
     </main>
@@ -2382,22 +3080,10 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
   {
     pattern: /^\/api\/subturtles$/,
     handler: async () => {
-      const turtles = await readSubturtles();
-      const elapsedByName = await Promise.all(
-        turtles.map(async (turtle) => {
-          const elapsed = turtle.status === "running" ? await getSubTurtleElapsed(turtle.name) : "0s";
-          return { ...turtle, elapsed };
-        })
-      );
-      const lanes = await buildSubturtleLanes(elapsedByName);
+      const lanes = (await buildPreparedDashboardTurtles()).map(buildLaneView);
       const response: SubturtleListResponse = {
         generatedAt: new Date().toISOString(),
-        lanes: lanes.sort((a, b) => {
-          if (a.status === b.status) return a.name.localeCompare(b.name);
-          if (a.status === "running") return -1;
-          if (b.status === "running") return 1;
-          return a.name.localeCompare(b.name);
-        }),
+        lanes: sortSubturtleLanes(lanes),
       };
       return jsonResponse(response);
     },
@@ -2580,6 +3266,12 @@ export const routes: Array<{ pattern: RegExp; handler: RouteHandler }> = [
     },
   },
   {
+    pattern: /^\/api\/dashboard\/overview$/,
+    handler: async () => {
+      return jsonResponse(await getDashboardOverviewResponse());
+    },
+  },
+  {
     pattern: /^\/api\/dashboard$/,
     handler: async () => {
       const data = await buildDashboardState();
@@ -2668,15 +3360,27 @@ export function startDashboardServer(): void {
     return;
   }
 
+  const publicDashboardUrl = `${DASHBOARD_PUBLIC_BASE_URL}/dashboard`;
+
   if (!DASHBOARD_AUTH_TOKEN) {
     dashboardLog.info(
-      { host: DASHBOARD_BIND_ADDR, port: DASHBOARD_PORT, authEnabled: false },
-      `Starting dashboard on http://${DASHBOARD_BIND_ADDR}:${DASHBOARD_PORT}/dashboard`
+      {
+        bindHost: DASHBOARD_BIND_ADDR,
+        port: DASHBOARD_PORT,
+        publicUrl: publicDashboardUrl,
+        authEnabled: false,
+      },
+      `Starting dashboard on ${publicDashboardUrl}`
     );
   } else {
     dashboardLog.info(
-      { host: DASHBOARD_BIND_ADDR, port: DASHBOARD_PORT, authEnabled: true },
-      `Starting dashboard on http://${DASHBOARD_BIND_ADDR}:${DASHBOARD_PORT}/dashboard?token=<redacted>`
+      {
+        bindHost: DASHBOARD_BIND_ADDR,
+        port: DASHBOARD_PORT,
+        publicUrl: publicDashboardUrl,
+        authEnabled: true,
+      },
+      `Starting dashboard on ${publicDashboardUrl}?token=<redacted>`
     );
   }
 

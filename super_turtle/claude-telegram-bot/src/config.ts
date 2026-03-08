@@ -351,16 +351,47 @@ export const BUTTON_LABEL_MAX_LENGTH = 30; // Max chars for inline button labels
 
 // ============== Dashboard Configuration ==============
 
-const rawDashboardPort = Number(process.env.DASHBOARD_PORT || "4173");
+function stablePortHash(input: string): number {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = ((hash * 31) + input.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function computeDefaultDashboardPort(seed: string): number {
+  // Keep dashboard defaults away from common dev ports while remaining stable per instance.
+  return 46000 + (stablePortHash(seed) % 1000);
+}
+
+function buildDashboardPublicBaseUrl(host: string, port: number): string {
+  try {
+    const url = new URL(host);
+    if (!url.port) {
+      url.port = String(port);
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    const trimmedHost = host.replace(/\/+$/, "");
+    return /:\d+$/.test(trimmedHost) ? trimmedHost : `${trimmedHost}:${port}`;
+  }
+}
+
+const defaultDashboardPort = computeDefaultDashboardPort(TOKEN_PREFIX);
+const rawDashboardPort = Number(process.env.DASHBOARD_PORT || String(defaultDashboardPort));
 export const DASHBOARD_ENABLED = (
   process.env.DASHBOARD_ENABLED || "false"
 ).toLowerCase() === "true";
 export const DASHBOARD_PORT = Number.isFinite(rawDashboardPort) && rawDashboardPort > 0
   ? rawDashboardPort
-  : 4173;
+  : defaultDashboardPort;
 export const DASHBOARD_BIND_ADDR = process.env.DASHBOARD_BIND_ADDR || "127.0.0.1";
 export const DASHBOARD_AUTH_TOKEN = process.env.DASHBOARD_AUTH_TOKEN || "";
 export const DASHBOARD_HOST = process.env.DASHBOARD_HOST || "http://localhost";
+export const DASHBOARD_PUBLIC_BASE_URL = buildDashboardPublicBaseUrl(
+  DASHBOARD_HOST,
+  DASHBOARD_PORT
+);
 
 // ============== Audit Logging ==============
 

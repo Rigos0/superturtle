@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, rmSync } from "fs";
 
 process.env.CLAUDE_WORKING_DIR ||= resolve(import.meta.dir, "../../..");
 
-const { DASHBOARD_AUTH_TOKEN, WORKING_DIR } = await import("./config");
+const { DASHBOARD_AUTH_TOKEN, WORKING_DIR, SUPERTURTLE_DATA_DIR } = await import("./config");
 
 const {
   isAuthorized,
@@ -240,6 +240,60 @@ function enqueueTestMessage(chatId: number, text: string, enqueuedAt: number): v
     enqueuedAt,
   });
 }
+
+describe("GET /api/subturtles", () => {
+  const testTurtleName = "__test_archived_lane_state__";
+  const testDir = join(WORKING_DIR, ".subturtles", testTurtleName);
+  const workerStateDir = join(SUPERTURTLE_DATA_DIR, "state", "workers");
+  const workerStatePath = join(workerStateDir, `${testTurtleName}.json`);
+
+  beforeAll(() => {
+    mkdirSync(testDir, { recursive: true });
+    mkdirSync(workerStateDir, { recursive: true });
+    writeFileSync(
+      join(testDir, "CLAUDE.md"),
+      [
+        "# Current task",
+        "- live current task",
+        "",
+        "# Backlog",
+        "- [ ] still active",
+      ].join("\n")
+    );
+    writeFileSync(
+      workerStatePath,
+      JSON.stringify({
+        worker_name: testTurtleName,
+        lifecycle_state: "archived",
+        workspace: join(WORKING_DIR, ".subturtles", ".archive", testTurtleName),
+        loop_type: "slow",
+        current_task: "archived task from stale state",
+        created_at: "2026-03-08T12:00:00Z",
+        updated_at: "2026-03-08T12:05:00Z",
+      })
+    );
+  });
+
+  afterAll(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    rmSync(workerStatePath, { force: true });
+  });
+
+  it("ignores archived conductor state for live workspaces", async () => {
+    const result = findRoute("/api/subturtles");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/subturtles");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      lanes: Array<{ name: string; status: string; task: string }>;
+    };
+    const lane = body.lanes.find((entry) => entry.name === testTurtleName);
+    expect(lane).toBeDefined();
+    expect(lane?.status).toBe("stopped");
+    expect(lane?.task).not.toBe("archived task from stale state");
+  });
+});
 
 describe("GET /api/subturtles/:name", () => {
   it("matches the route pattern", () => {
@@ -662,9 +716,18 @@ describe("GET /dashboard", () => {
     expect(html.toLowerCase()).toContain("<html");
     expect(html.toLowerCase()).toContain("<style>");
     expect(html).toContain("class=\"panel panel-sessions\"");
-    expect(html).toContain("class=\"badge-row\"");
+    expect(html).toContain("class=\"page-header\"");
     expect(html).toContain("id=\"sessionToggleBtn\"");
+    expect(html).toContain("id=\"loadingOverlay\"");
+    expect(html).toContain("Loading dashboard...");
+    expect(html).toContain("Last updated");
     expect(html).toContain("Show more sessions");
+    expect(html).toContain("/api/dashboard/overview");
+    expect(html).not.toContain("/api/conductor");
+    expect(html).not.toContain("Sessions: 0");
+    expect(html).not.toContain("SubTurtles: 0");
+    expect(html).not.toContain("Status: loading dashboard...");
+    expect(html).toContain("height: clamp(180px, 26vh, 300px);");
   });
 
   it("renders JavaScript that parses successfully", async () => {
@@ -677,6 +740,31 @@ describe("GET /dashboard", () => {
     const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
     expect(scriptMatch).not.toBeNull();
     expect(() => new Function(scriptMatch![1]!)).not.toThrow();
+  });
+});
+
+describe("GET /api/dashboard/overview", () => {
+  it("matches the overview route pattern", () => {
+    const result = findRoute("/api/dashboard/overview");
+    expect(result).not.toBeNull();
+  });
+
+  it("returns a consolidated overview payload", async () => {
+    const result = findRoute("/api/dashboard/overview");
+    expect(result).not.toBeNull();
+    const { req, url } = makeReq("/api/dashboard/overview");
+    const res = await result!.handler(req, url, result!.match);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      dashboard?: { turtles?: unknown[]; processes?: unknown[]; cronJobs?: unknown[] };
+      sessions?: { sessions?: unknown[] };
+      jobs?: { jobs?: unknown[] };
+    };
+    expect(Array.isArray(body.dashboard?.turtles)).toBe(true);
+    expect(Array.isArray(body.dashboard?.processes)).toBe(true);
+    expect(Array.isArray(body.dashboard?.cronJobs)).toBe(true);
+    expect(Array.isArray(body.sessions?.sessions)).toBe(true);
+    expect(Array.isArray(body.jobs?.jobs)).toBe(true);
   });
 });
 

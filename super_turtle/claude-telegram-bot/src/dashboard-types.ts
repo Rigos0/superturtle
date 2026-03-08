@@ -80,6 +80,13 @@ export type DashboardState = {
   cronJobs: CronJobView[];
 };
 
+export type DashboardOverviewResponse = {
+  generatedAt: string;
+  dashboard: DashboardState;
+  sessions: SessionListResponse;
+  jobs: CurrentJobsResponse;
+};
+
 // ── New API response types (Phase 1) ────────────────────────────────
 
 export type SubturtleListResponse = {
@@ -94,6 +101,24 @@ export type BacklogSummary = {
   progressPct: number;
 };
 
+export type SubturtleConductorView = {
+  lifecycleState: string;
+  runId: string | null;
+  checkpoint: Record<string, unknown> | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  stopReason: string | null;
+  terminalAt: string | null;
+};
+
+export type SubturtleEventView = {
+  id: string;
+  timestamp: string;
+  eventType: string;
+  emittedBy: string;
+  lifecycleState: string | null;
+};
+
 export type SubturtleDetailResponse = {
   generatedAt: string;
   name: string;
@@ -105,9 +130,14 @@ export type SubturtleDetailResponse = {
   task: string;
   tunnelUrl: string;
   claudeMd: string;
+  rootClaudeMd: string;
+  agentsMdInfo: { exists: boolean; target: string | null } | null;
+  skills: string[];
   meta: MetaFileData;
   backlog: ClaudeBacklogItem[];
   backlogSummary: BacklogSummary;
+  conductor: SubturtleConductorView | null;
+  events: SubturtleEventView[];
 };
 
 export type SubturtleLogsResponse = {

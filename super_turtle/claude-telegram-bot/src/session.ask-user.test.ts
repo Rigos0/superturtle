@@ -7,6 +7,7 @@ process.env.TELEGRAM_ALLOWED_USERS ||= "123";
 process.env.CLAUDE_WORKING_DIR ||= process.cwd();
 
 const originalSpawn = Bun.spawn;
+const originalSpawnSync = Bun.spawnSync;
 
 const { IPC_DIR } = await import("./config");
 
@@ -25,8 +26,32 @@ async function loadSessionModule() {
   return import(`./session.ts?ask-user-test=${Date.now()}-${Math.random()}`);
 }
 
+function mockToolDiscovery(tools: string[] = [
+  "Bash",
+  "Edit",
+  "Write",
+  "mcp__send-turtle__send_turtle",
+  "mcp__bot-control__ask_user",
+]) {
+  Bun.spawnSync = ((_cmd: unknown, _opts?: unknown) => {
+    const initLine = JSON.stringify({
+      type: "system",
+      subtype: "init",
+      tools,
+    });
+
+    return {
+      stdout: new TextEncoder().encode(`${initLine}\n`),
+      stderr: new Uint8Array(),
+      exitCode: 0,
+      success: true,
+    } as unknown as ReturnType<typeof Bun.spawnSync>;
+  }) as typeof Bun.spawnSync;
+}
+
 afterEach(async () => {
   Bun.spawn = originalSpawn;
+  Bun.spawnSync = originalSpawnSync;
   await cleanupAskUserFiles();
 });
 
@@ -36,6 +61,7 @@ describe("ClaudeSession ask_user tool routing", () => {
     const chatId = 6769019304;
     const requestId = `ask-user-test-${Date.now()}-${Math.random()}`;
     const requestFile = `${IPC_DIR}/ask-user-${requestId}.json`;
+    mockToolDiscovery();
 
     await Bun.write(
       requestFile,
@@ -129,6 +155,8 @@ describe("ClaudeSession ask_user tool routing", () => {
   });
 
   it("writes chat-scoped TELEGRAM_CHAT_ID into Claude MCP config", async () => {
+    mockToolDiscovery();
+
     Bun.spawn = ((_cmd: unknown, _opts?: unknown) => {
       const lines = [
         JSON.stringify({
@@ -194,6 +222,15 @@ describe("ClaudeSession ask_user tool routing", () => {
 
   it("passes an explicit allowed tool list to Claude CLI", async () => {
     let spawnedArgs: string[] = [];
+    mockToolDiscovery([
+      "Bash",
+      "Edit",
+      "Write",
+      "KillShell",
+      "SlashCommand",
+      "mcp__send-turtle__send_turtle",
+      "mcp__bot-control__ask_user",
+    ]);
 
     Bun.spawn = ((cmd: unknown, _opts?: unknown) => {
       spawnedArgs = Array.isArray(cmd) ? cmd.map((value) => String(value)) : [];
@@ -257,6 +294,8 @@ describe("ClaudeSession ask_user tool routing", () => {
     expect(allowedTools).toContain("Bash");
     expect(allowedTools).toContain("Edit");
     expect(allowedTools).toContain("Write");
+    expect(allowedTools).toContain("KillShell");
+    expect(allowedTools).toContain("SlashCommand");
     expect(allowedTools).toContain("mcp__send-turtle__send_turtle");
     expect(allowedTools).toContain("mcp__bot-control__ask_user");
   });

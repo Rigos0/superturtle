@@ -69,7 +69,8 @@ interface StreamJsonEvent {
   [key: string]: unknown;
 }
 
-const CLAUDE_CORE_ALLOWED_TOOLS = [
+const CLAUDE_FALLBACK_ALLOWED_TOOLS = [
+  "Agent",
   "Task",
   "TaskOutput",
   "TaskStop",
@@ -84,8 +85,10 @@ const CLAUDE_CORE_ALLOWED_TOOLS = [
   "TodoWrite",
   "WebSearch",
   "ToolSearch",
+  "KillShell",
   "AskUserQuestion",
   "Skill",
+  "SlashCommand",
   "EnterPlanMode",
   "ExitPlanMode",
   "EnterWorktree",
@@ -108,13 +111,93 @@ function splitAllowedTools(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function getClaudeAllowedTools(): string[] {
+function mergeAllowedTools(...toolGroups: ReadonlyArray<ReadonlyArray<string>>): string[] {
+  return [...new Set(toolGroups.flat().filter(Boolean))];
+}
+
+function getClaudeFallbackAllowedTools(): string[] {
   const tools = [
-    ...CLAUDE_CORE_ALLOWED_TOOLS,
+    ...CLAUDE_FALLBACK_ALLOWED_TOOLS,
     ...(Object.keys(MCP_SERVERS).length > 0 ? CLAUDE_BOT_MCP_ALLOWED_TOOLS : []),
     ...splitAllowedTools(process.env.CLAUDE_ALLOWED_TOOLS_EXTRA),
   ];
   return [...new Set(tools)];
+}
+
+function parseClaudeInitTools(output: string): string[] | null {
+  for (const line of output.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    try {
+      const parsed = JSON.parse(trimmed) as { type?: string; subtype?: string; tools?: unknown };
+      if (
+        parsed.type === "system" &&
+        parsed.subtype === "init" &&
+        Array.isArray(parsed.tools)
+      ) {
+        return parsed.tools.filter((tool): tool is string => typeof tool === "string");
+      }
+    } catch {
+      // Ignore non-JSON lines from the probe and keep scanning.
+    }
+  }
+  return null;
+}
+
+const discoveredClaudeAllowedTools = new Map<string, string[]>();
+
+function getClaudeAllowedTools(claudeBin: string): string[] {
+  const fallbackTools = getClaudeFallbackAllowedTools();
+  const probeArgs = [
+    claudeBin,
+    "-p",
+    "ok",
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "--setting-sources",
+    "user,project",
+  ];
+  if (Object.keys(MCP_SERVERS).length > 0) {
+    probeArgs.push("--mcp-config", MCP_CONFIG_FILE);
+  }
+
+  const cacheKey = JSON.stringify(probeArgs);
+  const cached = discoveredClaudeAllowedTools.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const probe = Bun.spawnSync(probeArgs, {
+      cwd: WORKING_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = new TextDecoder().decode(probe.stdout);
+    const discovered = parseClaudeInitTools(stdout);
+    const resolved = discovered
+      ? mergeAllowedTools(discovered, fallbackTools)
+      : fallbackTools;
+
+    if (!discovered) {
+      claudeLog.warn(
+        { exitCode: probe.exitCode },
+        "Claude tool discovery did not return an init tool list; using fallback allowlist"
+      );
+    }
+
+    discoveredClaudeAllowedTools.set(cacheKey, resolved);
+    return resolved;
+  } catch (error) {
+    claudeLog.warn(
+      { err: error },
+      "Claude tool discovery probe failed; using fallback allowlist"
+    );
+    discoveredClaudeAllowedTools.set(cacheKey, fallbackTools);
+    return fallbackTools;
+  }
 }
 
 // Write MCP config to a temp JSON file for --mcp-config flag
@@ -536,9 +619,7 @@ export class ClaudeSession {
       "--output-format", "stream-json",
       "--model", this.model,
       "--dangerously-skip-permissions",
-      // Claude Code 2.1.71 still prompts for Bash/MCP tools in print mode unless
-      // they are explicitly allowlisted, even with dangerously-skip enabled.
-      "--allowedTools", getClaudeAllowedTools().join(","),
+      "--allowedTools", getClaudeAllowedTools(claudeBin).join(","),
       "--setting-sources", "user,project",
     ];
 

@@ -20,10 +20,61 @@ fi
 
 meta_text="$(cat "$prompt_file")"
 meta_len="${#meta_text}"
-allowed_tools="Agent,TaskOutput,TaskStop,Bash,Glob,Grep,Read,Edit,Write,NotebookEdit,WebFetch,TodoWrite,WebSearch,ToolSearch,AskUserQuestion,Skill,EnterPlanMode,ExitPlanMode,EnterWorktree,CronCreate,CronDelete,CronList"
-if [[ -n "${CLAUDE_ALLOWED_TOOLS_EXTRA:-}" ]]; then
-  allowed_tools="${allowed_tools},${CLAUDE_ALLOWED_TOOLS_EXTRA}"
-fi
+fallback_tools="Agent,TaskOutput,TaskStop,Bash,Glob,Grep,Read,Edit,Write,NotebookEdit,WebFetch,TodoWrite,WebSearch,ToolSearch,KillShell,AskUserQuestion,Skill,SlashCommand,EnterPlanMode,ExitPlanMode,EnterWorktree,CronCreate,CronDelete,CronList"
+
+discover_allowed_tools() {
+  local probe_output merged_tools
+  if probe_output="$(claude -p ok --verbose --output-format stream-json 2>/dev/null)"; then
+    merged_tools="$(
+      TOOLS_OUTPUT="$probe_output" \
+      FALLBACK_TOOLS="$fallback_tools" \
+      EXTRA_TOOLS="${CLAUDE_ALLOWED_TOOLS_EXTRA:-}" \
+      python3 - <<'PY'
+import json
+import os
+
+fallback = [tool for tool in os.environ.get("FALLBACK_TOOLS", "").split(",") if tool]
+extra = [tool for tool in os.environ.get("EXTRA_TOOLS", "").replace(",", " ").split() if tool]
+discovered = []
+
+for line in os.environ.get("TOOLS_OUTPUT", "").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        payload = json.loads(line)
+    except Exception:
+        continue
+    if payload.get("type") == "system" and payload.get("subtype") == "init":
+        tools = payload.get("tools")
+        if isinstance(tools, list):
+            discovered = [tool for tool in tools if isinstance(tool, str)]
+            break
+
+merged = []
+seen = set()
+for tool in [*discovered, *fallback, *extra]:
+    if tool and tool not in seen:
+        seen.add(tool)
+        merged.append(tool)
+
+print(",".join(merged))
+PY
+    )"
+    if [[ -n "$merged_tools" ]]; then
+      printf '%s\n' "$merged_tools"
+      return
+    fi
+  fi
+
+  if [[ -n "${CLAUDE_ALLOWED_TOOLS_EXTRA:-}" ]]; then
+    printf '%s,%s\n' "$fallback_tools" "${CLAUDE_ALLOWED_TOOLS_EXTRA}"
+  else
+    printf '%s\n' "$fallback_tools"
+  fi
+}
+
+allowed_tools="$(discover_allowed_tools)"
 
 echo "[claude-meta] cwd: $(pwd)" >&2
 echo "[claude-meta] meta prompt: $prompt_file (${meta_len} chars)" >&2

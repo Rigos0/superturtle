@@ -1,5 +1,6 @@
 """Concrete agent classes for SubTurtle loop orchestration."""
 
+import json
 import os
 import subprocess
 import sys
@@ -7,7 +8,8 @@ from pathlib import Path
 
 
 MAX_CAPTURE_CHARS = 500_000
-CLAUDE_ALLOWED_TOOLS = [
+CLAUDE_FALLBACK_ALLOWED_TOOLS = [
+    "Agent",
     "Task",
     "TaskOutput",
     "TaskStop",
@@ -22,8 +24,10 @@ CLAUDE_ALLOWED_TOOLS = [
     "TodoWrite",
     "WebSearch",
     "ToolSearch",
+    "KillShell",
     "AskUserQuestion",
     "Skill",
+    "SlashCommand",
     "EnterPlanMode",
     "ExitPlanMode",
     "EnterWorktree",
@@ -31,14 +35,66 @@ CLAUDE_ALLOWED_TOOLS = [
     "CronDelete",
     "CronList",
 ]
+_ALLOWED_TOOLS_CACHE: dict[str, str] = {}
 
 
-def _allowed_tools_arg() -> str:
-    tools = list(CLAUDE_ALLOWED_TOOLS)
+def _fallback_allowed_tools() -> list[str]:
+    tools = list(CLAUDE_FALLBACK_ALLOWED_TOOLS)
     extra = os.environ.get("CLAUDE_ALLOWED_TOOLS_EXTRA", "")
     if extra:
         tools.extend(part.strip() for part in extra.replace(",", " ").split() if part.strip())
-    return ",".join(dict.fromkeys(tools))
+    return list(dict.fromkeys(tools))
+
+
+def _parse_init_tools(output: str) -> list[str]:
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except Exception:
+            continue
+        if payload.get("type") == "system" and payload.get("subtype") == "init":
+            tools = payload.get("tools")
+            if isinstance(tools, list):
+                return [tool for tool in tools if isinstance(tool, str)]
+    return []
+
+
+def _allowed_tools_arg(cwd: Path) -> str:
+    cache_key = str(cwd)
+    cached = _ALLOWED_TOOLS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    fallback_tools = _fallback_allowed_tools()
+    try:
+        probe = subprocess.run(
+            ["claude", "-p", "ok", "--verbose", "--output-format", "stream-json"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        discovered = _parse_init_tools(probe.stdout)
+        tools = list(dict.fromkeys([*discovered, *fallback_tools])) if discovered else fallback_tools
+        if not discovered:
+            print(
+                "[claude] tool discovery returned no init tool list; using fallback allowlist",
+                file=sys.stderr,
+            )
+    except Exception as exc:
+        print(
+            f"[claude] tool discovery failed; using fallback allowlist ({exc})",
+            file=sys.stderr,
+        )
+        tools = fallback_tools
+
+    resolved = ",".join(tools)
+    _ALLOWED_TOOLS_CACHE[cache_key] = resolved
+    return resolved
 
 
 def _run_streaming(cmd: list[str], cwd: Path) -> str:
@@ -96,7 +152,7 @@ class Claude:
             "plan",
             "--dangerously-skip-permissions",
             "--allowedTools",
-            _allowed_tools_arg(),
+            _allowed_tools_arg(self.cwd),
         ]
         for add_dir in self.add_dirs:
             cmd.extend(["--add-dir", add_dir])
@@ -113,7 +169,7 @@ class Claude:
             "claude",
             "--dangerously-skip-permissions",
             "--allowedTools",
-            _allowed_tools_arg(),
+            _allowed_tools_arg(self.cwd),
         ]
         for add_dir in self.add_dirs:
             cmd.extend(["--add-dir", add_dir])
