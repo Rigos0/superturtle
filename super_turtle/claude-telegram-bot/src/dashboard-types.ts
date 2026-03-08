@@ -3,6 +3,8 @@
  */
 
 import type { ListedSubTurtle, ClaudeBacklogItem } from "./handlers/commands";
+import type { MetaAgentInboxItemRecord } from "./conductor-inbox";
+import type { WorkerStateRecord, WakeupRecord } from "./conductor-supervisor";
 import type { MetaFileData } from "./dashboard";
 import type { InjectedArtifact } from "./injected-artifacts";
 import type { SessionHistoryView } from "./session-history";
@@ -258,6 +260,50 @@ export type QueueResponse = {
   totalChats: number;
   totalMessages: number;
   chats: DeferredChatView[];
+};
+
+export type ConductorWorkerView = Pick<
+  WorkerStateRecord,
+  | "worker_name"
+  | "run_id"
+  | "lifecycle_state"
+  | "loop_type"
+  | "current_task"
+  | "checkpoint"
+  | "created_at"
+  | "updated_at"
+>;
+
+export type ConductorWakeupView = Pick<
+  WakeupRecord,
+  | "id"
+  | "worker_name"
+  | "run_id"
+  | "category"
+  | "delivery_state"
+  | "summary"
+  | "created_at"
+  | "updated_at"
+>;
+
+export type ConductorInboxView = Pick<
+  MetaAgentInboxItemRecord,
+  | "id"
+  | "worker_name"
+  | "run_id"
+  | "priority"
+  | "category"
+  | "title"
+  | "delivery_state"
+  | "created_at"
+  | "updated_at"
+>;
+
+export type ConductorResponse = {
+  generatedAt: string;
+  workers: ConductorWorkerView[];
+  wakeups: ConductorWakeupView[];
+  inbox: ConductorInboxView[];
 };
 
 export type GitResponse = {
