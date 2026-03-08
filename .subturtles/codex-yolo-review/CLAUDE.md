@@ -1,5 +1,5 @@
 # Current task
-Review SubTurtle orchestration changes for isolation regressions using the collected workspace context in `review-context.md`.
+Identify missing or insufficient automated tests for the reviewed runtime/dashboard/SubTurtle changes.
 
 # End goal with specs
 Produce an actionable review report that prioritizes high-severity issues, includes file/line references, identifies missing tests, and avoids broad stylistic feedback.
@@ -18,6 +18,6 @@ Produce an actionable review report that prioritizes high-severity issues, inclu
 - [x] Collect changed files and commit context
 - [x] Review runtime/session lifecycle changes for crash or stall risks
 - [x] Review observability and logging paths for missing failure signals
-- [ ] Review SubTurtle orchestration changes for isolation regressions <- current
-- [ ] Identify missing or insufficient automated tests
+- [x] Review SubTurtle orchestration changes for isolation regressions
+- [ ] Identify missing or insufficient automated tests <- current
 - [ ] Draft concise findings report for Super Turtle

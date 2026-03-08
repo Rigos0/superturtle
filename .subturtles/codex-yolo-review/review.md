@@ -30,7 +30,16 @@ Ordered by severity.
 - Concrete fix: extend `ContextResponse` and `/api/context` with Codex bootstrap metadata (`text`, `source`, and/or an explicit loaded boolean), and expose that alongside the existing META prompt state so `/debug` and dashboard consumers can detect the failure immediately.
 - Missing test: update the `/api/context` route coverage in `src/dashboard.test.ts` to assert the Codex bootstrap fields are present.
 
+### 4. Invalid spawn attempts now leak phantom SubTurtles into the shared worker inventory
+- File paths: `super_turtle/subturtle/ctl`, `super_turtle/subturtle/tests/test_ctl_integration.sh`
+- Approximate lines: `838-865`, `1145-1203`, `578-615`
+- Issue: `do_spawn()` now copies the proposed state file into `.subturtles/<name>/CLAUDE.md` before validation, then exits immediately on `validate_spawn_state_file()` failure. That leaves a workspace directory behind even though no process, metadata, or cron job was created. `ctl list` enumerates every directory under `.subturtles/`, so the failed spawn immediately shows up as a stopped SubTurtle with a task summary. The new integration test locks that behavior in by asserting the failed workspace still exists.
+- Why it matters: this is an isolation leak across the whole SubTurtle control plane. A bad spawn for one worker name pollutes the global inventory that operators use to inspect all workers, making a non-existent worker indistinguishable from a legitimately stopped one. That undermines process observability and creates false positives in the shared `.subturtles/` namespace.
+- Concrete fix: validate the incoming state before persisting it into the target workspace, or remove the workspace on any pre-start failure path (`state` validation, start failure, cron registration failure). `ctl list` should only surface workers that actually reached a managed state.
+- Missing test: replace the current assertion on `${ws}/CLAUDE.md` with coverage that `ctl spawn` failure leaves no workspace behind and that `ctl list` does not include the failed worker name.
+
 ## Verification
 
 - `bun test src/codex-session.test.ts src/session-observability.test.ts src/dashboard.test.ts`
 - Result: `98 pass, 0 fail`
+- Manual reproduction: `super_turtle/subturtle/ctl spawn review-invalid-<pid> --state-file <invalid.md>` exited non-zero, left `.subturtles/review-invalid-<pid>/CLAUDE.md` on disk, and `super_turtle/subturtle/ctl list` reported that name as a stopped worker.
