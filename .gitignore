@@ -42,6 +42,9 @@ debug_redirect.txt
 super_turtle/claude-telegram-bot/cron-jobs.json
 super_turtle/state/runs.jsonl
 
+# Local review outputs
+reviews/
+
 # Claude Code (local-only)
 .claude/settings.local.json
 .claude/.DS_Store
