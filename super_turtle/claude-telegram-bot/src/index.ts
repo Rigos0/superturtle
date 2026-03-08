@@ -845,8 +845,6 @@ const releaseInstanceLock = acquireInstanceLockOrExit();
 const botInfo = await bot.api.getMe();
 botLog.info({ username: botInfo.username }, `Bot started: @${botInfo.username}`);
 
-// Start cron timer
-startCronTimer();
 if (process.env.TURTLE_GREETINGS !== "false" && ALLOWED_USERS.length > 0) {
   startTurtleGreetings(bot, ALLOWED_USERS[0]!);
   botLog.info("Turtle greetings enabled (8am/8pm Europe/Prague)");
@@ -925,6 +923,9 @@ if (existsSync(RESTART_FILE)) {
 }
 
 await runConductorMaintenancePass({ recoverInFlightWakeups: true });
+
+// Start cron timer after boot-time recovery so recurring ticks never race startup maintenance.
+startCronTimer();
 
 // Start with concurrent runner (commands work immediately)
 // Retry forever on getUpdates failures (e.g. network drop during sleep)

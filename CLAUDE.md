@@ -131,7 +131,7 @@ We are redesigning the weak parts:
 - The bot timer now recreates missing `completion_requested` / `fatal_error` / `timeout` wakeups from canonical worker state before delivery, and stale recurring SubTurtle cron cleanup is persisted as a conductor event instead of existing only as an inline warning
 - The bot now runs the same conductor maintenance pass on startup and on each timer tick, so recovered wakeups and stale recurring-cron cleanup no longer wait for the first scheduled interval after a reboot
 - Startup conductor maintenance now also requeues wakeups stranded in `processing`, so an interrupted completion/failure/milestone notification is replayable after a bot restart instead of being lost indefinitely
-- The bot cron timer is now single-flight, so a slow maintenance/delivery pass cannot overlap the next 10-second tick and race the conductor against itself
+- The bot cron timer is now single-flight and only starts after boot-time maintenance finishes, so recovery work runs before recurring ticks and a slow maintenance/delivery pass cannot overlap the next 10-second conductor cycle
 - `ctl spawn` now registers structured supervision cron jobs with `job_kind=subturtle_supervision`, `worker_name`, and `supervision_mode`, and the bot prefers those fields over prompt regex parsing
 - `handoff.md` is now refreshed from canonical worker state plus pending wakeups, and dashboard lanes prefer conductor worker fields for live SubTurtles
 - Reconciled lifecycle wakeups now also create durable meta-agent inbox items; the next successful interactive Claude/Codex turn injects them as non-chat background context and acknowledges them after the turn completes

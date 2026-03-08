@@ -444,7 +444,7 @@ Current producer coverage:
 - the bot timer now repairs missing `completion_requested`, `fatal_error`, and `timeout` wake-ups from canonical worker state before delivery, so pending terminal transitions can still complete after a bot restart or partial state loss
 - the bot now runs the same conductor maintenance pass once at startup and then on every timer tick, so wake-up recovery and stale recurring-cron cleanup happen immediately after a reboot instead of waiting for the first cron interval
 - startup conductor maintenance also requeues wake-ups stranded in `processing`, so a crash between the pre-send write and the final `sent` write becomes replayable recovery state instead of a permanent wedge
-- the 10-second bot cron loop is now single-flight, so a slow maintenance/delivery pass cannot overlap the next timer tick and race worker reconciliation or cron mutation paths
+- the 10-second bot cron loop is now single-flight and is armed only after boot-time maintenance completes, so restart recovery runs before recurring ticks and slow maintenance/delivery work cannot overlap the next timer tick
 - stale recurring SubTurtle cron cleanup is now persisted back into conductor state via `worker.cron_removed`, rather than existing only as an operator warning path
 
 The migration is still in a mixed mode:
