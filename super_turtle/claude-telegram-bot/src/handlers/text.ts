@@ -4,7 +4,7 @@
 
 import type { Context, NextFunction } from "grammy";
 import { session } from "../session";
-import { ALLOWED_USERS, CTL_PATH } from "../config";
+import { ALLOWED_USERS } from "../config";
 import { getCurrentDriver } from "../drivers/registry";
 import { isAuthorized, rateLimiter } from "../security";
 import {
@@ -35,6 +35,7 @@ import {
   isAnyDriverRunning,
   isBackgroundRunActive,
   preemptBackgroundRunForUserPriority,
+  runMessageWithActiveDriver,
 } from "./driver-routing";
 
 export interface HandleTextOptions {
@@ -53,29 +54,6 @@ function summarizeErrorMessage(error: unknown, maxLength = 240): string {
   return compact.length > maxLength
     ? `${compact.slice(0, maxLength - 3)}...`
     : compact;
-}
-
-function buildStallRecoveryPrompt(originalMessage: string): string {
-  return `The previous response stream stalled before completion while handling this request.
-Continue from current repository/runtime state and finish the task safely.
-Before making changes, verify what already happened (for example existing files, running processes, or prior command effects).
-Do not blindly repeat side-effecting operations that may have already succeeded.
-
-Original request:
-${originalMessage}`;
-}
-
-function buildSpawnOrchestrationRecoveryPrompt(originalMessage: string): string {
-  return `The previous response stream stalled after SubTurtle spawn orchestration.
-Continue from current repository/runtime state and finish the task safely.
-Before taking any side-effecting action:
-1) Run ${CTL_PATH} list and treat already-running SubTurtles as successfully spawned.
-2) If any intended SubTurtles are missing, spawn only the missing ones.
-3) Never re-run spawn commands for names that already exist or are running.
-4) Report exact running names and any missing/failed names.
-
-Original request:
-${originalMessage}`;
 }
 
 /**
@@ -195,196 +173,66 @@ export async function handleText(
   // 8. Start typing indicator
   const typing = startTypingIndicator(ctx);
   session.typingController = typing;
+  const driver = getCurrentDriver();
+  const state = new StreamingState();
+  const statusCallback = silent
+    ? createSilentStatusCallback(ctx, state)
+    : createStatusCallback(ctx, state);
 
   try {
-    let state = new StreamingState();
-    let statusCallback = silent
-      ? createSilentStatusCallback(ctx, state)
-      : createStatusCallback(ctx, state);
+    const response = await runMessageWithActiveDriver({
+      message,
+      source: "text",
+      username,
+      userId,
+      chatId,
+      ctx,
+      statusCallback,
+    });
 
-    // 9. Driver abstraction path
-    const driver = getCurrentDriver();
-    const MAX_RETRIES = 1;
+    await auditLog(userId, username, driver.auditEvent, message, response, {
+      request_id: requestId,
+      chat_id: chatId,
+      driver: driver.id,
+    });
+  } catch (error) {
+    const errorSummary = summarizeErrorMessage(error);
+    await teardownStreamingState(ctx, state, {
+      chatId,
+      clearRegisteredState: true,
+    });
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const response = await driver.runMessage({
-          message,
-          source: "text",
-          username,
-          userId,
-          chatId,
-          ctx,
-          statusCallback,
-        });
+    streamLog.error(
+      {
+        err: error,
+        errorSummary,
+        requestId,
+        userId,
+        username,
+        chatId,
+        driver: driver.id,
+      },
+      "Error processing message"
+    );
 
-        await auditLog(userId, username, driver.auditEvent, message, response, {
+    if (driver.isCancellationError(error)) {
+      const wasInterrupt = session.consumeInterruptFlag();
+      if (!silent && !wasInterrupt) {
+        await ctx.reply("🛑 Query stopped.");
+      }
+    } else if (!silent) {
+      await auditLogError(
+        userId,
+        username,
+        errorSummary,
+        "handleText",
+        {
           request_id: requestId,
           chat_id: chatId,
           driver: driver.id,
-          attempt: attempt + 1,
-        });
-        break;
-      } catch (error) {
-        const errorSummary = summarizeErrorMessage(error);
-        // Clean up all streaming artifacts from this attempt before retry/final exit.
-        await teardownStreamingState(ctx, state, {
-          chatId,
-          clearRegisteredState: true,
-        });
-
-        // Empty response from stale session — session was already cleared,
-        // so retry will start a fresh session transparently.
-        if (getErrorMessage(error).includes("Empty response from stale session") && attempt < MAX_RETRIES) {
-          streamLog.info(
-            {
-              userId,
-              username,
-              chatId,
-              driver: driver.id,
-              attempt: attempt + 2,
-              maxAttempts: MAX_RETRIES + 1,
-            },
-            "Empty response from stale session, retrying with fresh session"
-          );
-          state = new StreamingState();
-          statusCallback = silent
-            ? createSilentStatusCallback(ctx, state)
-            : createStatusCallback(ctx, state);
-          continue;
         }
-
-        if (driver.isStallError(error) && attempt < MAX_RETRIES) {
-          if (state.sawSpawnOrchestration) {
-            streamLog.warn(
-              {
-                userId,
-                username,
-                chatId,
-                driver: driver.id,
-                attempt: attempt + 2,
-                maxAttempts: MAX_RETRIES + 1,
-              },
-              `${driver.displayName} stream stalled after spawn orchestration; running safe continuation retry`
-            );
-            if (!silent) {
-              await ctx.reply(
-                `⚠️ ${driver.displayName} stream stalled after spawn orchestration. Resuming with state verification to avoid duplicate SubTurtle spawns.`
-              );
-            }
-            message = buildSpawnOrchestrationRecoveryPrompt(message);
-            state = new StreamingState();
-            statusCallback = silent
-              ? createSilentStatusCallback(ctx, state)
-              : createStatusCallback(ctx, state);
-            continue;
-          }
-
-          streamLog.warn(
-            {
-              userId,
-              username,
-              chatId,
-              driver: driver.id,
-              attempt: attempt + 2,
-              maxAttempts: MAX_RETRIES + 1,
-            },
-            `${driver.displayName} stream stalled, running one continuation attempt`
-          );
-
-          if (!silent) {
-            await ctx.reply(
-              state.sawToolUse
-                ? `⚠️ ${driver.displayName} stream stalled mid-task, resuming from current state...`
-                : `⚠️ ${driver.displayName} stream stalled, retrying...`
-            );
-          }
-
-          if (!state.sawToolUse) {
-            await driver.kill();
-          } else {
-            message = buildStallRecoveryPrompt(message);
-          }
-
-          state = new StreamingState();
-          statusCallback = silent
-            ? createSilentStatusCallback(ctx, state)
-            : createStatusCallback(ctx, state);
-          continue;
-        }
-
-        if (driver.isCrashError(error) && attempt < MAX_RETRIES && !state.sawToolUse) {
-          streamLog.info(
-            {
-              userId,
-              username,
-              chatId,
-              driver: driver.id,
-              attempt: attempt + 2,
-              maxAttempts: MAX_RETRIES + 1,
-            },
-            `${driver.displayName} crashed, retrying`
-          );
-          await driver.kill();
-          if (!silent) {
-            await ctx.reply(`⚠️ ${driver.displayName} crashed, retrying...`);
-          }
-          // Reset state for retry
-          state = new StreamingState();
-          statusCallback = silent
-            ? createSilentStatusCallback(ctx, state)
-            : createStatusCallback(ctx, state);
-          continue;
-        }
-
-        if (driver.isCrashError(error) && state.sawToolUse) {
-          streamLog.warn(
-            {
-              userId,
-              username,
-              chatId,
-              driver: driver.id,
-            },
-            `${driver.displayName} crashed after tool execution; skipping automatic retry to avoid replaying side effects`
-          );
-        }
-
-        // Final attempt failed or non-retryable error
-        streamLog.error(
-          {
-            err: error,
-            errorSummary,
-            requestId,
-            userId,
-            username,
-            chatId,
-            driver: driver.id,
-          },
-          "Error processing message"
-        );
-
-        if (driver.isCancellationError(error)) {
-          const wasInterrupt = session.consumeInterruptFlag();
-          if (!silent && !wasInterrupt) {
-            await ctx.reply("🛑 Query stopped.");
-          }
-        } else if (!silent) {
-          await auditLogError(
-            userId,
-            username,
-            errorSummary,
-            "handleText",
-            {
-              request_id: requestId,
-              chat_id: chatId,
-              driver: driver.id,
-              attempt: attempt + 1,
-            }
-          );
-          await ctx.reply(`❌ Error: ${errorSummary.slice(0, 200)}`);
-        }
-        break;
-      }
+      );
+      await ctx.reply(`❌ Error: ${errorSummary.slice(0, 200)}`);
     }
   } finally {
     // Keep processing state consistent even if error-path notifications fail.

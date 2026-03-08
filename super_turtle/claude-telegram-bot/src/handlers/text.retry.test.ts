@@ -1,53 +1,151 @@
-import { describe, expect, it } from "bun:test";
-import { resolve } from "path";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import type { Context } from "grammy";
+import { session } from "../session";
 
-type RetryProbeMode =
-  | "tool-before-crash"
-  | "plain-crash"
-  | "tool-before-stall"
-  | "spawn-tool-before-stall"
-  | "encoded-spawn-tool-before-stall"
-  | "plain-stall";
+type TextModule = typeof import("./text");
 
-type RetryProbePayload = {
-  attempts: number;
-  replies: string[];
-  messages: string[];
-};
+const originalStartProcessing = session.startProcessing;
+const originalActiveDriver = session.activeDriver;
+const originalTypingController = session.typingController;
+const originalConversationTitle = session.conversationTitle;
+const originalLastMessage = session.lastMessage;
 
-type RetryProbeResult = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  payload: RetryProbePayload | null;
-};
+let runMessageWithActiveDriverMock: ReturnType<typeof mock>;
+let startTypingIndicatorMock: ReturnType<typeof mock>;
+let teardownStreamingStateMock: ReturnType<typeof mock>;
+let drainDeferredQueueMock: ReturnType<typeof mock>;
+let auditLogErrorMock: ReturnType<typeof mock>;
+let stopProcessingMock: ReturnType<typeof mock>;
+let typingStopMock: ReturnType<typeof mock>;
 
-const textHandlerPath = resolve(import.meta.dir, "text.ts");
-const sessionPath = resolve(import.meta.dir, "../session.ts");
-const marker = "__HANDLE_TEXT_RETRY_PROBE__=";
+async function loadTextModule(): Promise<TextModule> {
+  return import(`./text.ts?text-retry-test=${Date.now()}-${Math.random()}`);
+}
 
-async function probeRetry(mode: RetryProbeMode): Promise<RetryProbeResult> {
-  const env: Record<string, string> = {
-    ...process.env,
-    TELEGRAM_BOT_TOKEN: "test-token",
-    TELEGRAM_ALLOWED_USERS: "123",
-    CLAUDE_WORKING_DIR: process.cwd(),
-    HOME: process.env.HOME || "/tmp",
+beforeEach(async () => {
+  const actualImportSuffix = `${Date.now()}-${Math.random()}`;
+  const actualDeferredQueue = await import(
+    `../deferred-queue.ts?actual=${actualImportSuffix}`
+  );
+  const actualDriverRouting = await import(
+    `./driver-routing.ts?actual=${actualImportSuffix}`
+  );
+  const actualRegistry = await import(`../drivers/registry.ts?actual=${actualImportSuffix}`);
+  const actualSecurity = await import(`../security.ts?actual=${actualImportSuffix}`);
+  const actualStreaming = await import(`./streaming.ts?actual=${actualImportSuffix}`);
+  const actualUtils = await import(`../utils.ts?actual=${actualImportSuffix}`);
+
+  runMessageWithActiveDriverMock = mock(async () => {
+    throw new Error("Event stream stalled for 120000ms before completion");
+  });
+  teardownStreamingStateMock = mock(async () => {});
+  drainDeferredQueueMock = mock(async () => {});
+  auditLogErrorMock = mock(async () => {});
+  stopProcessingMock = mock(() => {});
+  typingStopMock = mock(() => {});
+  startTypingIndicatorMock = mock(() => ({ stop: typingStopMock }));
+
+  session.activeDriver = "claude";
+  session.startProcessing = mock(
+    () => stopProcessingMock
+  ) as unknown as typeof session.startProcessing;
+  session.typingController = null;
+  session.conversationTitle = null;
+  session.lastMessage = null;
+
+  const driver = {
+    id: "claude" as const,
+    displayName: "Claude",
+    auditEvent: "TEXT" as const,
+    runMessage: async () => "",
+    stop: async () => false as const,
+    kill: async () => {},
+    isCrashError: () => false,
+    isStallError: () => true,
+    isCancellationError: () => false,
+    getStatusSnapshot: () => ({
+      driverName: "Claude",
+      isActive: false,
+      sessionId: null,
+      lastActivity: null,
+      lastError: null,
+      lastErrorTime: null,
+      lastUsage: null,
+    }),
   };
 
-  const script = `
-    const marker = ${JSON.stringify(marker)};
-    const textHandlerPath = ${JSON.stringify(textHandlerPath)};
-    const sessionPath = ${JSON.stringify(sessionPath)};
+  mock.module("../drivers/registry", () => ({
+    ...actualRegistry,
+    getCurrentDriver: () => driver,
+  }));
 
-    const { handleText } = await import(textHandlerPath);
-    const { session } = await import(sessionPath);
-    session.activeDriver = "claude";
+  mock.module("../security", () => ({
+    ...actualSecurity,
+    isAuthorized: () => true,
+    rateLimiter: {
+      check: () => [true, null] as const,
+    },
+  }));
 
-    const replies = [];
-    const messages = [];
-    const chat = { id: 123, type: "private" };
-    let attempts = 0;
+  mock.module("../utils", () => ({
+    ...actualUtils,
+    auditLog: async (..._args: unknown[]) => {},
+    auditLogAuth: async (..._args: unknown[]) => {},
+    auditLogError: (...args: unknown[]) => auditLogErrorMock(...args),
+    auditLogRateLimit: async (..._args: unknown[]) => {},
+    checkInterrupt: async (message: string) => message,
+    generateRequestId: () => "text-retry-test",
+    isStopIntent: () => false,
+    startTypingIndicator: (ctx: Context) => startTypingIndicatorMock(ctx),
+  }));
+
+  mock.module("./driver-routing", () => ({
+    ...actualDriverRouting,
+    isAnyDriverRunning: () => false,
+    isBackgroundRunActive: () => false,
+    preemptBackgroundRunForUserPriority: async () => false,
+    runMessageWithActiveDriver: (input: unknown) => runMessageWithActiveDriverMock(input),
+  }));
+
+  mock.module("./streaming", () => ({
+    ...actualStreaming,
+    StreamingState: class StreamingState {},
+    createStatusCallback: () => async () => {},
+    createSilentStatusCallback: () => async () => {},
+    teardownStreamingState: (
+      ctx: Context,
+      state: unknown,
+      options?: { chatId?: number; clearRegisteredState?: boolean }
+    ) => teardownStreamingStateMock(ctx, state, options),
+  }));
+
+  mock.module("../deferred-queue", () => ({
+    ...actualDeferredQueue,
+    drainDeferredQueue: (
+      ctx: Context,
+      chatId: number,
+      onDrainItem?: (msg: unknown) => Promise<void>
+    ) => drainDeferredQueueMock(ctx, chatId, onDrainItem),
+    enqueueDeferredMessage: () => 1,
+    makeDrainItemNotifier: () => async () => {},
+    unsuppressDrain: () => {},
+  }));
+});
+
+afterEach(() => {
+  session.startProcessing = originalStartProcessing;
+  session.activeDriver = originalActiveDriver;
+  session.typingController = originalTypingController;
+  session.conversationTitle = originalConversationTitle;
+  session.lastMessage = originalLastMessage;
+  mock.restore();
+});
+
+describe("handleText retry delegation", () => {
+  it("calls runMessageWithActiveDriver once and leaves retry policy to driver-routing", async () => {
+    const { handleText } = await loadTextModule();
+    const replies: string[] = [];
+    const chat = { id: 321, type: "private" } as const;
 
     const ctx = {
       from: { id: 123, username: "tester", is_bot: false, first_name: "Tester" },
@@ -58,7 +156,7 @@ async function probeRetry(mode: RetryProbeMode): Promise<RetryProbeResult> {
         date: Math.floor(Date.now() / 1000),
         chat,
       },
-      reply: async (text) => {
+      reply: async (text: string) => {
         replies.push(String(text));
         return {
           message_id: replies.length,
@@ -71,179 +169,26 @@ async function probeRetry(mode: RetryProbeMode): Promise<RetryProbeResult> {
         editMessageText: async () => {},
         deleteMessage: async () => {},
       },
-    };
+    } as unknown as Context;
 
-    const original = session.sendMessageStreaming;
-    session.sendMessageStreaming = async (_message, _username, _userId, statusCallback) => {
-      attempts += 1;
-      messages.push(String(_message));
+    await handleText(ctx);
 
-      if (${JSON.stringify(mode)} === "tool-before-crash" && attempts === 1) {
-        await statusCallback("tool", "Tool: spawn");
-        throw new Error("process exited with code 1");
-      }
-
-      if (${JSON.stringify(mode)} === "plain-crash" && attempts === 1) {
-        throw new Error("process exited with code 1");
-      }
-
-      if (${JSON.stringify(mode)} === "tool-before-stall" && attempts === 1) {
-        await statusCallback("tool", "▶️ <code>git status</code>");
-        throw new Error("Event stream stalled for 120000ms before completion");
-      }
-
-      if (${JSON.stringify(mode)} === "spawn-tool-before-stall" && attempts === 1) {
-        await statusCallback("tool", "▶️ <code>./super_turtle/subturtle/ctl spawn web-ui --prompt 'x'</code>");
-        throw new Error("Event stream stalled for 120000ms before completion");
-      }
-
-      if (${JSON.stringify(mode)} === "encoded-spawn-tool-before-stall" && attempts === 1) {
-        await statusCallback(
-          "tool",
-          "▶️ &lt;code&gt;./super_turtle/subturtle/ctl spawn web-ui --prompt 'x'&lt;/code&gt;"
-        );
-        throw new Error("Event stream stalled for 120000ms before completion");
-      }
-
-      if (${JSON.stringify(mode)} === "plain-stall" && attempts === 1) {
-        throw new Error("Event stream stalled for 120000ms before completion");
-      }
-
-      await statusCallback("text", "Retry succeeded", 0);
-      await statusCallback("segment_end", "Retry succeeded", 0);
-      await statusCallback("done", "");
-      return "Retry succeeded";
-    };
-
-    try {
-      await handleText(ctx);
-    } finally {
-      session.sendMessageStreaming = original;
-    }
-
-    const payload = { attempts, replies, messages };
-    console.log(marker + JSON.stringify(payload));
-  `;
-
-  const proc = Bun.spawn({
-    cmd: ["bun", "--no-env-file", "-e", script],
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-
-  const payloadLine = stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.startsWith(marker));
-
-  const payload = payloadLine
-    ? (JSON.parse(payloadLine.slice(marker.length)) as RetryProbePayload)
-    : null;
-
-  return { exitCode, stdout, stderr, payload };
-}
-
-describe("handleText crash retry gating", () => {
-  it("does not retry crash errors after tool execution", async () => {
-    const result = await probeRetry("tool-before-crash");
-    if (result.exitCode !== 0) {
-      throw new Error(
-        `Tool-before-crash probe failed:\n${result.stderr || result.stdout}`
-      );
-    }
-
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.attempts).toBe(1);
-    expect(
-      result.payload?.replies.some((entry) =>
-        entry.includes("retrying")
-      )
-    ).toBe(false);
-  });
-
-  it("still retries crash errors when no tools ran", async () => {
-    const result = await probeRetry("plain-crash");
-    if (result.exitCode !== 0) {
-      throw new Error(`Plain-crash probe failed:\n${result.stderr || result.stdout}`);
-    }
-
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.attempts).toBe(2);
-    expect(
-      result.payload?.replies.some((entry) =>
-        entry.includes("retrying")
-      )
-    ).toBe(true);
-  });
-
-  it("retries stalled runs after tool execution with a recovery prompt", async () => {
-    const result = await probeRetry("tool-before-stall");
-    if (result.exitCode !== 0) {
-      throw new Error(`Tool-before-stall probe failed:\n${result.stderr || result.stdout}`);
-    }
-
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.attempts).toBe(2);
-    expect(
-      result.payload?.replies.some((entry) =>
-        entry.includes("stream stalled mid-task")
-      )
-    ).toBe(true);
-    expect(result.payload?.messages.length).toBe(2);
-    expect(result.payload?.messages[1]?.includes("Do not blindly repeat side-effecting operations")).toBe(true);
-  });
-
-  it("retries stalled runs after spawn orchestration tool activity with safe continuation", async () => {
-    const result = await probeRetry("spawn-tool-before-stall");
-    if (result.exitCode !== 0) {
-      throw new Error(`Spawn-tool-before-stall probe failed:\n${result.stderr || result.stdout}`);
-    }
-
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.attempts).toBe(2);
-    expect(
-      result.payload?.replies.some((entry) =>
-        entry.includes("stalled after spawn orchestration")
-      )
-    ).toBe(true);
-    expect(result.payload?.messages[1]?.includes("/subturtle/ctl list")).toBe(true);
-  });
-
-  it("retries stalled runs when spawn orchestration tool status is HTML-encoded", async () => {
-    const result = await probeRetry("encoded-spawn-tool-before-stall");
-    if (result.exitCode !== 0) {
-      throw new Error(`Encoded-spawn-tool-before-stall probe failed:\n${result.stderr || result.stdout}`);
-    }
-
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.attempts).toBe(2);
-    expect(
-      result.payload?.replies.some((entry) =>
-        entry.includes("stalled after spawn orchestration")
-      )
-    ).toBe(true);
-    expect(result.payload?.messages[1]?.includes("/subturtle/ctl list")).toBe(true);
-  });
-
-  it("retries stalled runs without tool execution", async () => {
-    const result = await probeRetry("plain-stall");
-    if (result.exitCode !== 0) {
-      throw new Error(`Plain-stall probe failed:\n${result.stderr || result.stdout}`);
-    }
-
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.attempts).toBe(2);
-    expect(
-      result.payload?.replies.some((entry) =>
-        entry.includes("stream stalled, retrying")
-      )
-    ).toBe(true);
+    expect(runMessageWithActiveDriverMock).toHaveBeenCalledTimes(1);
+    expect(runMessageWithActiveDriverMock.mock.calls[0]?.[0]).toMatchObject({
+      message: "spawn subturtles",
+      source: "text",
+      username: "tester",
+      userId: 123,
+      chatId: 321,
+      ctx,
+    });
+    expect(teardownStreamingStateMock).toHaveBeenCalledTimes(1);
+    expect(auditLogErrorMock).toHaveBeenCalledTimes(1);
+    expect(replies).toEqual([
+      "❌ Error: Event stream stalled for 120000ms before completion",
+    ]);
+    expect(stopProcessingMock).toHaveBeenCalledTimes(1);
+    expect(typingStopMock).toHaveBeenCalledTimes(1);
+    expect(drainDeferredQueueMock).toHaveBeenCalledTimes(1);
   });
 });
