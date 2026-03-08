@@ -32,7 +32,6 @@ To achieve this, I set up a folder with a CLAUDE.md that teaches Claude about me
 - 🔄 **Session persistence**: Conversations continue across messages
 - 📨 **Message queuing**: Send multiple messages while Claude works - they queue up automatically. Prefix with `!` or use `/stop` to interrupt and send immediately
 - 🛑 **Global stop intents**: `stop`, `pause`, `abort`, `!`, and `!stop` (including voice transcript variants) immediately stop active work and running SubTurtles
-- 🧠 **Extended thinking**: Trigger Claude's reasoning by using words like "think" or "reason" - you'll see its thought process as it works (configurable via `THINKING_TRIGGER_KEYWORDS`)
 - 🔘 **Interactive buttons**: Claude can present options as tappable inline buttons via the built-in `ask_user` MCP tool
 
 ## Quick Start (Super Turtle repo)

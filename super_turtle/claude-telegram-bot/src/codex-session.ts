@@ -420,32 +420,6 @@ function buildCodexMcpConfig(): Record<string, unknown> {
   return { mcp_servers: mcpServers };
 }
 
-/**
- * Determine Codex reasoning effort based on message keywords.
- * Maps thinking keywords to modelReasoningEffort levels.
- */
-function mapThinkingToReasoningEffort(message: string): CodexEffortLevel {
-  const msgLower = message.toLowerCase();
-
-  // Check for "ultrathink" or "think hard" — deepest reasoning
-  if (msgLower.includes("ultrathink") || msgLower.includes("think hard")) {
-    return "xhigh";
-  }
-
-  // Check for "pensa bene" (Italian) — deep reasoning
-  if (msgLower.includes("pensa bene")) {
-    return "high";
-  }
-
-  // Check for "think" or "pensa" or "ragiona" — normal reasoning
-  if (msgLower.includes("think") || msgLower.includes("pensa") || msgLower.includes("ragiona")) {
-    return "high";
-  }
-
-  // Default — medium effort
-  return "medium";
-}
-
 // Codex models available (as of Feb 2026)
 export type CodexEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -1880,6 +1854,3 @@ ${messageToSend}`;
 
 // Global Codex session instance
 export const codexSession = new CodexSession();
-
-// Export functions for external use
-export { mapThinkingToReasoningEffort };

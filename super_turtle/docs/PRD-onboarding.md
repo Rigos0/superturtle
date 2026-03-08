@@ -473,9 +473,6 @@ CODEX_ENABLED=true
 
 # Rate limiting (requests per hour)
 RATE_LIMIT=100
-
-# Thinking triggers
-THINKING_TRIGGER_KEYWORDS=think,reason,analyze
 ```
 
 ### 5.3 Environment File Security

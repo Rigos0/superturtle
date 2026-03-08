@@ -1,4 +1,4 @@
-import { codexSession, mapThinkingToReasoningEffort } from "../codex-session";
+import { codexSession } from "../codex-session";
 import type { ChatDriver, DriverRunInput, DriverStatusSnapshot } from "./types";
 import type { McpCompletionCallback } from "../types";
 import { codexLog } from "../logger";
@@ -20,7 +20,6 @@ export class CodexDriver implements ChatDriver {
       checkPendingSendTurtleRequests,
     } = await import("../handlers/streaming");
 
-    const reasoningEffort = mapThinkingToReasoningEffort(input.message);
     process.env.TELEGRAM_CHAT_ID = String(input.chatId);
 
     // MCP completion callback: fires when an mcp_tool_call completes
@@ -145,7 +144,7 @@ export class CodexDriver implements ChatDriver {
         input.message,
         input.statusCallback,
         undefined,
-        reasoningEffort,
+        undefined,
         mcpCompletionCallback,
         input.source,
         input.userId,

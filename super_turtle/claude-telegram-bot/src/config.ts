@@ -324,20 +324,6 @@ export const TRANSCRIPTION_PROMPT = TRANSCRIPTION_CONTEXT
 
 export const TRANSCRIPTION_AVAILABLE = !!OPENAI_API_KEY;
 
-// ============== Thinking Keywords ==============
-
-const thinkingKeywordsStr =
-  process.env.THINKING_KEYWORDS || "think,pensa,ragiona";
-const thinkingDeepKeywordsStr =
-  process.env.THINKING_DEEP_KEYWORDS || "ultrathink,think hard,pensa bene";
-
-export const THINKING_KEYWORDS = thinkingKeywordsStr
-  .split(",")
-  .map((k) => k.trim().toLowerCase());
-export const THINKING_DEEP_KEYWORDS = thinkingDeepKeywordsStr
-  .split(",")
-  .map((k) => k.trim().toLowerCase());
-
 // ============== Media Group Settings ==============
 
 export const MEDIA_GROUP_TIMEOUT = 1000; // ms to wait for more photos in a group

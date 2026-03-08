@@ -18,8 +18,6 @@ import {
   SESSION_FILE,
   STREAMING_THROTTLE_MS,
   TEMP_PATHS,
-  THINKING_DEEP_KEYWORDS,
-  THINKING_KEYWORDS,
   TOKEN_PREFIX,
   IPC_DIR,
   WORKING_DIR,
@@ -233,26 +231,6 @@ function writeMcpConfig(chatId?: number): void {
   }
 }
 writeMcpConfig();
-
-/**
- * Determine thinking token budget based on message keywords.
- */
-function getThinkingLevel(message: string): number {
-  const msgLower = message.toLowerCase();
-
-  // Check deep thinking triggers first (more specific)
-  if (THINKING_DEEP_KEYWORDS.some((k) => msgLower.includes(k))) {
-    return 50000;
-  }
-
-  // Check normal thinking triggers
-  if (THINKING_KEYWORDS.some((k) => msgLower.includes(k))) {
-    return 10000;
-  }
-
-  // Default: no thinking
-  return 0;
-}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -574,10 +552,6 @@ export class ClaudeSession {
     }
 
     isNewSession = !this.isActive;
-    const thinkingTokens = getThinkingLevel(message);
-    const thinkingLabel =
-      { 0: "off", 10000: "normal", 50000: "deep" }[thinkingTokens] ||
-      String(thinkingTokens);
 
     // Inject current date/time at session start so Claude doesn't need to call a tool for it
     if (isNewSession) {
@@ -632,9 +606,6 @@ export class ClaudeSession {
     if (this.effort !== "high") {
       args.push("--effort", this.effort);
     }
-    if (thinkingTokens > 0) {
-      args.push("--max-thinking-tokens", String(thinkingTokens));
-    }
     for (const dir of ALLOWED_PATHS) {
       args.push("--add-dir", dir);
     }
@@ -647,11 +618,11 @@ export class ClaudeSession {
         `RESUMING session ${this.sessionId.slice(
           0,
           8
-        )}... (model=${this.model}, effort=${this.effort}, thinking=${thinkingLabel})`
+        )}... (model=${this.model}, effort=${this.effort})`
       );
     } else {
       claudeLog.info(
-        `STARTING new Claude session (model=${this.model}, effort=${this.effort}, thinking=${thinkingLabel})`
+        `STARTING new Claude session (model=${this.model}, effort=${this.effort})`
       );
       this.sessionId = null;
     }
@@ -677,12 +648,6 @@ export class ClaudeSession {
       stderr: "pipe",
     });
     this.activeProcess = proc;
-
-    // Emit thinking placeholder immediately so the user sees feedback
-    // before any CLI events arrive (thinking creates a silent gap).
-    if (thinkingTokens > 0) {
-      await statusCallback("thinking_start", "");
-    }
 
     // Response tracking
     const responseParts: string[] = [];

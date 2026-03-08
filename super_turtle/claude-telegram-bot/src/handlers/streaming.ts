@@ -637,7 +637,6 @@ export class StreamingState {
   silentSegments = new Map<number, string>(); // segment_id -> captured text for silent mode
   sawToolUse = false; // used to avoid replaying side-effectful tool runs on retries
   sawSpawnOrchestration = false; // true when streamed tool activity indicates `ctl spawn` orchestration
-  thinkingPlaceholder: Message | null = null; // ephemeral "Thinking..." indicator
   heartbeatMessage: Message | null = null; // ephemeral "still working" indicator
   heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   heartbeatUpdating = false;
@@ -679,23 +678,6 @@ function isIgnorableDeleteMessageError(error: unknown): boolean {
     message.includes("message can't be deleted") ||
     message.includes("chat not found")
   );
-}
-
-/** Delete the thinking placeholder if it exists. */
-async function deleteThinkingPlaceholder(ctx: Context, state: StreamingState): Promise<void> {
-  if (!state.thinkingPlaceholder) return;
-  const msg = state.thinkingPlaceholder;
-  state.thinkingPlaceholder = null;
-  try {
-    await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
-  } catch (error) {
-    if (!isIgnorableDeleteMessageError(error)) {
-      streamLog.debug(
-        { errorSummary: describeError(error) },
-        "Failed to delete thinking placeholder"
-      );
-    }
-  }
 }
 
 export async function cleanupToolMessages(ctx: Context, state: StreamingState): Promise<void> {
@@ -741,7 +723,6 @@ function startHeartbeat(ctx: Context, state: StreamingState): void {
   state.heartbeatTimer = setInterval(async () => {
     if (state.heartbeatUpdating) return;
     if (Date.now() - state.lastStatusAt < HEARTBEAT_IDLE_MS) return;
-    if (state.thinkingPlaceholder) return;
 
     state.heartbeatUpdating = true;
     try {
@@ -787,7 +768,6 @@ export async function teardownStreamingState(
   if (state.teardownCompleted) return;
   state.teardownCompleted = true;
   stopHeartbeat(state);
-  await deleteThinkingPlaceholder(ctx, state);
   await clearHeartbeatMessage(ctx, state);
   await cleanupToolMessages(ctx, state);
   if (options.clearRegisteredState) {
@@ -897,15 +877,7 @@ export function createStatusCallback(
         await clearHeartbeatMessage(ctx, state);
       }
 
-      if (statusType === "thinking_start") {
-        // Immediate placeholder shown before any CLI events arrive
-        const msg = await ctx.reply("<i>Thinking\u2026</i>", {
-          parse_mode: "HTML",
-        });
-        state.thinkingPlaceholder = msg;
-      } else if (statusType === "thinking") {
-        // Thinking block arrived — remove the placeholder first
-        await deleteThinkingPlaceholder(ctx, state);
+      if (statusType === "thinking") {
         // Show thinking inline, compact (first 500 chars)
         const preview =
           content.length > 500 ? content.slice(0, 500) + "..." : content;
@@ -931,8 +903,6 @@ export function createStatusCallback(
           state.toolMessages.push(toolMsg);
         }
       } else if (statusType === "text" && segmentId !== undefined) {
-        // First real text content — remove the thinking placeholder if still showing
-        await deleteThinkingPlaceholder(ctx, state);
         const now = Date.now();
         const lastEdit = state.lastEditTimes.get(segmentId) || 0;
 

@@ -40,12 +40,6 @@
         <key>ALLOWED_PATHS</key>
         <string>/Users/USERNAME/Dev,/Users/USERNAME/Documents</string>
 
-        <!-- Optional: Thinking keywords -->
-        <key>THINKING_KEYWORDS</key>
-        <string>think,pensa,ragiona</string>
-        <key>THINKING_DEEP_KEYWORDS</key>
-        <string>ultrathink,think hard,pensa bene</string>
-
         <!-- Optional: Rate limiting -->
         <key>RATE_LIMIT_ENABLED</key>
         <string>true</string>
