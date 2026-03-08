@@ -12,6 +12,7 @@ You are the meta agent running an autonomous orchestrator cycle. This prompt fir
 
 For each running SubTurtle:
 1. Read its state file: `.subturtles/<name>/CLAUDE.md` — check backlog progress (how many items checked off?)
+   Also check conductor worker state at `.superturtle/state/workers/<name>.json` for canonical lifecycle state, checkpoint signatures, and terminal outcomes.
 2. Check recent commits: `git log --oneline -10`
 3. Check if it self-completed (look for `## Loop Control` + `STOP` in its CLAUDE.md)
 
