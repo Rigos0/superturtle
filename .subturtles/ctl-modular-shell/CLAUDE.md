@@ -1,5 +1,5 @@
 # Current task
-Move command handlers into command modules and keep dispatcher in `ctl`. <- current
+Verify command output parity for key flows (`spawn`, `stop`, `list`, `status`) <- current
 
 # End goal with specs
 - `subturtle/ctl` becomes a compact command dispatcher with shared initialization.
@@ -24,7 +24,7 @@ Move command handlers into command modules and keep dispatcher in `ctl`. <- curr
 - [x] Create shell module files and source wiring from `ctl` without behavior changes
 - [x] Move shared path/meta/time/parse helpers into a shared lib module
 - [x] Move conductor/run-state writer helpers into dedicated module
-- [ ] Move command handlers into command modules and keep dispatcher in `ctl` <- current
-- [ ] Verify command output parity for key flows (`spawn`, `stop`, `list`, `status`)
+- [x] Move command handlers into command modules and keep dispatcher in `ctl`
+- [ ] Verify command output parity for key flows (`spawn`, `stop`, `list`, `status`) <- current
 - [ ] Run `subturtle` integration/smoke tests and fix extraction regressions
 - [ ] Trim duplicated logic and add concise comments only where flow is non-obvious
