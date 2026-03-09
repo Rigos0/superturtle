@@ -139,6 +139,43 @@ validate_loop_type_prereqs() {
   exit 1
 }
 
+validate_known_loop_type() {
+  local loop_type="$1"
+  case "$loop_type" in
+    slow|yolo|yolo-codex|yolo-codex-spark) ;;
+    *)
+      echo "ERROR: unknown SubTurtle type '${loop_type}' (must be: slow, yolo, yolo-codex, yolo-codex-spark)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+skills_to_json() {
+  if (( $# == 0 )); then
+    echo "[]"
+    return
+  fi
+
+  printf '%s\n' "$@" | "$PYTHON" -c 'import json, sys; print(json.dumps([line.strip() for line in sys.stdin if line.strip()]))' 2>/dev/null || echo '[]'
+}
+
+finalize_stop_and_archive() {
+  local name="$1"
+  local run_status="$2"
+  local stop_reason="$3"
+  local stopped_at
+  stopped_at="$(utc_now_iso)"
+
+  if [[ -n "$run_status" && -d "$(workspace_dir "$name")" ]]; then
+    append_run_event "$name" "stop" "$run_status"
+  fi
+
+  append_conductor_event "$name" "worker.stopped" "supervisor" "stopped" "{\"reason\":\"${stop_reason}\"}" || true
+  write_conductor_worker_state "$name" "stopped" "supervisor" "$stop_reason" "" "$stopped_at" || true
+  rm -f "$(pid_file "$name")"
+  do_archive "$name"
+}
+
 do_start() {
   local name="${1:-default}"
   local timeout_str="${DEFAULT_TIMEOUT}"
@@ -155,11 +192,7 @@ do_start() {
     esac
   done
 
-  case "$loop_type" in
-    slow|yolo|yolo-codex|yolo-codex-spark) ;;
-    *) echo "ERROR: unknown SubTurtle type '${loop_type}' (must be: slow, yolo, yolo-codex, yolo-codex-spark)" >&2; exit 1 ;;
-  esac
-
+  validate_known_loop_type "$loop_type"
   validate_loop_type_prereqs "$name" "$loop_type"
 
   local timeout_secs
@@ -167,9 +200,7 @@ do_start() {
 
   local skills_json="[]"
   if (( ${#skills[@]} > 0 )); then
-    skills_json="$(
-      printf '%s\n' "${skills[@]}" | "$PYTHON" -c 'import sys, json; print(json.dumps([line.strip() for line in sys.stdin if line.strip()]))' 2>/dev/null || echo '[]'
-    )"
+    skills_json="$(skills_to_json "${skills[@]}")"
   fi
 
   ensure_workspace "$name"
@@ -237,6 +268,8 @@ if os.path.isdir(real_codex_home):
 
 original_home = env.get(\"HOME\")
 if not _can_write_home(original_home):
+    # Some callers run inside sandboxes with a read-only HOME, so give the loop
+    # a writable per-workspace home instead of letting CLI auth/config writes fail.
     runtime_home = os.path.join(state_dir, \".runtime-home\")
     os.makedirs(runtime_home, exist_ok=True)
     env[\"HOME\"] = runtime_home
@@ -297,7 +330,7 @@ print(f'[subturtle:{name}] spawned as {loop_type} (PID {proc.pid})')
     echo "[subturtle:${name}] ERROR: spawn failed — no PID file written" >&2
     exit 1
   fi
-  turtle_pid="$(cat "$pf")"
+  turtle_pid="$(read_pid "$name")"
 
   local spawned_at run_id
   spawned_at="$(date +%s)"
@@ -662,16 +695,8 @@ do_stop() {
   fi
 
   if ! is_running "$name"; then
-    local stopped_at
-    stopped_at="$(utc_now_iso)"
     echo "[subturtle:${name}] not running"
-    if [[ -d "$ws" ]]; then
-      append_run_event "$name" "stop" "not_running"
-    fi
-    append_conductor_event "$name" "worker.stopped" "supervisor" "stopped" '{"reason":"not_running"}' || true
-    write_conductor_worker_state "$name" "stopped" "supervisor" "not_running" "" "$stopped_at" || true
-    rm -f "$(pid_file "$name")"
-    do_archive "$name"
+    finalize_stop_and_archive "$name" "not_running" "not_running"
     exit 0
   fi
 
@@ -684,29 +709,17 @@ do_stop() {
   local i
   for i in $(seq 1 10); do
     if ! kill -0 "$pid" 2>/dev/null; then
-      local stopped_at
-      stopped_at="$(utc_now_iso)"
       echo "[subturtle:${name}] stopped"
-      append_run_event "$name" "stop" "stopped"
-      append_conductor_event "$name" "worker.stopped" "supervisor" "stopped" '{"reason":"stopped"}' || true
-      write_conductor_worker_state "$name" "stopped" "supervisor" "stopped" "" "$stopped_at" || true
-      rm -f "$(pid_file "$name")"
-      do_archive "$name"
+      finalize_stop_and_archive "$name" "stopped" "stopped"
       return
     fi
     sleep 1
   done
 
-  local stopped_at
-  stopped_at="$(utc_now_iso)"
   echo "[subturtle:${name}] sending SIGKILL..."
   kill -9 "$pid" 2>/dev/null || true
   echo "[subturtle:${name}] killed"
-  append_run_event "$name" "stop" "killed"
-  append_conductor_event "$name" "worker.stopped" "supervisor" "stopped" '{"reason":"killed"}' || true
-  write_conductor_worker_state "$name" "stopped" "supervisor" "killed" "" "$stopped_at" || true
-  rm -f "$(pid_file "$name")"
-  do_archive "$name"
+  finalize_stop_and_archive "$name" "killed" "killed"
 }
 
 do_status() {
@@ -739,11 +752,8 @@ do_status() {
 
     ps -o pid,ppid,pgid,sess,state,etime,command -p "$pid" 2>/dev/null || true
 
-    local tunnel_file
-    tunnel_file="$(tunnel_url_file "$name")"
-    if [[ -f "$tunnel_file" ]]; then
-      local tunnel_url
-      tunnel_url="$(cat "$tunnel_file")"
+    local tunnel_url
+    if tunnel_url="$(tunnel_url_for_subturtle "$name" 2>/dev/null)"; then
       echo "[subturtle:${name}] tunnel URL: ${tunnel_url}"
     fi
   else
@@ -951,11 +961,8 @@ do_list() {
       printf "  %-15s %-8s %-12s %-14s %-14s %s%s\n" "$name" "$status_str" "" "$pid_str" "" "$task" "$skills_str"
     fi
 
-    local tunnel_file
-    tunnel_file="$(tunnel_url_file "$name")"
-    if [[ -f "$tunnel_file" ]]; then
-      local tunnel_url
-      tunnel_url="$(cat "$tunnel_file")"
+    local tunnel_url
+    if tunnel_url="$(tunnel_url_for_subturtle "$name" 2>/dev/null)"; then
       printf "  %-15s → %s\n" "" "$tunnel_url"
     fi
   done

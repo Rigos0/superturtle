@@ -16,6 +16,12 @@ log_file() { echo "$(workspace_dir "$1")/subturtle.log"; }
 meta_file() { echo "$(workspace_dir "$1")/subturtle.meta"; }
 tunnel_url_file() { echo "$(workspace_dir "$1")/.tunnel-url"; }
 
+read_file_if_exists() {
+  local path="$1"
+  [[ -f "$path" ]] || return 1
+  cat "$path"
+}
+
 utc_now_iso() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
@@ -168,5 +174,9 @@ ensure_workspace() {
 }
 
 read_pid() {
-  cat "$(pid_file "$1")" 2>/dev/null || echo ""
+  read_file_if_exists "$(pid_file "$1")" 2>/dev/null || echo ""
+}
+
+tunnel_url_for_subturtle() {
+  read_file_if_exists "$(tunnel_url_file "$1")"
 }

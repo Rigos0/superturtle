@@ -1,5 +1,5 @@
 # Current task
-Trim duplicated logic and add concise comments only where flow is non-obvious <- current
+All backlog items complete; stopping loop
 
 # End goal with specs
 - `subturtle/ctl` becomes a compact command dispatcher with shared initialization.
@@ -27,4 +27,7 @@ Trim duplicated logic and add concise comments only where flow is non-obvious <-
 - [x] Move command handlers into command modules and keep dispatcher in `ctl`
 - [x] Verify command output parity for key flows (`spawn`, `stop`, `list`, `status`)
 - [x] Run `subturtle` integration/smoke tests and fix extraction regressions
-- [ ] Trim duplicated logic and add concise comments only where flow is non-obvious <- current
+- [x] Trim duplicated logic and add concise comments only where flow is non-obvious
+
+## Loop Control
+STOP
