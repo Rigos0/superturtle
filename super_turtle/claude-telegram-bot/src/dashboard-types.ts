@@ -5,7 +5,7 @@
 import type { ListedSubTurtle, ClaudeBacklogItem } from "./handlers/commands";
 import type { MetaAgentInboxItemRecord } from "./conductor-inbox";
 import type { WorkerStateRecord, WakeupRecord } from "./conductor-supervisor";
-import type { MetaFileData } from "./dashboard";
+import type { MetaFileData } from "./dashboard/helpers";
 import type { InjectedArtifact } from "./injected-artifacts";
 import type { SessionHistoryView } from "./session-history";
 
