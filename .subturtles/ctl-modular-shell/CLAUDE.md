@@ -1,5 +1,5 @@
 # Current task
-Run `subturtle` integration/smoke tests and fix extraction regressions <- current
+Trim duplicated logic and add concise comments only where flow is non-obvious <- current
 
 # End goal with specs
 - `subturtle/ctl` becomes a compact command dispatcher with shared initialization.
@@ -26,5 +26,5 @@ Run `subturtle` integration/smoke tests and fix extraction regressions <- curren
 - [x] Move conductor/run-state writer helpers into dedicated module
 - [x] Move command handlers into command modules and keep dispatcher in `ctl`
 - [x] Verify command output parity for key flows (`spawn`, `stop`, `list`, `status`)
-- [ ] Run `subturtle` integration/smoke tests and fix extraction regressions <- current
-- [ ] Trim duplicated logic and add concise comments only where flow is non-obvious
+- [x] Run `subturtle` integration/smoke tests and fix extraction regressions
+- [ ] Trim duplicated logic and add concise comments only where flow is non-obvious <- current
