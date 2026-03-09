@@ -1,5 +1,5 @@
 # Current task
-Extract dashboard overview/conductor/current-jobs data builders into dedicated module(s). <- current
+Extract HTML rendering for dashboard + detail pages into renderer module(s). <- current
 
 # End goal with specs
 - Dashboard server code is organized into cohesive modules under `super_turtle/claude-telegram-bot/src/dashboard/`.
@@ -22,8 +22,8 @@ Extract dashboard overview/conductor/current-jobs data builders into dedicated m
 
 # Backlog
 - [x] Create `src/dashboard/` module layout and move low-risk shared helper functions first
-- [ ] Extract dashboard overview/conductor/current-jobs data builders into dedicated module(s) <- current
-- [ ] Extract HTML rendering for dashboard + detail pages into renderer module(s)
+- [x] Extract dashboard overview/conductor/current-jobs data builders into dedicated module(s)
+- [ ] Extract HTML rendering for dashboard + detail pages into renderer module(s) <- current
 - [ ] Extract route handlers/table wiring into routes module while preserving patterns
 - [ ] Update imports/exports in `dashboard.ts` to thin entrypoint and remove dead code
 - [ ] Run dashboard-focused tests and fix regressions introduced by extraction
