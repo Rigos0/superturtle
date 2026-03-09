@@ -1,5 +1,5 @@
 # Current task
-Run dashboard-focused tests and fix regressions introduced by extraction. <- current
+Do a final pass for naming consistency and module-level comments where needed. <- current
 
 # End goal with specs
 - Dashboard server code is organized into cohesive modules under `super_turtle/claude-telegram-bot/src/dashboard/`.
@@ -26,5 +26,5 @@ Run dashboard-focused tests and fix regressions introduced by extraction. <- cur
 - [x] Extract HTML rendering for dashboard + detail pages into renderer module(s)
 - [x] Extract route handlers/table wiring into routes module while preserving patterns
 - [x] Update imports/exports in `dashboard.ts` to thin entrypoint and remove dead code
-- [ ] Run dashboard-focused tests and fix regressions introduced by extraction <- current
-- [ ] Do a final pass for naming consistency and module-level comments where needed
+- [x] Run dashboard-focused tests and fix regressions introduced by extraction
+- [ ] Do a final pass for naming consistency and module-level comments where needed <- current
