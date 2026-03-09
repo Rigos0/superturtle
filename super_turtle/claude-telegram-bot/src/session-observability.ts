@@ -69,6 +69,7 @@ const DRIVER_PROCESS_IDS: Record<SessionDriver, string> = {
 };
 
 const INSTRUCTION_DELIVERY_TITLE = "How instructions reach this CLI";
+const LIVE_SESSION_LIST_TIMEOUT_MS = 750;
 
 type RuntimeMetaSource = {
   model: string;
@@ -112,6 +113,22 @@ function buildInstructionDelivery(items: InstructionDeliveryItem[]): Instruction
     title: INSTRUCTION_DELIVERY_TITLE,
     items,
   };
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 function buildDriverExtra(source: RuntimeProcessSource): DriverExtra {
@@ -452,7 +469,11 @@ const codexProvider: SessionObservabilityProvider = {
       return activeSession ? [activeSession] : localSessions;
     }
 
-    const liveSessions = await codexSession.getSessionListLive();
+    const liveSessions = await withTimeout(
+      codexSession.getSessionListLive(),
+      LIVE_SESSION_LIST_TIMEOUT_MS,
+      [] as SavedSession[]
+    );
     const mergedById = new Map<string, SavedSession>();
     for (const saved of localSessions) {
       mergedById.set(saved.session_id, saved);
