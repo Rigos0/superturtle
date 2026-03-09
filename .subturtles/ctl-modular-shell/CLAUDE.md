@@ -1,5 +1,5 @@
 # Current task
-Move shared path/meta/time/parse helpers into a shared lib module. <- current
+Move conductor/run-state writer helpers into dedicated module. <- current
 
 # End goal with specs
 - `subturtle/ctl` becomes a compact command dispatcher with shared initialization.
@@ -22,8 +22,8 @@ Move shared path/meta/time/parse helpers into a shared lib module. <- current
 
 # Backlog
 - [x] Create shell module files and source wiring from `ctl` without behavior changes
-- [ ] Move shared path/meta/time/parse helpers into a shared lib module <- current
-- [ ] Move conductor/run-state writer helpers into dedicated module
+- [x] Move shared path/meta/time/parse helpers into a shared lib module
+- [ ] Move conductor/run-state writer helpers into dedicated module <- current
 - [ ] Move command handlers into command modules and keep dispatcher in `ctl`
 - [ ] Verify command output parity for key flows (`spawn`, `stop`, `list`, `status`)
 - [ ] Run `subturtle` integration/smoke tests and fix extraction regressions

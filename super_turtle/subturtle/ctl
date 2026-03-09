@@ -78,17 +78,6 @@ usage() {
   exit 1
 }
 
-# Resolve the workspace directory for a named SubTurtle
-workspace_dir() {
-  local name="${1:-default}"
-  echo "${SUBTURTLES_DIR}/${name}"
-}
-
-pid_file()  { echo "$(workspace_dir "$1")/subturtle.pid"; }
-log_file()  { echo "$(workspace_dir "$1")/subturtle.log"; }
-meta_file() { echo "$(workspace_dir "$1")/subturtle.meta"; }
-tunnel_url_file() { echo "$(workspace_dir "$1")/.tunnel-url"; }
-
 ensure_run_state_files() {
   mkdir -p "$RUN_STATE_DIR"
 
@@ -141,33 +130,6 @@ append_run_event() {
   if ! "${writer_cmd[@]}" >/dev/null 2>&1; then
     echo "[subturtle:${name}] WARNING: failed to append run state event '${event}'" >&2
   fi
-}
-
-utc_now_iso() {
-  date -u '+%Y-%m-%dT%H:%M:%SZ'
-}
-
-current_task_from_state_file() {
-  local state_file="$1"
-  [[ -f "$state_file" ]] || return 0
-
-  awk '
-    /^# Current task$/ { in_current=1; next }
-    in_current && /^# / { exit }
-    in_current {
-      line = $0
-      sub(/[[:space:]]*<- current[[:space:]]*$/, "", line)
-      if (line ~ /[^[:space:]]/) {
-        print line
-        exit
-      }
-    }
-  ' "$state_file"
-}
-
-current_task_for_subturtle() {
-  local name="$1"
-  current_task_from_state_file "$(workspace_dir "$name")/CLAUDE.md"
 }
 
 LAST_CONDUCTOR_EVENT_ID=""
@@ -381,141 +343,6 @@ PY
   fi
 }
 
-# --- Duration helpers ---
-
-# Parse a human duration string (30m, 1h, 2h, 4h) into seconds.
-# Falls back to raw seconds if no suffix.
-parse_duration() {
-  local input="$1"
-  local suffix="${input: -1}"
-
-  # Check if last char is a known unit suffix
-  case "$suffix" in
-    m|M|h|H|d|D)
-      local num="${input%[mMhHdD]}"
-      if ! [[ "$num" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: invalid duration '${input}'" >&2
-        return 1
-      fi
-      case "$suffix" in
-        m|M) echo $(( num * 60 )) ;;
-        h|H) echo $(( num * 3600 )) ;;
-        d|D) echo $(( num * 86400 )) ;;
-      esac
-      ;;
-    *)
-      # No suffix — treat entire input as raw seconds
-      if ! [[ "$input" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: invalid duration '${input}'" >&2
-        return 1
-      fi
-      echo "$input"
-      ;;
-  esac
-}
-
-# Format seconds into a human-readable string (e.g. "1h 23m", "45m", "2m").
-format_duration() {
-  local secs="$1"
-  if (( secs < 0 )); then secs=0; fi
-  local h=$(( secs / 3600 ))
-  local m=$(( (secs % 3600) / 60 ))
-  if (( h > 0 )); then
-    echo "${h}h ${m}m"
-  else
-    echo "${m}m"
-  fi
-}
-
-# Read the .meta file into shell variables: SPAWNED_AT, TIMEOUT_SECONDS, WATCHDOG_PID.
-# Uses grep to extract known keys only — never sources the file directly.
-# Returns 1 if meta file doesn't exist.
-read_meta() {
-  local mf
-  mf="$(meta_file "$1")"
-  if [[ -f "$mf" ]]; then
-    RUN_ID="$(grep -m1 '^RUN_ID=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    SPAWNED_AT="$(grep -m1 '^SPAWNED_AT=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    TIMEOUT_SECONDS="$(grep -m1 '^TIMEOUT_SECONDS=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    WATCHDOG_PID="$(grep -m1 '^WATCHDOG_PID=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    LOOP_TYPE="$(grep -m1 '^LOOP_TYPE=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    SKILLS="$(grep -m1 '^SKILLS=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    CRON_JOB_ID="$(grep -m1 '^CRON_JOB_ID=' "$mf" 2>/dev/null | cut -d= -f2-)" || true
-    return 0
-  fi
-  return 1
-}
-
-remove_meta_key() {
-  local name="$1"
-  local key="$2"
-  local mf tmp_file
-  mf="$(meta_file "$name")"
-  [[ -f "$mf" ]] || return 0
-
-  tmp_file="$(mktemp "${mf}.XXXXXX")" || return 1
-  if awk -v prefix="${key}=" 'index($0, prefix) != 1 { print }' "$mf" > "$tmp_file"; then
-    mv "$tmp_file" "$mf"
-    return 0
-  fi
-
-  rm -f "$tmp_file"
-  return 1
-}
-
-# Compute seconds remaining before timeout. Negative = overdue.
-time_remaining() {
-  local name="$1"
-  SPAWNED_AT="" TIMEOUT_SECONDS=""
-  if ! read_meta "$name"; then
-    echo ""
-    return
-  fi
-  if [[ -z "$SPAWNED_AT" || -z "$TIMEOUT_SECONDS" ]]; then
-    echo ""
-    return
-  fi
-  local now elapsed remaining
-  now="$(date +%s)"
-  elapsed=$(( now - SPAWNED_AT ))
-  remaining=$(( TIMEOUT_SECONDS - elapsed ))
-  echo "$remaining"
-}
-
-# Format a time-remaining value for display.
-format_time_remaining() {
-  local remaining="$1"
-  if [[ -z "$remaining" ]]; then
-    echo "no timeout"
-    return
-  fi
-  if (( remaining <= 0 )); then
-    echo "OVERDUE"
-  else
-    echo "$(format_duration "$remaining") left"
-  fi
-}
-
-ensure_workspace() {
-  local name="${1:-default}"
-  local ws
-  ws="$(workspace_dir "$name")"
-
-  mkdir -p "$ws"
-
-  # CLAUDE.md must be pre-written by the meta agent before spawning
-  if [[ ! -f "$ws/CLAUDE.md" ]]; then
-    echo "[subturtle:${name}] ERROR: CLAUDE.md not found in workspace (${ws}/CLAUDE.md)" >&2
-    echo "[subturtle:${name}] The meta agent must write CLAUDE.md before starting a SubTurtle." >&2
-    exit 1
-  fi
-
-  # Create AGENTS.md symlink if missing
-  if [[ ! -L "$ws/AGENTS.md" ]]; then
-    ln -sf CLAUDE.md "$ws/AGENTS.md"
-  fi
-}
-
 validate_spawn_state_file() {
   local name="$1"
   local state_path="$2"
@@ -571,10 +398,6 @@ is_running() {
     fi
   fi
   return 1
-}
-
-read_pid() {
-  cat "$(pid_file "$1")" 2>/dev/null || echo ""
 }
 
 required_clis_for_loop_type() {
@@ -1492,23 +1315,8 @@ do_list() {
 
     # Read current task from this SubTurtle's CLAUDE.md
     local task="(no task)"
-    if [[ -f "${ws}CLAUDE.md" ]]; then
-      task="$(
-        awk '
-          /^# Current task$/ { in_current=1; next }
-          in_current && /^# / { exit }
-          in_current {
-            line = $0
-            sub(/[[:space:]]*<- current[[:space:]]*$/, "", line)
-            if (line ~ /[^[:space:]]/) {
-              print line
-              exit
-            }
-          }
-        ' "${ws}CLAUDE.md"
-      )"
-      [[ -z "$task" ]] && task="(no task)"
-    fi
+    task="$(current_task_for_subturtle "$name")"
+    [[ -z "$task" ]] && task="(no task)"
 
     if [[ -n "$time_str" ]]; then
       printf "  %-15s %-8s %-12s %-14s %-14s %s%s\n" "$name" "$status_str" "$type_str" "$pid_str" "$time_str" "$task" "$skills_str"
