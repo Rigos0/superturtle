@@ -48,8 +48,14 @@ node "${PACKAGE_DIR}/bin/superturtle.js" --help >/dev/null
 
 (
   cd "${PACKAGE_DIR}"
-  python3 -m subturtle --help >/dev/null
-  python3 state/run_state_writer.py --help >/dev/null
+  env -u PYTHONPATH python3 - <<'PY'
+import subturtle.__main__
+import subturtle.loops
+import subturtle.prompts
+import subturtle.statefile
+PY
+  env -u PYTHONPATH python3 -m subturtle --help >/dev/null
+  env -u PYTHONPATH python3 state/run_state_writer.py --help >/dev/null
 )
 
 node -e '

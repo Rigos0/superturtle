@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -10,9 +14,29 @@ from super_turtle.subturtle import prompts as subturtle_prompts
 from super_turtle.subturtle import statefile as subturtle_statefile
 from super_turtle.state.conductor_state import ConductorStateStore
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SUPER_TURTLE_ROOT = REPO_ROOT / "super_turtle"
+
 
 def _write_state_file(tmp_path) -> None:
     (tmp_path / "CLAUDE.md").write_text("# Current task\n\nTest task\n", encoding="utf-8")
+
+
+def _assert_imports_succeed(tmp_path, pythonpath_root: Path, module_names: list[str]) -> None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(pythonpath_root)
+
+    code = "\n".join(f"import {module_name}" for module_name in module_names)
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_yolo_prompt_allows_rewriting_blocked_backlog_items() -> None:
@@ -62,6 +86,32 @@ def test_main_dispatches_to_run_loop(monkeypatch, tmp_path) -> None:
         "loop_type": "yolo-codex",
         "skills": ["frontend", "qa"],
     }
+
+
+def test_monorepo_import_path_smoke(tmp_path) -> None:
+    _assert_imports_succeed(
+        tmp_path,
+        REPO_ROOT,
+        [
+            "super_turtle.subturtle.__main__",
+            "super_turtle.subturtle.loops",
+            "super_turtle.subturtle.prompts",
+            "super_turtle.subturtle.statefile",
+        ],
+    )
+
+
+def test_packaged_import_path_smoke(tmp_path) -> None:
+    _assert_imports_succeed(
+        tmp_path,
+        SUPER_TURTLE_ROOT,
+        [
+            "subturtle.__main__",
+            "subturtle.loops",
+            "subturtle.prompts",
+            "subturtle.statefile",
+        ],
+    )
 
 
 def test_require_cli_exits_with_clear_error(monkeypatch, capsys) -> None:

@@ -1,5 +1,5 @@
 # Current task
-Confirm packaged and monorepo import paths both still work <- current
+All backlog items complete
 
 # End goal with specs
 - `subturtle/__main__.py` no longer contains all prompts, parsing, loop orchestration, and state helpers in one file.
@@ -27,4 +27,7 @@ Confirm packaged and monorepo import paths both still work <- current
 - [x] Reduce `__main__.py` to argument parsing and top-level control flow
 - [x] Run `subturtle` Python tests and address refactor regressions
 - [x] Clean imports/type hints/docstrings after extraction for readability
-- [ ] Confirm packaged and monorepo import paths both still work <- current
+- [x] Confirm packaged and monorepo import paths both still work
+
+## Loop Control
+STOP
