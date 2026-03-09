@@ -1,6 +1,6 @@
 {
   "name": "superturtle",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Code from anywhere with your voice. Autonomous coding system controlled from Telegram.",
   "scripts": {
     "test:pack": "bash tests/npm-package-smoke.sh",

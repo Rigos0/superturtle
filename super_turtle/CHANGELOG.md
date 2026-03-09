@@ -7,6 +7,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-03-09
+
+### Added
+- driver-specific default model and effort settings for fresh sessions: `DEFAULT_CLAUDE_MODEL`, `DEFAULT_CLAUDE_EFFORT`, `DEFAULT_CODEX_MODEL`, and `DEFAULT_CODEX_EFFORT`
+- `SHOW_TOOL_STATUS=false` as the default packaged install setting so routine tool-call progress no longer clutters Telegram chats
+
+### Changed
+- `superturtle start` now forwards `DEFAULT_*` environment variables into the tmux bot process, so configured model defaults work the same way as direct bot launches
+- dashboard runtime config is simplified: packaged installs now use the built-in localhost bind and stable per-instance port instead of exposing `DASHBOARD_PORT`, `DASHBOARD_BIND_ADDR`, and `DASHBOARD_HOST`
+
 ## [0.2.2] - 2026-03-08
 
 ### Fixed
