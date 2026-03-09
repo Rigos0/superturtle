@@ -3,6 +3,24 @@ set -euo pipefail
 
 # --- Configuration ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SUBTURTLE_LIB_DIR="${SCRIPT_DIR}/lib"
+
+source_subturtle_module() {
+  local module_path="${SUBTURTLE_LIB_DIR}/$1"
+  if [[ ! -f "$module_path" ]]; then
+    echo "ERROR: missing subturtle shell module: ${module_path}" >&2
+    exit 1
+  fi
+
+  # shellcheck source=/dev/null
+  source "$module_path"
+}
+
+source_subturtle_module "env.sh"
+source_subturtle_module "shared.sh"
+source_subturtle_module "conductor.sh"
+source_subturtle_module "commands.sh"
+
 # SUPER_TURTLE_DIR: where the superturtle package is installed (code)
 SUPER_TURTLE_DIR="${SUPER_TURTLE_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 # PROJECT_DIR: the user's working directory (data/state)
