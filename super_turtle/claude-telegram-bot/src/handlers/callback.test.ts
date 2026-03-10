@@ -60,6 +60,118 @@ async function runCallbackProbe<T>(
 }
 
 describe("handleCallback Codex switching and controls", () => {
+  it("claude model callback re-renders the picker keyboard after selection", async () => {
+    const result = await runCallbackProbe<{
+      model: string;
+      callbackAnswers: Array<{ text?: string }>;
+      editCalls: Array<{
+        text: string;
+        extra?: {
+          parse_mode?: string;
+          reply_markup?: {
+            inline_keyboard?: Array<Array<{ callback_data?: string }>>;
+          };
+        };
+      }>;
+    }>(`
+      const { handleCallback } = await import(callbackPath);
+      const { session, getAvailableModels } = await import(sessionPath);
+
+      const models = getAvailableModels();
+      const targetModel = models[0]?.value || "claude-opus-4-6";
+
+      session.activeDriver = "claude";
+      session.model = targetModel;
+      session.effort = "medium";
+
+      const callbackAnswers = [];
+      const editCalls = [];
+      const ctx = {
+        from: { id: 123, username: "tester" },
+        chat: { id: 123, type: "private" },
+        callbackQuery: { data: "model:" + targetModel },
+        answerCallbackQuery: async (payload) => {
+          callbackAnswers.push(payload || {});
+        },
+        editMessageText: async (text, extra) => {
+          editCalls.push({ text: String(text), extra: extra || {} });
+        },
+      };
+
+      await handleCallback(ctx);
+
+      console.log(marker + JSON.stringify({
+        model: session.model,
+        callbackAnswers,
+        editCalls,
+      }));
+    `);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.payload).not.toBeNull();
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or effort level:");
+    expect(
+      result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
+        (button) => button.callback_data || ""
+      )
+    ).toContain("effort:medium");
+  });
+
+  it("claude effort callback re-renders the picker keyboard after selection", async () => {
+    const result = await runCallbackProbe<{
+      effort: string;
+      callbackAnswers: Array<{ text?: string }>;
+      editCalls: Array<{
+        text: string;
+        extra?: {
+          parse_mode?: string;
+          reply_markup?: {
+            inline_keyboard?: Array<Array<{ callback_data?: string }>>;
+          };
+        };
+      }>;
+    }>(`
+      const { handleCallback } = await import(callbackPath);
+      const { session } = await import(sessionPath);
+
+      session.activeDriver = "claude";
+      session.model = "claude-sonnet-4-6";
+      session.effort = "high";
+
+      const callbackAnswers = [];
+      const editCalls = [];
+      const ctx = {
+        from: { id: 123, username: "tester" },
+        chat: { id: 123, type: "private" },
+        callbackQuery: { data: "effort:low" },
+        answerCallbackQuery: async (payload) => {
+          callbackAnswers.push(payload || {});
+        },
+        editMessageText: async (text, extra) => {
+          editCalls.push({ text: String(text), extra: extra || {} });
+        },
+      };
+
+      await handleCallback(ctx);
+
+      console.log(marker + JSON.stringify({
+        effort: session.effort,
+        callbackAnswers,
+        editCalls,
+      }));
+    `);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.payload).not.toBeNull();
+    expect(result.payload?.effort).toBe("low");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or effort level:");
+    expect(
+      result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
+        (button) => button.callback_data || ""
+      )
+    ).toContain("effort:low");
+  });
+
   it("switch:codex returns unavailable alert and does not switch when Codex is unavailable", async () => {
     const result = await runCallbackProbe<{
       activeDriver: string;
@@ -187,7 +299,15 @@ describe("handleCallback Codex switching and controls", () => {
       threadId: string | null;
       resumeThreadArgs: Array<[string, string, string]>;
       callbackAnswers: Array<{ text?: string }>;
-      editTexts: string[];
+      editCalls: Array<{
+        text: string;
+        extra?: {
+          parse_mode?: string;
+          reply_markup?: {
+            inline_keyboard?: Array<Array<{ callback_data?: string }>>;
+          };
+        };
+      }>;
     }>(`
       const { handleCallback } = await import(callbackPath);
       const { codexSession, getAvailableCodexModelsLive } = await import(codexPath);
@@ -210,7 +330,7 @@ describe("handleCallback Codex switching and controls", () => {
       };
 
       const callbackAnswers = [];
-      const editTexts = [];
+      const editCalls = [];
       const ctx = {
         from: { id: 123, username: "tester" },
         chat: { id: 123, type: "private" },
@@ -218,8 +338,8 @@ describe("handleCallback Codex switching and controls", () => {
         answerCallbackQuery: async (payload) => {
           callbackAnswers.push(payload || {});
         },
-        editMessageText: async (text) => {
-          editTexts.push(String(text));
+        editMessageText: async (text, extra) => {
+          editCalls.push({ text: String(text), extra: extra || {} });
         },
       };
 
@@ -232,7 +352,7 @@ describe("handleCallback Codex switching and controls", () => {
         threadId: codexSession.getThreadId(),
         resumeThreadArgs,
         callbackAnswers,
-        editTexts,
+        editCalls,
       }));
     `);
 
@@ -244,7 +364,12 @@ describe("handleCallback Codex switching and controls", () => {
       ["codex-thread-model", result.payload?.targetModel || "", "medium"],
     ]);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Codex model updated for current convo");
-    expect(result.payload?.editTexts[0] || "").toContain("<b>Codex Model:</b>");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or reasoning effort:");
+    expect(
+      result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
+        (button) => button.callback_data || ""
+      )
+    ).toContain("codex_effort:medium");
   });
 
   it("codex_effort callback with active session preserves the current thread and only updates prefs", async () => {
@@ -254,7 +379,15 @@ describe("handleCallback Codex switching and controls", () => {
       threadId: string | null;
       resumeThreadArgs: Array<[string, string, string]>;
       callbackAnswers: Array<{ text?: string }>;
-      editTexts: string[];
+      editCalls: Array<{
+        text: string;
+        extra?: {
+          parse_mode?: string;
+          reply_markup?: {
+            inline_keyboard?: Array<Array<{ callback_data?: string }>>;
+          };
+        };
+      }>;
     }>(`
       const { handleCallback } = await import(callbackPath);
       const { codexSession, getAvailableCodexModelsLive } = await import(codexPath);
@@ -276,7 +409,7 @@ describe("handleCallback Codex switching and controls", () => {
       };
 
       const callbackAnswers = [];
-      const editTexts = [];
+      const editCalls = [];
       const ctx = {
         from: { id: 123, username: "tester" },
         chat: { id: 123, type: "private" },
@@ -284,8 +417,8 @@ describe("handleCallback Codex switching and controls", () => {
         answerCallbackQuery: async (payload) => {
           callbackAnswers.push(payload || {});
         },
-        editMessageText: async (text) => {
-          editTexts.push(String(text));
+        editMessageText: async (text, extra) => {
+          editCalls.push({ text: String(text), extra: extra || {} });
         },
       };
 
@@ -297,7 +430,7 @@ describe("handleCallback Codex switching and controls", () => {
         threadId: codexSession.getThreadId(),
         resumeThreadArgs,
         callbackAnswers,
-        editTexts,
+        editCalls,
       }));
     `);
 
@@ -309,7 +442,12 @@ describe("handleCallback Codex switching and controls", () => {
       ["codex-thread-effort", result.payload?.model || "", "high"],
     ]);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Codex effort updated for current convo");
-    expect(result.payload?.editTexts[0] || "").toContain("Reasoning Effort:</b> high");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or reasoning effort:");
+    expect(
+      result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
+        (button) => button.callback_data || ""
+      )
+    ).toContain("codex_effort:high");
   });
 
   it("changing Codex model and effort from the same picker does not replace the linked thread", async () => {

@@ -747,14 +747,6 @@ async function fetchConversationsFromAppServer(
           cursor,
           limit: pageSize,
         }
-      )
-      || await requestAppServer<AppServerConversationListResponse>(
-        "listConversations",
-        {
-          pageSize,
-          cursor,
-          modelProviders: null,
-        }
       );
 
     const items = Array.isArray(result?.data)

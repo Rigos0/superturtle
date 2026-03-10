@@ -35,6 +35,8 @@ import { isAnyDriverRunning, runMessageWithActiveDriver, stopActiveDriverQuery }
 import { escapeHtml, convertMarkdownToHtml } from "../formatting";
 import { removeJob } from "../cron";
 import {
+  buildClaudeModelPickerMessage,
+  buildCodexModelPickerMessage,
   buildSessionOverviewLines,
   chunkText,
   resetAllDriverSessions,
@@ -173,8 +175,11 @@ export async function handleCallback(ctx: Context): Promise<void> {
       if (modelId.includes("haiku")) {
         session.effort = "high";
       }
-      const effortStr = modelId.includes("haiku") ? "" : ` | ${EFFORT_DISPLAY[session.effort]} effort`;
-      await ctx.editMessageText(`<b>Model:</b> ${model.displayName}${effortStr}`, { parse_mode: "HTML" });
+      const picker = buildClaudeModelPickerMessage();
+      await ctx.editMessageText(picker.text, {
+        parse_mode: "HTML",
+        reply_markup: picker.replyMarkup,
+      });
       await ctx.answerCallbackQuery({ text: `Switched to ${model.displayName}` });
     } else {
       await ctx.answerCallbackQuery({ text: "Unknown model" });
@@ -187,10 +192,11 @@ export async function handleCallback(ctx: Context): Promise<void> {
     const effort = callbackData.replace("effort:", "") as EffortLevel;
     if (effort in EFFORT_DISPLAY) {
       session.effort = effort;
-      const models = getAvailableModels();
-      const model = models.find((m) => m.value === session.model);
-      const modelName = model?.displayName || session.model;
-      await ctx.editMessageText(`<b>Model:</b> ${modelName} | ${EFFORT_DISPLAY[effort]} effort`, { parse_mode: "HTML" });
+      const picker = buildClaudeModelPickerMessage();
+      await ctx.editMessageText(picker.text, {
+        parse_mode: "HTML",
+        reply_markup: picker.replyMarkup,
+      });
       await ctx.answerCallbackQuery({ text: `Effort set to ${EFFORT_DISPLAY[effort]}` });
     } else {
       await ctx.answerCallbackQuery({ text: "Unknown effort level" });
@@ -232,7 +238,11 @@ export async function handleCallback(ctx: Context): Promise<void> {
         }
       }
 
-      await ctx.editMessageText(`<b>Codex Model:</b> ${model.displayName}\n<b>Reasoning Effort:</b> ${codexSession.reasoningEffort}`, { parse_mode: "HTML" });
+      const picker = await buildCodexModelPickerMessage();
+      await ctx.editMessageText(picker.text, {
+        parse_mode: "HTML",
+        reply_markup: picker.replyMarkup,
+      });
       await ctx.answerCallbackQuery({
         text: hadActiveSession
           ? `Codex model updated for current convo`
@@ -271,11 +281,11 @@ export async function handleCallback(ctx: Context): Promise<void> {
         }
       }
 
-      const { getAvailableCodexModelsLive } = await import("../codex-session");
-      const models = await getAvailableCodexModelsLive();
-      const model = models.find((m) => m.value === codexSession.model);
-      const modelName = model?.displayName || codexSession.model;
-      await ctx.editMessageText(`<b>Codex Model:</b> ${modelName}\n<b>Reasoning Effort:</b> ${effort}`, { parse_mode: "HTML" });
+      const picker = await buildCodexModelPickerMessage();
+      await ctx.editMessageText(picker.text, {
+        parse_mode: "HTML",
+        reply_markup: picker.replyMarkup,
+      });
       await ctx.answerCallbackQuery({
         text: hadActiveSession
           ? `Codex effort updated for current convo`

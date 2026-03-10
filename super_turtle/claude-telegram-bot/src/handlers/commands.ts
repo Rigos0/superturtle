@@ -620,18 +620,51 @@ export async function handleModel(ctx: Context): Promise<void> {
     return handleCodexModel(ctx);
   }
 
-  // Claude model selection
+  const picker = buildClaudeModelPickerMessage();
+  await ctx.reply(picker.text, {
+    parse_mode: "HTML",
+    reply_markup: picker.replyMarkup,
+  });
+}
+
+/**
+ * Codex model selection (for /model when on Codex driver).
+ */
+async function handleCodexModel(ctx: Context): Promise<void> {
+  if (!CODEX_AVAILABLE) {
+    await ctx.reply(getCodexUnavailableMessage());
+    return;
+  }
+
+  const picker = await buildCodexModelPickerMessage();
+  await ctx.reply(picker.text, {
+    parse_mode: "HTML",
+    reply_markup: picker.replyMarkup,
+  });
+}
+
+type ModelPickerButton = {
+  text: string;
+  callback_data: string;
+};
+
+type ModelPickerMarkup = {
+  inline_keyboard: ModelPickerButton[][];
+};
+
+export function buildClaudeModelPickerMessage(): {
+  text: string;
+  replyMarkup: ModelPickerMarkup;
+} {
   const models = getAvailableModels();
   const currentModel = models.find((m) => m.value === session.model);
   const currentEffort = EFFORT_DISPLAY[session.effort];
 
-  // Model buttons — one per row
   const modelButtons = models.map((m) => [{
     text: `${m.value === session.model ? "✔ " : ""}${m.displayName}`,
     callback_data: `model:${m.value}`,
   }]);
 
-  // Effort buttons — Haiku doesn't support effort
   const isHaiku = session.model.includes("haiku");
   const effortButtons = isHaiku
     ? []
@@ -645,41 +678,32 @@ export async function handleModel(ctx: Context): Promise<void> {
   const modelName = currentModel?.displayName || session.model;
   const modelDesc = currentModel?.description ? ` — ${currentModel.description}` : "";
 
-  await ctx.reply(
-    `<b>Model:</b> ${modelName}${modelDesc}\n` +
+  return {
+    text:
+      `<b>Model:</b> ${modelName}${modelDesc}\n` +
       `<b>Effort:</b> ${currentEffort}\n\n` +
       `Select model or effort level:`,
-    {
-      parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: [...modelButtons, ...effortButtons],
-      },
-    }
-  );
+    replyMarkup: {
+      inline_keyboard: [...modelButtons, ...effortButtons],
+    },
+  };
 }
 
-/**
- * Codex model selection (for /model when on Codex driver).
- */
-async function handleCodexModel(ctx: Context): Promise<void> {
-  if (!CODEX_AVAILABLE) {
-    await ctx.reply(getCodexUnavailableMessage());
-    return;
-  }
-
+export async function buildCodexModelPickerMessage(): Promise<{
+  text: string;
+  replyMarkup: ModelPickerMarkup;
+}> {
   const { getAvailableCodexModelsLive } = await import("../codex-session");
 
   const models = await getAvailableCodexModelsLive();
   const currentModel = models.find((m) => m.value === codexSession.model);
   const currentEffort = codexSession.reasoningEffort;
 
-  // Model buttons — one per row
   const modelButtons = models.map((m) => [{
     text: `${m.value === codexSession.model ? "✔ " : ""}${m.displayName}`,
     callback_data: `codex_model:${m.value}`,
   }]);
 
-  // Reasoning effort buttons for Codex
   const effortLevels: Array<[string, string]> = [
     ["minimal", `Minimal${DEFAULT_CODEX_EFFORT === "minimal" ? " (default)" : ""}`],
     ["low", `Low${DEFAULT_CODEX_EFFORT === "low" ? " (default)" : ""}`],
@@ -696,17 +720,15 @@ async function handleCodexModel(ctx: Context): Promise<void> {
   const modelName = currentModel?.displayName || codexSession.model;
   const modelDesc = currentModel?.description ? ` — ${currentModel.description}` : "";
 
-  await ctx.reply(
-    `<b>Codex Model:</b> ${modelName}${modelDesc}\n` +
+  return {
+    text:
+      `<b>Codex Model:</b> ${modelName}${modelDesc}\n` +
       `<b>Reasoning Effort:</b> ${currentEffort}\n\n` +
       `Select model or reasoning effort:`,
-    {
-      parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: [...modelButtons, ...effortButtons],
-      },
-    }
-  );
+    replyMarkup: {
+      inline_keyboard: [...modelButtons, ...effortButtons],
+    },
+  };
 }
 
 /**
