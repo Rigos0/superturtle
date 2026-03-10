@@ -8,6 +8,7 @@ process.env.TELEGRAM_ALLOWED_USERS ||= "123";
 process.env.CLAUDE_WORKING_DIR ||= process.cwd();
 
 const originalSpawn = Bun.spawn;
+const originalSpawnSync = Bun.spawnSync;
 const actualConfig = await import("./config");
 const tempDirs: string[] = [];
 
@@ -45,6 +46,29 @@ function makeSpawnOutput(lines: unknown[]): {
   return { stdout, stderr };
 }
 
+function mockToolDiscovery(tools: string[] = [
+  "Bash",
+  "Edit",
+  "Write",
+  "mcp__send-turtle__send_turtle",
+  "mcp__bot-control__ask_user",
+]) {
+  Bun.spawnSync = ((_cmd: unknown, _opts?: unknown) => {
+    const initLine = JSON.stringify({
+      type: "system",
+      subtype: "init",
+      tools,
+    });
+
+    return {
+      stdout: new TextEncoder().encode(`${initLine}\n`),
+      stderr: new Uint8Array(),
+      exitCode: 0,
+      success: true,
+    } as unknown as ReturnType<typeof Bun.spawnSync>;
+  }) as typeof Bun.spawnSync;
+}
+
 async function loadSessionModule(tempDir: string, tag: string) {
   const mockedConfig = {
     ...actualConfig,
@@ -64,6 +88,7 @@ async function loadSessionModule(tempDir: string, tag: string) {
 
 afterEach(() => {
   Bun.spawn = originalSpawn;
+  Bun.spawnSync = originalSpawnSync;
   mock.restore();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
@@ -75,6 +100,7 @@ describe("ClaudeSession conductor inbox delivery", () => {
   it("injects pending background events into the next interactive turn and acknowledges them on success", async () => {
     const tempDir = makeTempDir();
     const chatId = 424242;
+    mockToolDiscovery();
     const inboxPath = join(tempDir, ".superturtle", "state", "inbox", "inbox_success.json");
     writeJson(inboxPath, {
       kind: "meta_agent_inbox_item",
@@ -152,6 +178,7 @@ describe("ClaudeSession conductor inbox delivery", () => {
   it("leaves pending background events unacknowledged when the interactive turn fails", async () => {
     const tempDir = makeTempDir();
     const chatId = 515151;
+    mockToolDiscovery();
     const inboxPath = join(tempDir, ".superturtle", "state", "inbox", "inbox_error.json");
     writeJson(inboxPath, {
       kind: "meta_agent_inbox_item",
@@ -224,6 +251,7 @@ describe("ClaudeSession conductor inbox delivery", () => {
   it("keeps pending background events deliverable after switching back to Claude and changing model", async () => {
     const tempDir = makeTempDir();
     const chatId = 616161;
+    mockToolDiscovery();
     const inboxPath = join(tempDir, ".superturtle", "state", "inbox", "inbox_claude_model_switch.json");
     writeJson(inboxPath, {
       kind: "meta_agent_inbox_item",

@@ -9,7 +9,7 @@ process.env.CLAUDE_WORKING_DIR ||= process.cwd();
 const originalSpawn = Bun.spawn;
 const originalSpawnSync = Bun.spawnSync;
 
-const { IPC_DIR } = await import("./config");
+const { IPC_DIR, TOKEN_PREFIX } = await import("./config");
 
 async function cleanupAskUserFiles(): Promise<void> {
   const glob = new Bun.Glob("ask-user-*.json");
@@ -211,7 +211,7 @@ describe("ClaudeSession ask_user tool routing", () => {
       chatId
     );
 
-    const mcpConfigPath = "/tmp/superturtle-test-token-mcp-config.json";
+    const mcpConfigPath = `/tmp/superturtle-${TOKEN_PREFIX}-mcp-config.json`;
     const config = JSON.parse(readFileSync(mcpConfigPath, "utf-8")) as {
       mcpServers?: Record<string, { env?: Record<string, string> }>;
     };
