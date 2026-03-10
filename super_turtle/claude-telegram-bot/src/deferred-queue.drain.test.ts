@@ -407,6 +407,65 @@ describe("drainDeferredQueue", () => {
     expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(0);
   });
 
+  it("keeps a queued one-shot cron item until a later idle drain if user work runs first", async () => {
+    const deferredQueue = await loadDeferredQueueModule();
+    const { ctx } = makeCtx();
+    const chatId = 310061;
+
+    const firstDrainStates = [false, false, true];
+    isAnyDriverRunningMock = mock(() => firstDrainStates.shift() ?? true);
+
+    deferredQueue.enqueueDeferredCronJob(chatId, {
+      jobId: "cron-preempted",
+      jobType: "one-shot",
+      prompt: "finish scheduled work",
+      silent: false,
+      scheduledFor: 5100,
+      enqueuedAt: 1000,
+    });
+    deferredQueue.enqueueDeferredMessage({
+      text: "user before cron",
+      userId: 14,
+      username: "preempt-user",
+      chatId,
+      source: "text",
+      enqueuedAt: 2000,
+    });
+
+    await deferredQueue.drainDeferredQueue(ctx, chatId);
+
+    expect(runMessageWithActiveDriverMock).toHaveBeenCalledTimes(1);
+    expect(executeNonSilentCronJobMock).not.toHaveBeenCalled();
+    expect(removeJobMock).not.toHaveBeenCalled();
+    expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(1);
+    expect(deferredQueue.getAllDeferredQueues().get(chatId)).toEqual([
+      expect.objectContaining({
+        kind: "cron_job",
+        jobId: "cron-preempted",
+        jobType: "one-shot",
+      }),
+    ]);
+
+    const followUpStates = [false, false, false];
+    isAnyDriverRunningMock = mock(() => followUpStates.shift() ?? false);
+
+    await deferredQueue.drainDeferredQueue(ctx, chatId);
+
+    expect(executeNonSilentCronJobMock).toHaveBeenCalledTimes(1);
+    expect(executeNonSilentCronJobMock).toHaveBeenCalledWith(
+      {
+        id: "cron-preempted",
+        prompt: "finish scheduled work",
+      },
+      {
+        chatId,
+        userId: chatId,
+      }
+    );
+    expect(removeJobMock).toHaveBeenCalledWith("cron-preempted");
+    expect(deferredQueue.getDeferredQueueSize(chatId)).toBe(0);
+  });
+
   it("drains queued cron items when no user message is waiting", async () => {
     const deferredQueue = await loadDeferredQueueModule();
     const { ctx } = makeCtx();
