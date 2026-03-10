@@ -7,8 +7,9 @@
  * optional silent flag for background-only processing,
  * and optional structured metadata for conductor-owned supervision jobs.
  *
- * chat_id is not stored — each SuperTurtle instance serves exactly one chat,
- * so the bot resolves the target chat from ALLOWED_USERS at fire time.
+ * Per-job chat identifiers are not stored because each SuperTurtle instance
+ * serves exactly one chat, so the bot resolves the target from ALLOWED_USERS
+ * at fire time.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -81,7 +82,7 @@ function normalizeJob(raw: unknown): CronJob {
     throw new Error("Job created_at must be a string");
   }
 
-  // Silently ignore legacy chat_id fields from old job files
+  // Silently ignore legacy per-chat fields from old job files
   const interval =
     typeof value.interval_ms === "number" || value.interval_ms === null
       ? value.interval_ms
