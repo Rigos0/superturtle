@@ -20,9 +20,12 @@ const {
   shouldSendToolStatusMessage,
   StreamingState,
 } = await import("./streaming");
-const { PINO_LOG_PATH } = await import("../logger");
 const { IPC_DIR } = await import("../config");
 mkdirSync(IPC_DIR, { recursive: true });
+
+const STREAMING_ASK_USER_PATTERN = "ask-user-streaming-*.json";
+const STREAMING_PINO_LOGS_PATTERN = "pino-logs-streaming-*.json";
+const STREAMING_BOT_CONTROL_PATTERN = "bot-control-streaming-*.json";
 
 async function cleanupIpcFiles(pattern: string): Promise<void> {
   const glob = new Bun.Glob(pattern);
@@ -37,38 +40,30 @@ async function cleanupIpcFiles(pattern: string): Promise<void> {
 }
 
 beforeEach(async () => {
-  await cleanupIpcFiles("ask-user-*.json");
-  await cleanupIpcFiles("pino-logs-*.json");
-  await cleanupIpcFiles("bot-control-*.json");
+  process.env.SUPERTURTLE_IPC_DIR = IPC_DIR;
+  await cleanupIpcFiles(STREAMING_ASK_USER_PATTERN);
+  await cleanupIpcFiles(STREAMING_PINO_LOGS_PATTERN);
+  await cleanupIpcFiles(STREAMING_BOT_CONTROL_PATTERN);
 });
 
 afterEach(async () => {
-  await cleanupIpcFiles("ask-user-*.json");
-  await cleanupIpcFiles("pino-logs-*.json");
-  await cleanupIpcFiles("bot-control-*.json");
+  await cleanupIpcFiles(STREAMING_ASK_USER_PATTERN);
+  await cleanupIpcFiles(STREAMING_PINO_LOGS_PATTERN);
+  await cleanupIpcFiles(STREAMING_BOT_CONTROL_PATTERN);
 });
 
-async function withTempPinoLogs(lines: string[], fn: () => Promise<void>) {
-  const file = Bun.file(PINO_LOG_PATH);
-  let original: string | null = null;
-  if (await file.exists()) {
-    original = await file.text();
-  }
-  await Bun.write(PINO_LOG_PATH, lines.join("\n") + "\n");
-  try {
-    await fn();
-  } finally {
-    if (original === null) {
-      try {
-        const { unlinkSync } = await import("fs");
-        unlinkSync(PINO_LOG_PATH);
-      } catch {
-        /* best-effort cleanup */
-      }
-    } else {
-      await Bun.write(PINO_LOG_PATH, original);
-    }
-  }
+async function loadStreamingModuleWithLogLines(lines: string[]) {
+  const logReader = await import("../log-reader");
+  mock.module("../log-reader", () => ({
+    ...logReader,
+    readPinoLogLines: async () => lines,
+  }));
+
+  return import(`./streaming.ts?pino-log-lines=${Date.now()}-${Math.random()}`);
+}
+
+async function loadFreshStreamingModule() {
+  return import(`./streaming.ts?fresh=${Date.now()}-${Math.random()}`);
 }
 
 describe("isAskUserPromptMessage()", () => {
@@ -121,7 +116,8 @@ describe("createAskUserKeyboard()", () => {
 
 describe("checkPendingAskUserRequests()", () => {
   it("does not deliver pending ask-user request with missing chat_id", async () => {
-    const requestId = `ask-user-missing-chat-${Date.now()}`;
+    const { checkPendingAskUserRequests } = await loadFreshStreamingModule();
+    const requestId = `streaming-ask-user-missing-chat-${Date.now()}`;
     const requestFile = `${IPC_DIR}/ask-user-${requestId}.json`;
     await Bun.write(
       requestFile,
@@ -147,7 +143,8 @@ describe("checkPendingAskUserRequests()", () => {
   });
 
   it("expires stale pending ask-user request instead of delivering it", async () => {
-    const requestId = `ask-user-stale-${Date.now()}`;
+    const { checkPendingAskUserRequests } = await loadFreshStreamingModule();
+    const requestId = `streaming-ask-user-stale-${Date.now()}`;
     const requestFile = `${IPC_DIR}/ask-user-${requestId}.json`;
     await Bun.write(
       requestFile,
@@ -187,29 +184,28 @@ describe("checkPendingPinoLogsRequests()", () => {
       JSON.stringify({ level: 40, time: 1710000010000, module: "streaming", msg: "warned" }),
     ];
 
-    await withTempPinoLogs(logLines, async () => {
-      const requestId = "pino-logs-test-error";
-      const requestFile = `${IPC_DIR}/pino-logs-${requestId}.json`;
-      const request = {
-        request_id: requestId,
-        level: "error",
-        limit: 50,
-        status: "pending",
-        chat_id: "123",
-        created_at: new Date().toISOString(),
-      };
-      await Bun.write(requestFile, JSON.stringify(request, null, 2));
+    const { checkPendingPinoLogsRequests } = await loadStreamingModuleWithLogLines(logLines);
+    const requestId = "streaming-pino-logs-test-error";
+    const requestFile = `${IPC_DIR}/pino-logs-${requestId}.json`;
+    const request = {
+      request_id: requestId,
+      level: "error",
+      limit: 50,
+      status: "pending",
+      chat_id: "123",
+      created_at: new Date().toISOString(),
+    };
+    await Bun.write(requestFile, JSON.stringify(request, null, 2));
 
-      await checkPendingPinoLogsRequests(123);
+    await checkPendingPinoLogsRequests(123);
 
-      const result = JSON.parse(await Bun.file(requestFile).text());
-      expect(result.status).toBe("completed");
-      expect(result.result).toContain("ERROR");
-      expect(result.result).toContain("[claude]");
-      expect(result.result).toContain("processing failed");
-      expect(result.result).toContain("(boom)");
-      expect(result.result).not.toContain("WARN");
-    });
+    const result = JSON.parse(await Bun.file(requestFile).text());
+    expect(result.status).toBe("completed");
+    expect(result.result).toContain("ERROR");
+    expect(result.result).toContain("[claude]");
+    expect(result.result).toContain("processing failed");
+    expect(result.result).toContain("(boom)");
+    expect(result.result).not.toContain("WARN");
   });
 
   it("filters by exact levels and module", async () => {
@@ -219,29 +215,28 @@ describe("checkPendingPinoLogsRequests()", () => {
       JSON.stringify({ level: 50, time: 1710000110000, module: "streaming", msg: "error" }),
     ];
 
-    await withTempPinoLogs(logLines, async () => {
-      const requestId = "pino-logs-test-warn";
-      const requestFile = `${IPC_DIR}/pino-logs-${requestId}.json`;
-      const request = {
-        request_id: requestId,
-        levels: ["warn"],
-        module: "streaming",
-        limit: 10,
-        status: "pending",
-        chat_id: "123",
-        created_at: new Date().toISOString(),
-      };
-      await Bun.write(requestFile, JSON.stringify(request, null, 2));
+    const { checkPendingPinoLogsRequests } = await loadStreamingModuleWithLogLines(logLines);
+    const requestId = "streaming-pino-logs-test-warn";
+    const requestFile = `${IPC_DIR}/pino-logs-${requestId}.json`;
+    const request = {
+      request_id: requestId,
+      levels: ["warn"],
+      module: "streaming",
+      limit: 10,
+      status: "pending",
+      chat_id: "123",
+      created_at: new Date().toISOString(),
+    };
+    await Bun.write(requestFile, JSON.stringify(request, null, 2));
 
-      await checkPendingPinoLogsRequests(123);
+    await checkPendingPinoLogsRequests(123);
 
-      const result = JSON.parse(await Bun.file(requestFile).text());
-      expect(result.status).toBe("completed");
-      expect(result.result).toContain("WARN");
-      expect(result.result).toContain("[streaming]");
-      expect(result.result).toContain("warned");
-      expect(result.result).not.toContain("ERROR");
-    });
+    const result = JSON.parse(await Bun.file(requestFile).text());
+    expect(result.status).toBe("completed");
+    expect(result.result).toContain("WARN");
+    expect(result.result).toContain("[streaming]");
+    expect(result.result).toContain("warned");
+    expect(result.result).not.toContain("ERROR");
   });
 });
 
@@ -357,6 +352,7 @@ describe("tool status visibility", () => {
 
 describe("bot-control dynamic import", () => {
   it("imports commands.ts via executeBotControlAction without throwing", async () => {
+    const { checkPendingBotControlRequests } = await loadFreshStreamingModule();
     const originalSpawnSync = Bun.spawnSync;
     Bun.spawnSync = ((_cmd: unknown, _opts?: unknown) => {
       return {
@@ -368,7 +364,7 @@ describe("bot-control dynamic import", () => {
     }) as typeof Bun.spawnSync;
 
     const chatId = 12345;
-    const requestId = `bot-control-test-${Date.now()}-${Math.random()}`;
+    const requestId = `streaming-bot-control-test-${Date.now()}-${Math.random()}`;
     const requestFile = `${IPC_DIR}/bot-control-${requestId}.json`;
     const request = {
       request_id: requestId,

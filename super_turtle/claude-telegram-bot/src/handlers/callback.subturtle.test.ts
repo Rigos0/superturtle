@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 async function cleanupPinoLogRequests(): Promise<void> {
-  const glob = new Bun.Glob("pino-logs-*.json");
+  const glob = new Bun.Glob("pino-logs-pinologs-callback-*.json");
   for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
     try {
       rmSync(join(IPC_DIR, filename), { force: true });

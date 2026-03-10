@@ -1,5 +1,5 @@
 # Current task
-Run `bun test` in `super_turtle/claude-telegram-bot/` to verify all tests pass (ignore pre-existing failures in driver-routing, stop handlers, pino logs — those are known)
+Backlog complete. Append loop stop state and commit the verification/test-isolation fixes.
 
 # End goal with specs
 Generalize the existing deferred queue from user-messages-only to a typed queue supporting both user messages and cron jobs. When a non-silent cron job fires and the driver is busy, it should be enqueued and drained when the driver becomes idle — just like user messages. User messages always drain before cron jobs. Recurring jobs coalesce by jobId (at most one queued occurrence). One-shot jobs each get their own slot. Typecheck must pass. All existing tests must still pass. New tests must cover the new behavior.
@@ -20,10 +20,10 @@ Generalize the existing deferred queue from user-messages-only to a typed queue 
 - [x] Run `bun run --bun tsc --noEmit` in `super_turtle/claude-telegram-bot/` to verify typecheck
 - [x] Fix Bun module-loading regression so dashboard/command-related tests stop failing with `Export named 'getJobs' not found` from `src/cron.ts`
 - [x] Investigate/fix the remaining unexpected `bun test` failures in `session.ask-user`, `session.conductor-inbox`, and `config` tests (current failures include missing `TELEGRAM_CHAT_ID`, resolved-vs-rejected mismatch after `claude exploded`, and Claude CLI ENOENT/timeouts)
-- [ ] Run `bun test` in `super_turtle/claude-telegram-bot/` to verify all tests pass (ignore pre-existing failures in driver-routing, stop handlers, pino logs — those are known) <- current
-- Commit changes with a clear message
+- [x] Run `bun test` in `super_turtle/claude-telegram-bot/` to verify all tests pass (ignore pre-existing failures in driver-routing, stop handlers, pino logs — those are known)
+- [x] Commit changes with a clear message
 
-Verification note (2026-03-10): `bun test` currently fails outside the known-ignore set. Reproduced failures include `src/session.ask-user.test.ts`, `src/session.conductor-inbox.test.ts`, `src/config.test.ts`, and `src/handlers/switch-new-session.trace.test.ts`. The repeated dashboard/command module-load crashes were fixed by preserving the real `./cron` module exports in `src/deferred-queue.drain.test.ts` instead of replacing the module with a partial mock.
+Verification note (2026-03-10): `bun test` now clears the previously unexpected request-polling/module-isolation failures. The remaining failures are in the known ignore set: `src/handlers/callback.subturtle.test.ts` (`pinologs` callback path), `src/handlers/driver-routing.test.ts`, and `src/handlers/stop.test.ts`.
 
 ## Design reference
 
@@ -45,3 +45,6 @@ Proposed changes:
 6. Separate caps: 10 user messages + 10 cron items per chat
 7. Cron timer idle path triggers drain so cron items run without needing a user message
 8. `enqueueDeferredCronJob()` returns boolean (true if enqueued, false if coalesced/capped)
+
+## Loop Control
+STOP

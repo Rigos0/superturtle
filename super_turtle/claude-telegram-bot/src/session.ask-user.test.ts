@@ -10,9 +10,10 @@ const originalSpawn = Bun.spawn;
 const originalSpawnSync = Bun.spawnSync;
 
 const { IPC_DIR, TOKEN_PREFIX } = await import("./config");
+const SESSION_ASK_USER_PATTERN = "ask-user-session-*.json";
 
 async function cleanupAskUserFiles(): Promise<void> {
-  const glob = new Bun.Glob("ask-user-*.json");
+  const glob = new Bun.Glob(SESSION_ASK_USER_PATTERN);
   for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
     try {
       rmSync(`${IPC_DIR}/${filename}`, { force: true });
@@ -59,7 +60,7 @@ describe("ClaudeSession ask_user tool routing", () => {
   it("handles ask_user calls from bot-control namespace", async () => {
     let killed = false;
     const chatId = 6769019304;
-    const requestId = `ask-user-test-${Date.now()}-${Math.random()}`;
+    const requestId = `session-ask-user-test-${Date.now()}-${Math.random()}`;
     const requestFile = `${IPC_DIR}/ask-user-${requestId}.json`;
     mockToolDiscovery();
 

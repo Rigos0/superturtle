@@ -38,6 +38,11 @@ const PENDING_REQUEST_MAX_AGE_MS = 5 * 60 * 1000;
 const HEARTBEAT_IDLE_MS = 15_000;
 const HEARTBEAT_TICK_MS = 5_000;
 
+function getIpcDir(): string {
+  const override = process.env.SUPERTURTLE_IPC_DIR?.trim();
+  return override && override.length > 0 ? override : IPC_DIR;
+}
+
 function getRequestChatId(data: Record<string, unknown>): string {
   const raw = data.chat_id;
   if (typeof raw === "number") return String(raw);
@@ -106,11 +111,12 @@ export async function checkPendingAskUserRequests(
   ctx: Context,
   chatId: number
 ): Promise<boolean> {
+  const ipcDir = getIpcDir();
   const glob = new Bun.Glob("ask-user-*.json");
   let buttonsSent = false;
 
-  for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
-    const filepath = `${IPC_DIR}/${filename}`;
+  for await (const filename of glob.scan({ cwd: ipcDir, absolute: false })) {
+    const filepath = `${ipcDir}/${filename}`;
     try {
       const file = Bun.file(filepath);
       const text = await file.text();
@@ -163,11 +169,12 @@ export async function checkPendingSendTurtleRequests(
   ctx: Context,
   chatId: number
 ): Promise<boolean> {
+  const ipcDir = getIpcDir();
   const glob = new Bun.Glob("send-turtle-*.json");
   let photoSent = false;
 
-  for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
-    const filepath = `${IPC_DIR}/${filename}`;
+  for await (const filename of glob.scan({ cwd: ipcDir, absolute: false })) {
+    const filepath = `${ipcDir}/${filename}`;
     try {
       const file = Bun.file(filepath);
       const text = await file.text();
@@ -230,11 +237,12 @@ export async function checkPendingSendImageRequests(
   ctx: Context,
   chatId: number
 ): Promise<boolean> {
+  const ipcDir = getIpcDir();
   const glob = new Bun.Glob("send-image-*.json");
   let imageSent = false;
 
-  for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
-    const filepath = `${IPC_DIR}/${filename}`;
+  for await (const filename of glob.scan({ cwd: ipcDir, absolute: false })) {
+    const filepath = `${ipcDir}/${filename}`;
     try {
       const file = Bun.file(filepath);
       const text = await file.text();
@@ -312,11 +320,12 @@ export async function checkPendingBotControlRequests(
   sessionObj: BotControlSession,
   chatId: number,
 ): Promise<boolean> {
+  const ipcDir = getIpcDir();
   const glob = new Bun.Glob("bot-control-*.json");
   let handled = false;
 
-  for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
-    const filepath = `${IPC_DIR}/${filename}`;
+  for await (const filename of glob.scan({ cwd: ipcDir, absolute: false })) {
+    const filepath = `${ipcDir}/${filename}`;
     try {
       const file = Bun.file(filepath);
       const text = await file.text();
@@ -374,11 +383,12 @@ export async function checkPendingBotControlRequests(
 export async function checkPendingPinoLogsRequests(
   chatId: number,
 ): Promise<boolean> {
+  const ipcDir = getIpcDir();
   const glob = new Bun.Glob("pino-logs-*.json");
   let handled = false;
 
-  for await (const filename of glob.scan({ cwd: IPC_DIR, absolute: false })) {
-    const filepath = `${IPC_DIR}/${filename}`;
+  for await (const filename of glob.scan({ cwd: ipcDir, absolute: false })) {
+    const filepath = `${ipcDir}/${filename}`;
     try {
       const file = Bun.file(filepath);
       const text = await file.text();
