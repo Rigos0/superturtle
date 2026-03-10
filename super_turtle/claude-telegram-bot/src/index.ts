@@ -413,6 +413,9 @@ bot.use(async (ctx, next) => {
 });
 
 // Canonical command ingress events for replay/debug.
+// Logs both /slash commands and bare-word commands (e.g. "status").
+// Note: bare-word commands are also logged in the bot.hears() handler below,
+// but this middleware catches slash commands early in the pipeline.
 bot.use(async (ctx, next) => {
   const text = ctx.message?.text;
   if (text?.startsWith("/")) {
@@ -447,6 +450,10 @@ bot.use(
     if (ctx.message?.text?.startsWith("/")) {
       return undefined;
     }
+    // Bare-word commands bypass queue too (e.g. "status", "Stop")
+    if (ctx.message?.text && matchBareCommand(ctx.message.text)) {
+      return undefined;
+    }
     // Messages with ! prefix bypass queue (interrupt)
     if (ctx.message?.text?.startsWith("!")) {
       return undefined;
@@ -470,27 +477,74 @@ bot.use(
 
 // ============== Command Handlers ==============
 
-bot.command("new", handleNew);
-bot.command("stop", handleStopCommand);
-bot.command("status", handleStatus);
-bot.command("looplogs", handleLooplogs);
-bot.command("pinologs", handlePinologs);
-bot.command("usage", handleUsage);
-bot.command("context", handleContext);
-bot.command("model", handleModel);
-bot.command("switch", handleSwitch);
-bot.command("resume", handleResume);
-bot.command("sub", handleSubturtle);
-bot.command("subs", handleSubturtle);
-bot.command("subturtle", handleSubturtle);
-bot.command("subturtles", handleSubturtle);
-bot.command("turtle", handleSubturtle);
-bot.command("turtles", handleSubturtle);
-bot.command("cron", handleCron);
-bot.command("debug", handleDebug);
-bot.command("restart", handleRestart);
+/**
+ * Map of bare command names (lowercase) to their handlers.
+ * Used for both slash commands AND bare-word matching (e.g. "status" = "/status").
+ */
+const COMMAND_HANDLERS: Record<string, (ctx: Context) => Promise<void> | void> = {
+  new: handleNew,
+  stop: handleStopCommand,
+  status: handleStatus,
+  looplogs: handleLooplogs,
+  pinologs: handlePinologs,
+  usage: handleUsage,
+  context: handleContext,
+  model: handleModel,
+  switch: handleSwitch,
+  resume: handleResume,
+  sub: handleSubturtle,
+  subs: handleSubturtle,
+  subturtle: handleSubturtle,
+  subturtles: handleSubturtle,
+  turtle: handleSubturtle,
+  turtles: handleSubturtle,
+  cron: handleCron,
+  debug: handleDebug,
+  restart: handleRestart,
+};
+
+/** Set of all bare command names for fast lookup. */
+export const BARE_COMMAND_NAMES = new Set(Object.keys(COMMAND_HANDLERS));
+
+/**
+ * Check if text is a bare command word (case-insensitive, exact match after trim).
+ * Returns the lowercase command name if matched, null otherwise.
+ */
+export function matchBareCommand(text: string): string | null {
+  const normalized = text.trim().toLowerCase();
+  return BARE_COMMAND_NAMES.has(normalized) ? normalized : null;
+}
+
+// Register slash commands
+for (const [name, handler] of Object.entries(COMMAND_HANDLERS)) {
+  bot.command(name, handler);
+}
 
 // ============== Message Handlers ==============
+
+// Bare-word command matching (e.g. "status" works like "/status").
+// Case-insensitive, exact match only — "restart now" won't match.
+// Uses bot.hears() so it runs before the generic text handler.
+const bareCommandPattern = new RegExp(
+  `^\\s*(${[...BARE_COMMAND_NAMES].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*$`,
+  "i"
+);
+bot.hears(bareCommandPattern, (ctx) => {
+  const matched = matchBareCommand(ctx.message?.text ?? "");
+  if (matched) {
+    // Log as a command so audit trail is consistent
+    eventLog.info({
+      event: "user.command",
+      userId: ctx.from?.id,
+      username: ctx.from?.username || "unknown",
+      chatId: ctx.chat?.id,
+      command: `/${matched}`,
+      rawLength: ctx.message?.text?.length ?? 0,
+      bareWord: true,
+    });
+    return COMMAND_HANDLERS[matched]!(ctx);
+  }
+});
 
 // Text messages
 bot.on("message:text", handleText);
