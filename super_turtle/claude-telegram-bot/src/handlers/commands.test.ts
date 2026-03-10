@@ -851,7 +851,6 @@ describe("handlers with mock Context", () => {
       {
         id: "job-1",
         prompt: "Do a quick status check",
-        chat_id: 123,
         type: "one-shot",
         interval_ms: null,
         fire_at: now + 5 * 60 * 1000,
@@ -860,7 +859,6 @@ describe("handlers with mock Context", () => {
       {
         id: "job-2",
         prompt: longPrompt,
-        chat_id: 123,
         type: "recurring",
         interval_ms: 15 * 60 * 1000,
         fire_at: now + 2 * 60 * 60 * 1000,
@@ -891,7 +889,6 @@ describe("handlers with mock Context", () => {
       {
         id: "job-structured",
         prompt: "legacy prompt fallback should not be shown",
-        chat_id: 123,
         type: "recurring",
         interval_ms: 10 * 60 * 1000,
         silent: true,

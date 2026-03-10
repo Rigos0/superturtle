@@ -64,7 +64,7 @@ describe("loadJobs()", () => {
       {
         id: "job-1",
         prompt: "hello",
-        chat_id: undefined,
+
         type: "one-shot",
         interval_ms: null,
         silent: undefined,
@@ -101,7 +101,7 @@ describe("loadJobs()", () => {
       {
         id: "job-structured",
         prompt: "check worker-a",
-        chat_id: undefined,
+
         type: "recurring",
         interval_ms: 600000,
         silent: true,
@@ -138,7 +138,7 @@ describe("loadJobs()", () => {
       {
         id: "job-unsupported-mode",
         prompt: "check worker-a",
-        chat_id: undefined,
+
         type: "recurring",
         interval_ms: 600000,
         silent: true,
@@ -181,14 +181,13 @@ describe("addJob() and removeJob()", () => {
   it("adds a job to disk and loadJobs() returns it", () => {
     Date.now = () => 10_000;
 
-    const added = addJob("run tests", 123, "one-shot", 5000);
+    const added = addJob("run tests", "one-shot", 5000);
 
     const fromDisk = loadJobs();
     expect(fromDisk).toHaveLength(1);
     expect(fromDisk[0]).toMatchObject({
       id: added.id,
       prompt: "run tests",
-      chat_id: 123,
       type: "one-shot",
       interval_ms: null,
       job_kind: undefined,
@@ -203,7 +202,6 @@ describe("addJob() and removeJob()", () => {
 
     const added = addJob(
       "check worker-a",
-      321,
       "recurring",
       undefined,
       60_000,
@@ -219,7 +217,6 @@ describe("addJob() and removeJob()", () => {
     expect(fromDisk[0]).toMatchObject({
       id: added.id,
       prompt: "check worker-a",
-      chat_id: 321,
       type: "recurring",
       interval_ms: 60_000,
       silent: true,
@@ -233,7 +230,7 @@ describe("addJob() and removeJob()", () => {
   it("removes existing jobs and handles missing IDs gracefully", () => {
     Date.now = () => 20_000;
 
-    const added = addJob("cleanup", 999, "one-shot", 1000);
+    const added = addJob("cleanup", "one-shot", 1000);
     expect(removeJob(added.id)).toBe(true);
     expect(removeJob("missing-id")).toBe(false);
     expect(loadJobs()).toHaveLength(0);
@@ -287,7 +284,6 @@ describe("advanceRecurringJob()", () => {
         {
           id: "recurring",
           prompt: "ping",
-          chat_id: 7,
           type: "recurring",
           interval_ms: 300,
           fire_at: 1000,

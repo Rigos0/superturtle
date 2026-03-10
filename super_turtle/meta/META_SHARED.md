@@ -468,7 +468,7 @@ You can schedule yourself to check back later. When a scheduled job fires, the b
 **How it works:**
 1. For normal scheduling, use `CronCreate` to add jobs, `CronList` to inspect them, and `CronDelete` to cancel them. If you are spawning a SubTurtle, use `ctl spawn` and let it auto-register supervision cron instead of creating it by hand.
 2. `{{DATA_DIR}}/cron-jobs.json` is the backing store. Only read or edit that JSON directly for recovery/debug when you are repairing cron state.
-3. Jobs in the backing file use: `id` (6 hex chars), `prompt`, `type` (`"one-shot"` or `"recurring"`), `fire_at` (epoch ms), `interval_ms` (ms for recurring, `null` for one-shot), `silent` (boolean, optional, defaults to `false`), and `created_at` (ISO string). `chat_id` is auto-filled by the bot.
+3. Jobs in the backing file use: `id` (6 hex chars), `prompt`, `type` (`"one-shot"` or `"recurring"`), `fire_at` (epoch ms), `interval_ms` (ms for recurring, `null` for one-shot), `silent` (boolean, optional, defaults to `false`), and `created_at` (ISO string).
 4. The bot checks every 10 seconds and fires due jobs automatically.
 
 **UX guidelines:**

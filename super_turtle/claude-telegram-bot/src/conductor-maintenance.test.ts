@@ -75,14 +75,14 @@ Recover completed worker
         type: "recurring" as const,
         job_kind: "subturtle_supervision" as const,
         worker_name: "worker-recover",
-        chat_id: 123,
+
       },
       {
         id: "cron-orphan",
         type: "recurring" as const,
         job_kind: "subturtle_supervision" as const,
         worker_name: "worker-orphan",
-        chat_id: 123,
+
       },
     ];
     const sentMessages: string[] = [];
@@ -202,7 +202,7 @@ Replay in-flight completion
         type: "recurring" as const,
         job_kind: "subturtle_supervision" as const,
         worker_name: "worker-processing",
-        chat_id: 123,
+
       },
     ];
     const sentMessages: string[] = [];
@@ -308,7 +308,7 @@ Replay in-flight completion
         type: "recurring" as const,
         job_kind: "subturtle_supervision" as const,
         worker_name: "worker-reused",
-        chat_id: 123,
+
       },
     ];
     const sentMessages: string[] = [];

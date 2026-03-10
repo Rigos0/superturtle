@@ -2,10 +2,13 @@
  * Persistent job store for scheduled cron jobs.
  *
  * Jobs are stored in a JSON file and loaded/saved synchronously.
- * Each job has an ID, prompt, chat_id, type (one-shot or recurring),
+ * Each job has an ID, prompt, type (one-shot or recurring),
  * fire_at timestamp, optional interval_ms for recurring jobs,
  * optional silent flag for background-only processing,
  * and optional structured metadata for conductor-owned supervision jobs.
+ *
+ * chat_id is not stored — each SuperTurtle instance serves exactly one chat,
+ * so the bot resolves the target chat from ALLOWED_USERS at fire time.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -20,7 +23,6 @@ export type CronSupervisionMode = "silent";
 export interface CronJob {
   id: string;
   prompt: string;
-  chat_id?: number; // optional — defaults to ALLOWED_USERS[0] at fire time
   type: "one-shot" | "recurring";
   interval_ms: number | null;
   silent?: boolean; // optional — true means job output should stay silent unless notable
@@ -79,7 +81,7 @@ function normalizeJob(raw: unknown): CronJob {
     throw new Error("Job created_at must be a string");
   }
 
-  const chatId = typeof value.chat_id === "number" ? value.chat_id : undefined;
+  // Silently ignore legacy chat_id fields from old job files
   const interval =
     typeof value.interval_ms === "number" || value.interval_ms === null
       ? value.interval_ms
@@ -92,7 +94,6 @@ function normalizeJob(raw: unknown): CronJob {
   return {
     id: value.id,
     prompt: value.prompt,
-    chat_id: chatId,
     type: value.type,
     interval_ms: interval,
     silent,
@@ -160,7 +161,6 @@ export function saveJobs(): void {
  */
 export function addJob(
   prompt: string,
-  chat_id: number,
   type: "one-shot" | "recurring",
   delay_ms?: number,
   interval_ms?: number,
@@ -184,7 +184,6 @@ export function addJob(
   const job: CronJob = {
     id,
     prompt,
-    chat_id,
     type,
     interval_ms: interval_ms || null,
     silent: silent === true ? true : undefined,

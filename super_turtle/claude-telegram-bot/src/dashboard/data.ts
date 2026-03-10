@@ -121,7 +121,6 @@ export function buildCronJobView(job: ReturnType<typeof getJobs>[number]): CronJ
     fireInMs: Math.max(0, job.fire_at - Date.now()),
     intervalMs: job.interval_ms,
     intervalHuman: humanInterval(job.interval_ms),
-    chatId: job.chat_id || 0,
     silent: job.silent || false,
     createdAt: job.created_at,
   };

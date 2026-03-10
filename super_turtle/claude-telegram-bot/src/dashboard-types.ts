@@ -57,7 +57,6 @@ export type CronJobView = {
   fireInMs: number;
   intervalMs: number | null;
   intervalHuman: string | null;
-  chatId: number;
   silent: boolean;
   createdAt: string;
 };

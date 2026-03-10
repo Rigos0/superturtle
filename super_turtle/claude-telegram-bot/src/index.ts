@@ -532,18 +532,16 @@ const startCronTimer = () => {
           removeJob(job.id);
         }
 
-        const userId = ALLOWED_USERS[0];
-        const chatId: number | undefined = job.chat_id ?? userId;
+        // Bail if no allowed users are configured — can't authenticate
+        if (ALLOWED_USERS.length === 0) {
+          cronLog.error({ cronJobId: job.id }, `Cron job ${job.id} skipped: ALLOWED_USERS is empty`);
+          continue;
+        }
+        // Single-chat bot: always use the first allowed user as chat target
+        const resolvedUserId = ALLOWED_USERS[0]!;
+        const resolvedChatId: number = resolvedUserId;
 
         try {
-          // Bail if no allowed users are configured — can't authenticate
-          if (ALLOWED_USERS.length === 0) {
-            cronLog.error({ cronJobId: job.id }, `Cron job ${job.id} skipped: ALLOWED_USERS is empty`);
-            continue;
-          }
-          const resolvedUserId = userId!;
-          // Default chat_id to the first allowed user — single-chat bots never need to specify it
-          const resolvedChatId: number = chatId!;
 
           if (supervisedWorkerName) {
             const supervisionResult = await processSilentSubturtleSupervision({
@@ -784,13 +782,13 @@ const startCronTimer = () => {
           const errorSummary = summarizeCronError(error);
           cronLog.error({ cronJobId: job.id, err: error }, `Cron job ${job.id} failed (no retry): ${errorSummary}`);
 
-          if (chatId) {
+          if (resolvedChatId) {
             try {
               const quotaHint = isLikelyQuotaOrLimitError(errorSummary)
                 ? "\nLikely cause: selected meta-agent driver hit a usage/quota limit."
                 : "";
               await bot.api.sendMessage(
-                chatId,
+                resolvedChatId,
                 `❌ Scheduled job failed (${job.id}).\n${errorSummary}${quotaHint}`
               );
             } catch (notifyError) {

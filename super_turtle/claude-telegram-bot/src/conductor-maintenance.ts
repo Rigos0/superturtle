@@ -12,7 +12,7 @@ import {
   type SupervisorTickResult,
 } from "./conductor-supervisor";
 
-interface ConductorMaintenanceJob extends Pick<CronJob, "id" | "type" | "job_kind" | "worker_name" | "chat_id"> {}
+interface ConductorMaintenanceJob extends Pick<CronJob, "id" | "type" | "job_kind" | "worker_name"> {}
 
 export interface RunConductorMaintenanceOptions {
   stateDir?: string;
@@ -148,10 +148,7 @@ export async function runConductorMaintenance(
         ctlPath,
         workerName,
         jobId: job.id,
-        chatId:
-          typeof job.chat_id === "number" && Number.isFinite(job.chat_id)
-            ? job.chat_id
-            : options.defaultChatId ?? null,
+        chatId: options.defaultChatId ?? null,
         listJobs: options.listJobs,
         removeJob: options.removeJob,
         sendMessage: options.sendMessage,
