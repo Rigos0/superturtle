@@ -4,6 +4,7 @@
  * Control Claude Code from your phone via Telegram.
  */
 
+import type { Context } from "grammy";
 import { run, sequentialize } from "@grammyjs/runner";
 import {
   WORKING_DIR,
@@ -45,7 +46,7 @@ import { buildSessionOverviewLines } from "./handlers/commands";
 import { resetAllDriverSessions } from "./handlers/commands";
 import { handlePinologs } from "./handlers/commands";
 import { enqueueBusyDeferredCronJob, pruneQueuedDueCronJobIds } from "./cron-deferred-queue";
-import { isCronJobQueued } from "./deferred-queue";
+import { drainDeferredQueue, isCronJobQueued } from "./deferred-queue";
 import { session } from "./session";
 import { codexSession } from "./codex-session";
 import { getDueJobs, getJobs, advanceRecurringJob, removeJob } from "./cron";
@@ -278,27 +279,13 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
     const snapshot = dequeuePreparedSnapshot();
     if (!snapshot) break;
 
-    const cronCtx = ({
-      from: { id: ALLOWED_USERS[0]!, username: "cron", is_bot: false, first_name: "Cron" },
-      chat: { id: snapshot.chatId, type: "private" },
-      message: {
-        text: "",
-        message_id: 0,
-        date: Math.floor(Date.now() / 1000),
-        chat: { id: snapshot.chatId, type: "private" },
+    const cronCtx = createCronTimerContext(
+      {
+        chatId: snapshot.chatId,
+        userId: ALLOWED_USERS[0]!,
       },
-      reply: async (replyText: string, opts?: unknown) => {
-        return bot.api.sendMessage(snapshot.chatId, replyText, opts as Parameters<typeof bot.api.sendMessage>[2]);
-      },
-      replyWithChatAction: async (action: string) => {
-        await bot.api.sendChatAction(snapshot.chatId, action as Parameters<typeof bot.api.sendChatAction>[1]);
-      },
-      replyWithSticker: async (sticker: unknown) => {
-        // @ts-expect-error minimal shim for sticker sending
-        return bot.api.sendSticker(snapshot.chatId, sticker);
-      },
-      api: bot.api,
-    }) as unknown as import("grammy").Context;
+      ""
+    );
 
     const primaryDriver: DriverId = session.activeDriver;
     const fallbackDriver: DriverId = primaryDriver === "codex" ? "claude" : "codex";
@@ -362,6 +349,51 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
       endBackgroundRun();
     }
   }
+}
+
+function createCronTimerContext(
+  target: { chatId: number; userId: number },
+  text: string
+): Context {
+  return ({
+    from: { id: target.userId, username: "cron", is_bot: false, first_name: "Cron" },
+    chat: { id: target.chatId, type: "private" },
+    message: {
+      text,
+      message_id: 0,
+      date: Math.floor(Date.now() / 1000),
+      chat: { id: target.chatId, type: "private" },
+    },
+    reply: async (replyText: string, opts?: unknown) => {
+      return bot.api.sendMessage(target.chatId, replyText, opts as Parameters<typeof bot.api.sendMessage>[2]);
+    },
+    replyWithChatAction: async (action: string) => {
+      await bot.api.sendChatAction(target.chatId, action as Parameters<typeof bot.api.sendChatAction>[1]);
+    },
+    replyWithSticker: async (sticker: unknown) => {
+      // @ts-expect-error minimal shim for sticker sending
+      return bot.api.sendSticker(target.chatId, sticker);
+    },
+    api: bot.api,
+  }) as unknown as Context;
+}
+
+async function drainDeferredQueueWhenIdle(): Promise<void> {
+  const resolvedUserId = ALLOWED_USERS[0];
+  if (resolvedUserId === undefined || isAnyDriverRunning()) {
+    return;
+  }
+
+  await drainDeferredQueue(
+    createCronTimerContext(
+      {
+        chatId: resolvedUserId,
+        userId: resolvedUserId,
+      },
+      ""
+    ),
+    resolvedUserId
+  );
 }
 
 // Drop duplicate Telegram updates before any handler side effects run.
@@ -524,6 +556,7 @@ const startCronTimer = () => {
         );
       }
       if (dueJobs.length === 0) {
+        await drainDeferredQueueWhenIdle();
         await drainPreparedSnapshotsWhenIdle();
         return;
       }
@@ -639,31 +672,14 @@ const startCronTimer = () => {
             removeJob(job.id);
           }
 
-          const createCronContext = (text: string): import("grammy").Context =>
-            ({
-              from: { id: resolvedUserId, username: "cron", is_bot: false, first_name: "Cron" },
-              chat: { id: resolvedChatId, type: "private" },
-              message: {
-                text,
-                message_id: 0,
-                date: Math.floor(Date.now() / 1000),
-                chat: { id: resolvedChatId, type: "private" },
-              },
-              reply: async (replyText: string, opts?: unknown) => {
-                return bot.api.sendMessage(resolvedChatId, replyText, opts as Parameters<typeof bot.api.sendMessage>[2]);
-              },
-              replyWithChatAction: async (action: string) => {
-                await bot.api.sendChatAction(resolvedChatId, action as Parameters<typeof bot.api.sendChatAction>[1]);
-              },
-              replyWithSticker: async (sticker: unknown) => {
-                // @ts-expect-error minimal shim for sticker sending
-                return bot.api.sendSticker(resolvedChatId, sticker);
-              },
-              api: bot.api,
-            }) as unknown as import("grammy").Context;
-
           if (job.silent) {
-            const cronCtx = createCronContext(job.prompt);
+            const cronCtx = createCronTimerContext(
+              {
+                chatId: resolvedChatId,
+                userId: resolvedUserId,
+              },
+              job.prompt
+            );
             beginBackgroundRun();
             try {
               if (wasBackgroundRunPreempted()) {
@@ -794,6 +810,7 @@ const startCronTimer = () => {
           }
         }
       }
+      await drainDeferredQueueWhenIdle();
       await drainPreparedSnapshotsWhenIdle();
     } catch (error) {
       cronLog.error({ err: error }, "Cron timer loop error");
