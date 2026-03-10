@@ -1,4 +1,5 @@
 import type { Context } from "grammy";
+import type { CronJob, CronJobKind, CronSupervisionMode } from "./cron";
 import { session } from "./session";
 import { auditLog, generateRequestId, startTypingIndicator } from "./utils";
 import { isAnyDriverRunning, runMessageWithActiveDriver } from "./handlers/driver-routing";
@@ -6,12 +7,52 @@ import { StreamingState, createStatusCallback, getStreamingState } from "./handl
 import { eventLog } from "./logger";
 
 export interface DeferredMessage {
+  kind: "user_message";
   text: string;
   userId: number;
   username: string;
   chatId: number;
   source: "voice" | "text";
   enqueuedAt: number;
+}
+
+export type DeferredMessageInput = Omit<DeferredMessage, "kind">;
+
+export interface DeferredCronJob {
+  kind: "cron_job";
+  chatId: number;
+  jobId: string;
+  jobType: CronJob["type"];
+  jobKind?: CronJobKind;
+  workerName?: string;
+  supervisionMode?: CronSupervisionMode;
+  prompt: string;
+  silent: boolean;
+  scheduledFor: number;
+  enqueuedAt: number;
+}
+
+export type DeferredCronJobInput = Omit<DeferredCronJob, "kind" | "chatId">;
+
+export type DeferredQueueItem = DeferredMessage | DeferredCronJob;
+
+function toDeferredMessage(item: DeferredMessageInput): DeferredMessage {
+  return {
+    kind: "user_message",
+    ...item,
+  };
+}
+
+function toDeferredCronJob(chatId: number, job: DeferredCronJobInput): DeferredCronJob {
+  return {
+    kind: "cron_job",
+    chatId,
+    ...job,
+  };
+}
+
+function isDeferredMessage(item: DeferredQueueItem): item is DeferredMessage {
+  return item.kind === "user_message";
 }
 
 export function makeDrainItemNotifier(
@@ -34,7 +75,7 @@ export function makeDrainItemNotifier(
 const MAX_QUEUE_PER_CHAT = 10;
 const DEDUPE_WINDOW_MS = 5000;
 
-const queues = new Map<number, DeferredMessage[]>();
+const queues = new Map<number, DeferredQueueItem[]>();
 const drainingChats = new Set<number>();
 
 /**
@@ -69,40 +110,75 @@ export function unsuppressDrain(chatId: number): void {
   drainSuppressedChats.delete(chatId);
 }
 
-export function enqueueDeferredMessage(item: DeferredMessage): number {
-  const queue = queues.get(item.chatId) || [];
+export function enqueueDeferredMessage(item: DeferredMessageInput): number {
+  const normalized = toDeferredMessage(item);
+  const queue = queues.get(normalized.chatId) || [];
   const last = queue[queue.length - 1];
   if (
     last &&
+    isDeferredMessage(last) &&
     last.text.trim() === item.text.trim() &&
-    item.enqueuedAt - last.enqueuedAt <= DEDUPE_WINDOW_MS
+    normalized.enqueuedAt - last.enqueuedAt <= DEDUPE_WINDOW_MS
   ) {
-    queues.set(item.chatId, queue);
+    queues.set(normalized.chatId, queue);
     eventLog.info({
       event: "deferred_queue.dedupe",
-      chatId: item.chatId,
-      userId: item.userId,
-      source: item.source,
+      chatId: normalized.chatId,
+      userId: normalized.userId,
+      source: normalized.source,
       queueSize: queue.length,
     });
     return queue.length;
   }
 
-  queue.push(item);
+  queue.push(normalized);
   if (queue.length > MAX_QUEUE_PER_CHAT) {
     queue.shift();
   }
 
-  queues.set(item.chatId, queue);
+  queues.set(normalized.chatId, queue);
   eventLog.info({
     event: "deferred_queue.enqueued",
-    chatId: item.chatId,
-    userId: item.userId,
-    source: item.source,
+    chatId: normalized.chatId,
+    userId: normalized.userId,
+    source: normalized.source,
     queueSize: queue.length,
-    textLength: item.text.length,
+    textLength: normalized.text.length,
   });
   return queue.length;
+}
+
+export function enqueueDeferredCronJob(
+  chatId: number,
+  job: DeferredCronJobInput
+): boolean {
+  const queue = queues.get(chatId) || [];
+  const normalized = toDeferredCronJob(chatId, job);
+
+  queue.push(normalized);
+  if (queue.length > MAX_QUEUE_PER_CHAT) {
+    queue.shift();
+  }
+
+  queues.set(chatId, queue);
+  eventLog.info({
+    event: "deferred_queue.cron_enqueued",
+    chatId,
+    cronJobId: normalized.jobId,
+    cronJobType: normalized.jobType,
+    queueSize: queue.length,
+    scheduledFor: normalized.scheduledFor,
+  });
+  return true;
+}
+
+export function isCronJobQueued(chatId: number, jobId: string): boolean {
+  const queue = queues.get(chatId);
+  if (!queue || queue.length === 0) {
+    return false;
+  }
+
+  return queue.some((item) => item.kind === "cron_job" && item.jobId === jobId);
 }
 
 export function dequeueDeferredMessage(chatId: number): DeferredMessage | undefined {
@@ -111,7 +187,17 @@ export function dequeueDeferredMessage(chatId: number): DeferredMessage | undefi
     return undefined;
   }
 
-  const next = queue.shift();
+  const nextIndex = queue.findIndex(isDeferredMessage);
+  if (nextIndex === -1) {
+    return undefined;
+  }
+
+  const next = queue[nextIndex];
+  if (!next || !isDeferredMessage(next)) {
+    return undefined;
+  }
+
+  queue.splice(nextIndex, 1);
   if (queue.length === 0) {
     queues.delete(chatId);
   } else {
@@ -125,12 +211,12 @@ export function getDeferredQueueSize(chatId: number): number {
 }
 
 /**
- * Peek at all deferred messages across all chats (for debug/diagnostics).
+ * Peek at all deferred queue items across all chats (for debug/diagnostics).
  * Returns a snapshot — does NOT dequeue.
  */
-export function getAllDeferredQueues(): Map<number, ReadonlyArray<DeferredMessage>> {
+export function getAllDeferredQueues(): Map<number, ReadonlyArray<DeferredQueueItem>> {
   return new Map(
-    Array.from(queues.entries()).map(([chatId, msgs]) => [chatId, [...msgs]])
+    Array.from(queues.entries()).map(([chatId, items]) => [chatId, [...items]])
   );
 }
 

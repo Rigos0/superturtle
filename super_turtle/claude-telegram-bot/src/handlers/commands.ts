@@ -1905,23 +1905,29 @@ export async function handleDebug(ctx: Context): Promise<void> {
   lines.push(`  Supervision snapshot queue: ${snapshotQueueSize}`);
   lines.push("");
 
-  // ── Deferred message queue ──
+  // ── Deferred queue ──
   const deferredQueues = getAllDeferredQueues();
   let totalDeferred = 0;
-  for (const [, msgs] of deferredQueues) {
-    totalDeferred += msgs.length;
+  for (const [, items] of deferredQueues) {
+    totalDeferred += items.length;
   }
 
   lines.push(`<b>Deferred Queue</b>`);
   if (totalDeferred === 0) {
     lines.push(`  Empty`);
   } else {
-    for (const [chatId, msgs] of deferredQueues) {
-      lines.push(`  Chat ${chatId}: ${msgs.length} message${msgs.length === 1 ? "" : "s"}`);
-      for (const msg of msgs) {
-        const age = Math.round((now - msg.enqueuedAt) / 1000);
-        const preview = msg.text.length > 60 ? msg.text.slice(0, 57) + "…" : msg.text;
-        lines.push(`    • ${escapeHtml(preview)} (${age}s ago, ${msg.source})`);
+    for (const [chatId, items] of deferredQueues) {
+      lines.push(`  Chat ${chatId}: ${items.length} item${items.length === 1 ? "" : "s"}`);
+      for (const item of items) {
+        const age = Math.round((now - item.enqueuedAt) / 1000);
+        if (item.kind === "user_message") {
+          const preview = item.text.length > 60 ? item.text.slice(0, 57) + "…" : item.text;
+          lines.push(`    • ${escapeHtml(preview)} (${age}s ago, ${item.source})`);
+          continue;
+        }
+
+        const preview = item.prompt.length > 60 ? item.prompt.slice(0, 57) + "…" : item.prompt;
+        lines.push(`    • [cron] ${escapeHtml(preview)} (${age}s ago, ${item.jobType})`);
       }
     }
   }

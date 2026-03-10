@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   clearDeferredQueue,
   dequeueDeferredMessage,
+  enqueueDeferredCronJob,
   enqueueDeferredMessage,
   getAllDeferredQueues,
   getDeferredQueueSize,
+  isCronJobQueued,
 } from "./deferred-queue";
 
 function clearAllDeferredQueuesForTest(): void {
@@ -89,5 +91,48 @@ describe("deferred queue", () => {
 
     expect(getDeferredQueueSize(chatId)).toBe(10);
     expect(dequeueDeferredMessage(chatId)?.text).toBe("msg-2");
+  });
+
+  it("tracks queued cron jobs by job id", () => {
+    const chatId = 99104;
+
+    expect(enqueueDeferredCronJob(chatId, {
+      jobId: "cron-1",
+      jobType: "one-shot",
+      prompt: "run report",
+      silent: false,
+      scheduledFor: 2000,
+      enqueuedAt: 1000,
+    })).toBe(true);
+
+    expect(isCronJobQueued(chatId, "cron-1")).toBe(true);
+    expect(isCronJobQueued(chatId, "missing")).toBe(false);
+    expect(getDeferredQueueSize(chatId)).toBe(1);
+    expect(dequeueDeferredMessage(chatId)).toBeUndefined();
+  });
+
+  it("dequeues the next user message even when cron items are queued", () => {
+    const chatId = 99105;
+
+    expect(enqueueDeferredCronJob(chatId, {
+      jobId: "cron-2",
+      jobType: "recurring",
+      prompt: "cron first",
+      silent: false,
+      scheduledFor: 2000,
+      enqueuedAt: 1000,
+    })).toBe(true);
+
+    enqueueDeferredMessage({
+      text: "message second",
+      userId: 1,
+      username: "u",
+      chatId,
+      source: "text",
+      enqueuedAt: 2000,
+    });
+
+    expect(dequeueDeferredMessage(chatId)?.text).toBe("message second");
+    expect(isCronJobQueued(chatId, "cron-2")).toBe(true);
   });
 });

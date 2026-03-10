@@ -232,21 +232,25 @@ function assembleDashboardState(preparedTurtles: PreparedDashboardTurtle[]): Das
   const cronJobs = allJobs.map(buildCronJobView);
 
   const deferredQueues = getAllDeferredQueues();
-  const chats: DeferredChatView[] = Array.from(deferredQueues.entries()).map(([chatId, messages]) => {
+  const chats: DeferredChatView[] = Array.from(deferredQueues.entries()).map(([chatId, items]) => {
     const now = Date.now();
-    const ages = messages.map((msg) => Math.max(0, Math.floor((now - msg.enqueuedAt) / 1000)));
+    const ages = items.map((item) => Math.max(0, Math.floor((now - item.enqueuedAt) / 1000)));
     return {
       chatId,
-      size: messages.length,
+      size: items.length,
       oldestAgeSec: ages.length ? Math.max(...ages) : 0,
       newestAgeSec: ages.length ? Math.min(...ages) : 0,
-      preview: messages.slice(0, 2).map((msg) => safeSubstring(msg.text.trim(), 60)),
+      preview: items.slice(0, 2).map((item) =>
+        item.kind === "user_message"
+          ? safeSubstring(item.text.trim(), 60)
+          : `[cron] ${safeSubstring(item.prompt.trim(), 53)}`
+      ),
     };
   }).sort((a, b) => b.size - a.size || b.oldestAgeSec - a.oldestAgeSec);
 
   let totalMessages = 0;
-  for (const [, messages] of deferredQueues) {
-    totalMessages += messages.length;
+  for (const [, items] of deferredQueues) {
+    totalMessages += items.length;
   }
   const hasQueuePressure = totalMessages > 0;
   const queueSummary = queuePressureSummary(totalMessages, chats.length);
