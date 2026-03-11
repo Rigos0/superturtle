@@ -150,6 +150,21 @@ function parseClaudeInitTools(output: string): string[] | null {
 }
 
 const discoveredClaudeAllowedTools = new Map<string, string[]>();
+const CLAUDE_TOOL_DISCOVERY_TIMEOUT_MS = (() => {
+  const raw = process.env.CLAUDE_TOOL_DISCOVERY_TIMEOUT_MS?.trim();
+  if (!raw) return 5000;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    claudeLog.warn(
+      { value: raw },
+      "Invalid CLAUDE_TOOL_DISCOVERY_TIMEOUT_MS; using default 5000ms"
+    );
+    return 5000;
+  }
+
+  return Math.floor(parsed);
+})();
 
 function getClaudeAllowedTools(claudeBin: string): string[] {
   const fallbackTools = getClaudeFallbackAllowedTools();
@@ -178,17 +193,28 @@ function getClaudeAllowedTools(claudeBin: string): string[] {
       cwd: WORKING_DIR,
       stdout: "pipe",
       stderr: "pipe",
+      timeout: CLAUDE_TOOL_DISCOVERY_TIMEOUT_MS,
+      killSignal: "SIGKILL",
     });
     const stdout = new TextDecoder().decode(probe.stdout);
+    const stderr = new TextDecoder().decode(probe.stderr).trim();
     const discovered = parseClaudeInitTools(stdout);
     const resolved = discovered
       ? mergeAllowedTools(discovered, fallbackTools)
       : fallbackTools;
+    const timedOut = probe.exitCode === null && probe.signalCode === "SIGKILL";
 
     if (!discovered) {
       claudeLog.warn(
-        { exitCode: probe.exitCode },
-        "Claude tool discovery did not return an init tool list; using fallback allowlist"
+        {
+          exitCode: probe.exitCode,
+          signalCode: probe.signalCode,
+          stderr: stderr || undefined,
+          timeoutMs: timedOut ? CLAUDE_TOOL_DISCOVERY_TIMEOUT_MS : undefined,
+        },
+        timedOut
+          ? "Claude tool discovery probe timed out; using fallback allowlist"
+          : "Claude tool discovery did not return an init tool list; using fallback allowlist"
       );
     }
 
