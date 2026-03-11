@@ -713,10 +713,11 @@ async function runMultiProjectSetup(cwd, tokenPrefix) {
     console.log("  To run multiple projects, you need a Telegram group with Topics enabled.");
     blank();
     console.log("  Setup steps:");
-    console.log("    1. Open Telegram → New Group → add your bot");
-    console.log("    2. Make it a supergroup (Settings → Group Type)");
-    console.log("    3. Enable Topics (Settings → Topics → toggle on)");
-    console.log("    4. Make the bot an admin (Settings → Administrators → add bot)");
+    console.log("    1. Open Telegram → pencil icon → New Group → add your bot");
+    console.log("    2. Name the group and click Create");
+    console.log("    3. Click the group name at the top → Edit");
+    console.log("    4. Topics → Enable Topics");
+    console.log("    5. Make the bot an admin (Group Settings → Administrators → add bot)");
     blank();
 
     // Try auto-detection first, fall back to manual entry
