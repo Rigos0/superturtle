@@ -8,24 +8,28 @@
  *   superturtle start   — launch the bot (requires Bun + tmux)
  *   superturtle stop    — stop bot + all SubTurtles
  *   superturtle status  — show bot and SubTurtle status
+ *   superturtle router  — manage the router process (stop|status|restart)
  *   superturtle doctor  — full process + log observability snapshot
  *   superturtle logs    — tail loop/pino/audit logs
  */
 
-const { execSync, spawnSync } = require("child_process");
+const { execSync, spawnSync, spawn } = require("child_process");
 const { resolve, dirname, basename } = require("path");
 const fs = require("fs");
 const readline = require("readline");
+const { homedir } = require("os");
 
 const PACKAGE_ROOT = resolve(__dirname, "..");
 const BOT_DIR = resolve(PACKAGE_ROOT, "claude-telegram-bot");
 const TEMPLATES_DIR = resolve(PACKAGE_ROOT, "templates");
+const GLOBAL_CONFIG_DIR = resolve(homedir(), ".superturtle");
+const GLOBAL_ENV_FILE = resolve(GLOBAL_CONFIG_DIR, ".env");
+const GLOBAL_PROJECTS_FILE = resolve(GLOBAL_CONFIG_DIR, "projects.json");
 
-function loadProjectEnv(cwd) {
-  const envPath = resolve(cwd, ".superturtle", ".env");
-  if (!fs.existsSync(envPath)) return null;
+function parseEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return null;
   const parsed = {};
-  const envContent = fs.readFileSync(envPath, "utf-8");
+  const envContent = fs.readFileSync(filePath, "utf-8");
   for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -41,7 +45,68 @@ function loadProjectEnv(cwd) {
     }
     parsed[key] = value;
   }
-  return parsed;
+  return Object.keys(parsed).length > 0 ? parsed : null;
+}
+
+function loadProjectEnv(cwd) {
+  return parseEnvFile(resolve(cwd, ".superturtle", ".env"));
+}
+
+function loadGlobalEnv() {
+  return parseEnvFile(GLOBAL_ENV_FILE);
+}
+
+function saveGlobalEnv(config) {
+  fs.mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true, mode: 0o700 });
+  const lines = [];
+  for (const [key, value] of Object.entries(config)) {
+    if (value !== undefined && value !== "") {
+      const needsQuotes = /[\s#"'=]/.test(value);
+      lines.push(needsQuotes ? `${key}="${value}"` : `${key}=${value}`);
+    }
+  }
+  const tmpPath = GLOBAL_ENV_FILE + ".tmp";
+  fs.writeFileSync(tmpPath, lines.join("\n") + "\n", { mode: 0o600 });
+  fs.renameSync(tmpPath, GLOBAL_ENV_FILE);
+}
+
+function loadProjectRegistry() {
+  try {
+    return JSON.parse(fs.readFileSync(GLOBAL_PROJECTS_FILE, "utf-8"));
+  } catch {
+    return { forumChatId: null, projects: {} };
+  }
+}
+
+function saveProjectRegistry(registry) {
+  fs.mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true });
+  const tmpPath = GLOBAL_PROJECTS_FILE + ".tmp";
+  fs.writeFileSync(tmpPath, JSON.stringify(registry, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmpPath, GLOBAL_PROJECTS_FILE);
+}
+
+function resolvePath(p) {
+  try { return fs.realpathSync(p); } catch { return p; }
+}
+
+function getProjectConfig(cwd) {
+  const registry = loadProjectRegistry();
+  const normalized = resolvePath(cwd);
+  return {
+    forumChatId: registry.forumChatId || null,
+    ...(registry.projects[normalized] || registry.projects[cwd] || {}),
+  };
+}
+
+function registerProject(cwd, threadId, forumChatId, name) {
+  const registry = loadProjectRegistry();
+  const normalized = resolvePath(cwd);
+  if (forumChatId) registry.forumChatId = forumChatId;
+  registry.projects[normalized] = {
+    threadId,
+    name: name || basename(cwd),
+  };
+  saveProjectRegistry(registry);
 }
 
 function sanitizeName(value, fallback) {
@@ -68,6 +133,91 @@ function resolveTmuxSession(cwd, env) {
 function deriveTokenPrefix(env) {
   const token = env.TELEGRAM_BOT_TOKEN || "";
   return sanitizeName(token.split(":")[0], "default");
+}
+
+// ============== Router Management ==============
+
+function getRouterPaths(tokenPrefix) {
+  return {
+    sock: resolve(GLOBAL_CONFIG_DIR, `router-${tokenPrefix}.sock`),
+    pid: resolve(GLOBAL_CONFIG_DIR, `router-${tokenPrefix}.pid`),
+  };
+}
+
+function isRouterRunning(tokenPrefix) {
+  const paths = getRouterPaths(tokenPrefix);
+  if (!fs.existsSync(paths.pid)) return false;
+  try {
+    const pid = parseInt(fs.readFileSync(paths.pid, "utf-8").trim(), 10);
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    process.kill(pid, 0); // Check if process is alive
+    // PID is alive — also verify socket exists (guards against PID recycling)
+    if (!fs.existsSync(paths.sock)) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getRouterPid(tokenPrefix) {
+  const paths = getRouterPaths(tokenPrefix);
+  try {
+    return parseInt(fs.readFileSync(paths.pid, "utf-8").trim(), 10);
+  } catch {
+    return null;
+  }
+}
+
+function startRouter(tokenPrefix, botToken) {
+  if (isRouterRunning(tokenPrefix)) {
+    return;
+  }
+
+  // Clean up stale files
+  const paths = getRouterPaths(tokenPrefix);
+  try { fs.unlinkSync(paths.sock); } catch {}
+  try { fs.unlinkSync(paths.pid); } catch {}
+
+  const routerScript = resolve(PACKAGE_ROOT, "claude-telegram-bot/src/router.ts");
+
+  const child = spawn(
+    "bun",
+    ["run", routerScript],
+    {
+      env: { ...process.env, TELEGRAM_BOT_TOKEN: botToken },
+      detached: true,
+      stdio: "ignore",
+    },
+  );
+  child.unref();
+
+  // Wait for socket to appear (up to 10s)
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(paths.sock)) {
+      return;
+    }
+    spawnSync("sleep", ["0.2"]);
+  }
+
+  fail("Router failed to start within 10 seconds");
+  process.exit(1);
+}
+
+function stopRouter(tokenPrefix) {
+  const paths = getRouterPaths(tokenPrefix);
+  if (!fs.existsSync(paths.pid)) return;
+  try {
+    const pid = parseInt(fs.readFileSync(paths.pid, "utf-8").trim(), 10);
+    if (Number.isFinite(pid) && pid > 0) {
+      process.kill(pid, "SIGTERM");
+    }
+  } catch {}
+  // Clean up
+  try { fs.unlinkSync(paths.pid); } catch {}
+  try { fs.unlinkSync(paths.sock); } catch {}
 }
 
 function getLogPaths(cwd, env) {
@@ -338,7 +488,6 @@ function copyDirFiltered(sourceDir, targetDir) {
 async function init() {
   const cwd = process.cwd();
   const dataDir = resolve(cwd, ".superturtle");
-  const flags = parseInitFlags();
 
   blank();
   console.log(`  \u{1F422} ${c.bold("superturtle")} ${c.dim("v" + getVersion())}`);
@@ -360,65 +509,70 @@ async function init() {
   }
   ok(".superturtle/");
 
-  // --- .env config ---
-  const envPath = resolve(dataDir, ".env");
-  if (!fs.existsSync(envPath)) {
-    let token = flags.token;
-    let userId = flags.user;
-    let openaiKey = flags.openaiKey;
+  // --- Credentials (global) ---
+  // Changed: credentials now live in ~/.superturtle/.env (shared across projects)
+  // instead of per-project .superturtle/.env. Priority: CLI flags > global env > prompt.
+  const flags = parseInitFlags();
+  const existingGlobal = loadGlobalEnv();
 
-    if (!token || !userId) {
-      // Non-interactive mode: fail fast
-      if (!process.stdin.isTTY) {
-        blank();
-        fail("Missing required flags for non-interactive mode:");
-        if (!token) fail("  --token <TELEGRAM_BOT_TOKEN>");
-        if (!userId) fail("  --user <TELEGRAM_USER_ID>");
-        blank();
-        info("Usage: superturtle init --token <token> --user <id> [--openai-key <key>]");
-        blank();
-        process.exit(1);
-      }
+  let token = flags.token || existingGlobal?.TELEGRAM_BOT_TOKEN || null;
+  let userId = flags.user || existingGlobal?.TELEGRAM_ALLOWED_USERS || null;
+  let openaiKey = flags.openaiKey ?? existingGlobal?.OPENAI_API_KEY ?? null;
 
-      // Interactive mode
+  if (!token || !userId) {
+    if (!process.stdin.isTTY) {
       blank();
-      console.log(`  ${c.bold("Telegram Bot Configuration")}`);
-      info("\u2500".repeat(30));
+      fail("Missing required flags for non-interactive mode:");
+      if (!token) fail("  --token <TELEGRAM_BOT_TOKEN>");
+      if (!userId) fail("  --user <TELEGRAM_USER_ID>");
       blank();
-
-      if (!token) {
-        info("Get a token: message @BotFather on Telegram \u2192 /newbot");
-        blank();
-        token = await ask("Bot token: ");
-        if (!token) { fail("Bot token is required."); process.exit(1); }
-        blank();
-      }
-
-      if (!userId) {
-        info("Find your ID: message @userinfobot on Telegram");
-        blank();
-        userId = await ask("User ID: ");
-        if (!userId) { fail("User ID is required."); process.exit(1); }
-        blank();
-      }
-
-      if (openaiKey === null) {
-        openaiKey = await ask("OpenAI API key " + c.dim("(for voice, Enter to skip)") + ": ");
-        blank();
-      }
+      info("Usage: superturtle init --token <token> --user <id> [--openai-key <key>]");
+      blank();
+      process.exit(1);
     }
 
-    let envContent = `TELEGRAM_BOT_TOKEN=${token}\n`;
-    envContent += `TELEGRAM_ALLOWED_USERS=${userId}\n`;
-    envContent += `CLAUDE_WORKING_DIR=${cwd}\n`;
-    if (openaiKey) {
-      envContent += `OPENAI_API_KEY=${openaiKey}\n`;
+    blank();
+    console.log(`  ${c.bold("Telegram Bot Configuration")}`);
+    info("These will be saved to ~/.superturtle/.env for all projects.");
+    info("\u2500".repeat(30));
+    blank();
+
+    if (!token) {
+      info("Get a token: message @BotFather on Telegram \u2192 /newbot");
+      blank();
+      token = await ask("Bot token: ");
+      if (!token) { fail("Bot token is required."); process.exit(1); }
+      blank();
     }
 
-    fs.writeFileSync(envPath, envContent);
-    ok(".superturtle/.env");
+    if (!userId) {
+      info("Find your ID: message @userinfobot on Telegram");
+      blank();
+      userId = await ask("User ID: ");
+      if (!userId) { fail("User ID is required."); process.exit(1); }
+      blank();
+    }
+
+    if (!openaiKey) {
+      openaiKey = await ask("OpenAI API key " + c.dim("(for voice, Enter to skip)") + ": ");
+      blank();
+    }
+  }
+
+  const hasChanges =
+    token !== existingGlobal?.TELEGRAM_BOT_TOKEN ||
+    userId !== existingGlobal?.TELEGRAM_ALLOWED_USERS ||
+    openaiKey !== existingGlobal?.OPENAI_API_KEY;
+
+  if (hasChanges) {
+    const globalEnv = { ...(existingGlobal || {}) };
+    if (token) globalEnv.TELEGRAM_BOT_TOKEN = token;
+    if (userId) globalEnv.TELEGRAM_ALLOWED_USERS = userId;
+    if (openaiKey) globalEnv.OPENAI_API_KEY = openaiKey;
+    saveGlobalEnv(globalEnv);
+    ok("~/.superturtle/.env");
   } else {
-    ok(".superturtle/.env " + c.dim("(exists)"));
+    ok("Credentials " + c.dim("(from ~/.superturtle/.env)"));
   }
 
   // --- CLAUDE.md ---
@@ -479,25 +633,275 @@ async function init() {
   blank();
 }
 
-function start() {
+// ============== Instance Lock Check + Multi-Project Setup ==============
+
+/** Another instance is running if a different project's tmux session exists (not just the router). */
+function findOtherSessions(tokenPrefix) {
+  const prefix = `superturtle-${tokenPrefix}-`;
+  const mySession = deriveTmuxSessionName(process.cwd(), { TELEGRAM_BOT_TOKEN: tokenPrefix + ":x" });
+  try {
+    const out = spawnSync("tmux", ["list-sessions", "-F", "#{session_name}"], { stdio: "pipe" });
+    return (out.stdout || "").toString().trim().split("\n")
+      .filter(s => s.startsWith(prefix) && s !== mySession);
+  } catch {
+    return [];
+  }
+}
+
+function isAnotherInstanceRunning(tokenPrefix) {
+  if (!isRouterRunning(tokenPrefix)) return false;
+  // Router is running, but is there actually another bot instance (tmux session)?
+  // A lone router (surviving a stop+start cycle) doesn't mean multi-project.
+  return findOtherSessions(tokenPrefix).length > 0;
+}
+
+function defaultSharedDir(tokenPrefix) {
+  return resolve(GLOBAL_CONFIG_DIR, "shared", tokenPrefix);
+}
+
+/**
+ * Wait for the running router to detect a forum group message and write
+ * the chat ID to a response file. Returns the chat ID or null on timeout.
+ */
+async function waitForForumDetection(sharedDir) {
+  fs.mkdirSync(sharedDir, { recursive: true });
+  fs.writeFileSync(resolve(sharedDir, "detect_forum.request"), "");
+  const responseFile = resolve(sharedDir, "detect_forum.response");
+
+  console.log("  Now send any message in the group (where the bot is a member).");
+  console.log("  Waiting for the bot to detect the group...");
+  blank();
+
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(responseFile)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(responseFile, "utf-8"));
+        if (data.chatId && typeof data.chatId === "number") {
+          try { fs.unlinkSync(responseFile); } catch {}
+          try { fs.unlinkSync(resolve(sharedDir, "detect_forum.request")); } catch {}
+          return data.chatId;
+        }
+      } catch {}
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  try { fs.unlinkSync(resolve(sharedDir, "detect_forum.request")); } catch {}
+  return null;
+}
+
+/**
+ * Run the multi-project setup wizard when another instance is already running.
+ * Returns the env overrides to pass to the new bot process, or null to exit.
+ */
+async function runMultiProjectSetup(cwd, tokenPrefix) {
+  console.log("");
+  console.log(`  ${c.yellow("⚠")}  Another SuperTurtle instance is already running.`);
+  console.log("");
+  console.log("  Want to run multiple projects? Each gets its own Telegram topic.");
+  console.log("");
+
+  const choice = await ask("  1. Set up multi-project mode\n  2. Exit\n\n  > ");
+  if (choice !== "1") return null;
+  console.log("");
+
+  // Check if forum group is already configured
+  let forumChatId = loadProjectRegistry().forumChatId;
+
+  if (!forumChatId) {
+    console.log("  To run multiple projects, you need a Telegram group with Topics enabled.");
+    blank();
+    console.log("  Setup steps:");
+    console.log("    1. Open Telegram → pencil icon → New Group → add your bot");
+    console.log("    2. Name the group and click Create");
+    console.log("    3. Click the group name at the top → Edit");
+    console.log("    4. Topics → Enable Topics");
+    console.log("    5. Make the bot an admin (Group Settings → Administrators → add bot)");
+    blank();
+
+    // Try auto-detection first, fall back to manual entry
+    forumChatId = await waitForForumDetection(defaultSharedDir(tokenPrefix));
+    if (forumChatId) {
+      ok(`Detected forum group: ${forumChatId}`);
+    } else {
+      fail("Timed out waiting for the bot to detect the group.");
+      info("Make sure the bot is in the group and is an admin, then try again.");
+      blank();
+      const chatIdStr = await ask("  Or enter the forum group chat ID manually (e.g., -1001234567890): ");
+      const parsed = parseInt(chatIdStr, 10);
+      if (!Number.isFinite(parsed) || parsed >= 0) {
+        fail("Invalid chat ID. Supergroup IDs start with -100...");
+        return null;
+      }
+      forumChatId = parsed;
+    }
+  }
+
+  // Persist — the router will create topics automatically when instances connect
+  const registry = loadProjectRegistry();
+  registry.forumChatId = forumChatId;
+  saveProjectRegistry(registry);
+
+  blank();
+  ok("Forum group configured. Topics will be created automatically for each project.");
+  blank();
+  console.log("  Starting...");
+  blank();
+
+  return { TELEGRAM_FORUM_CHAT_ID: String(forumChatId) };
+}
+
+/**
+ * If another instance is running, ensure global credentials exist and
+ * resolve the forum group for topic routing. Mutates env in-place.
+ */
+async function handleMultiProject(cwd, tokenPrefix, env, globalEnv, merged) {
+  if (!isAnotherInstanceRunning(tokenPrefix)) return;
+
+  // Ensure global env has credentials (migrate from project env if needed)
+  if (!globalEnv?.TELEGRAM_BOT_TOKEN) {
+    if (!merged.TELEGRAM_BOT_TOKEN) {
+      fail("No credentials found. Run `superturtle init` first.");
+      process.exit(1);
+    }
+    info("Multi-project requires shared credentials in ~/.superturtle/.env.");
+    if (process.stdin.isTTY) {
+      const answer = await ask("  Move credentials to ~/.superturtle/.env? (y/n) ");
+      if (answer.toLowerCase() !== "y" && answer.toLowerCase() !== "yes") {
+        fail("Cannot set up multi-project without shared credentials. Run `superturtle init` to set up global env.");
+        process.exit(1);
+      }
+    }
+    const toMigrate = { ...(loadGlobalEnv() || {}) };
+    for (const key of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "OPENAI_API_KEY"]) {
+      if (merged[key]) toMigrate[key] = merged[key];
+    }
+    saveGlobalEnv(toMigrate);
+    ok("~/.superturtle/.env");
+  }
+
+  // Resolve forum group (for topic-per-project routing)
+  const projectConfig = getProjectConfig(cwd);
+  const forumChatId = projectConfig.forumChatId || loadProjectRegistry().forumChatId;
+
+  if (!forumChatId) {
+    if (!process.stdin.isTTY) {
+      fail("Another instance is running. Run interactively to set up multi-project mode.");
+      process.exit(1);
+    }
+    const result = await runMultiProjectSetup(cwd, tokenPrefix);
+    if (!result) process.exit(0);
+    Object.assign(env, result);
+  } else {
+    env.TELEGRAM_FORUM_CHAT_ID = String(forumChatId);
+    if (projectConfig.threadId) {
+      env.TELEGRAM_THREAD_ID = String(projectConfig.threadId);
+    }
+    ok("Multi-project mode");
+  }
+}
+
+// start() is now async because multi-project setup may need interactive prompts
+async function start() {
   checkBun();
   checkTmux();
 
   const cwd = process.cwd();
-  const projectEnv = loadProjectEnv(cwd);
 
-  if (!projectEnv) {
-    console.error("No .superturtle/.env found. Run 'superturtle init' first.");
+  // Load credentials from global env (~/.superturtle/.env) + per-project overrides.
+  // Multi-project requires all projects to share a single bot token because
+  // the router process polls Telegram with one token for all workers.
+  let globalEnv = loadGlobalEnv();
+  const projectEnv = loadProjectEnv(cwd) || {};
+  const merged = { ...globalEnv, ...projectEnv };
+
+  // Multi-bot is not supported — router polls with a single token
+  if (
+    projectEnv.TELEGRAM_BOT_TOKEN &&
+    globalEnv?.TELEGRAM_BOT_TOKEN &&
+    projectEnv.TELEGRAM_BOT_TOKEN !== globalEnv.TELEGRAM_BOT_TOKEN
+  ) {
+    fail(
+      "Per-project TELEGRAM_BOT_TOKEN differs from ~/.superturtle/.env.\n" +
+      "  Multi-project requires all projects to share the same bot token.\n" +
+      "  Remove TELEGRAM_BOT_TOKEN from .superturtle/.env in this project,\n" +
+      "  or update ~/.superturtle/.env to match."
+    );
     process.exit(1);
+  }
+
+  if (!merged.TELEGRAM_BOT_TOKEN) {
+    if (!process.stdin.isTTY) {
+      fail("No credentials found. Run 'superturtle init' or create ~/.superturtle/.env");
+      process.exit(1);
+    }
+    console.log("First-time setup: enter your bot credentials.");
+    console.log("These will be saved to ~/.superturtle/.env for all projects.\n");
+    globalEnv = {};
+    const token = await ask("Bot token: ");
+    if (!token) { fail("Bot token is required."); process.exit(1); }
+    globalEnv.TELEGRAM_BOT_TOKEN = token;
+    const userId = await ask("User ID: ");
+    if (!userId) { fail("User ID is required."); process.exit(1); }
+    globalEnv.TELEGRAM_ALLOWED_USERS = userId;
+    const openaiKey = await ask("OpenAI API key " + c.dim("(for voice, Enter to skip)") + ": ");
+    if (openaiKey) globalEnv.OPENAI_API_KEY = openaiKey;
+    saveGlobalEnv(globalEnv);
+    ok("~/.superturtle/.env");
+    Object.assign(merged, globalEnv);
+  } else if (merged.TELEGRAM_BOT_TOKEN && !globalEnv?.TELEGRAM_BOT_TOKEN) {
+    // Per-project creds exist but global env doesn't — auto-migrate so that
+    // future instances in other directories can find shared credentials.
+    const toMigrate = { ...(globalEnv || {}) };
+    for (const key of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "OPENAI_API_KEY"]) {
+      if (merged[key]) toMigrate[key] = merged[key];
+    }
+    saveGlobalEnv(toMigrate);
+    globalEnv = toMigrate;
+    ok("Credentials migrated to ~/.superturtle/.env");
+  }
+
+  // Create .superturtle/ dir and CLAUDE.md if missing
+  const superturtleDir = resolve(cwd, ".superturtle");
+  if (!fs.existsSync(superturtleDir)) {
+    fs.mkdirSync(superturtleDir, { recursive: true });
+    fs.writeFileSync(resolve(superturtleDir, ".gitignore"), "*\n");
+  }
+  const claudeMdPath = resolve(cwd, "CLAUDE.md");
+  const templatePath = resolve(TEMPLATES_DIR, "CLAUDE.md.template");
+  if (!fs.existsSync(claudeMdPath) && fs.existsSync(templatePath)) {
+    fs.copyFileSync(templatePath, claudeMdPath);
   }
 
   // Set environment
   const env = {
     ...process.env,
+    ...globalEnv,
     ...projectEnv,
     SUPER_TURTLE_DIR: PACKAGE_ROOT,
     CLAUDE_WORKING_DIR: cwd,
   };
+  const tokenPrefix = deriveTokenPrefix(env);
+
+  // Detect old-style instances (pre-router) that poll Telegram directly.
+  // They'd 409-conflict with our router. User must restart them first.
+  if (!isRouterRunning(tokenPrefix)) {
+    const oldSessions = findOtherSessions(tokenPrefix);
+    if (oldSessions.length > 0) {
+      fail(
+        "Found running SuperTurtle instance(s) from an older version:\n" +
+        oldSessions.map(s => `    ${s}`).join("\n") + "\n\n" +
+        "  They poll Telegram directly and will conflict with the new router.\n" +
+        "  Stop them first with: tmux kill-session -t <session-name>\n" +
+        "  Then restart each project with the updated 'superturtle start'."
+      );
+      process.exit(1);
+    }
+  }
+
+  await handleMultiProject(cwd, tokenPrefix, env, globalEnv, merged);
+
   const tmuxSession = resolveTmuxSession(cwd, env);
   const logPaths = getLogPaths(cwd, env);
 
@@ -510,15 +914,22 @@ function start() {
     return;
   }
 
-  // Start bot in a new tmux session
+  // Start the router process if not already running. The router is the sole
+  // Telegram poller — it receives all updates and forwards them to workers
+  // via Unix domain sockets. This replaces the old per-instance getUpdates polling.
+  startRouter(tokenPrefix, env.TELEGRAM_BOT_TOKEN);
+
+  // Shell-escape to prevent injection via directory names containing quotes/spaces
+  // (upstream used double-quote interpolation which breaks on special chars)
+  const q = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
   const cmd =
-    `cd "${BOT_DIR}"` +
-    ` && export CLAUDE_WORKING_DIR="${cwd}"` +
-    ` && export SUPER_TURTLE_DIR="${PACKAGE_ROOT}"` +
+    `cd ${q(BOT_DIR)}` +
+    ` && export CLAUDE_WORKING_DIR=${q(cwd)}` +
+    ` && export SUPER_TURTLE_DIR=${q(PACKAGE_ROOT)}` +
     ` && export SUPERTURTLE_RUN_LOOP=1` +
-    ` && export SUPERTURTLE_LOOP_LOG_PATH="${logPaths.loop}"` +
-    ` && export SUPERTURTLE_TMUX_SESSION="${tmuxSession}"` +
-    ` && ./run-loop.sh 2>&1 | tee -a "${logPaths.loop}"`;
+    ` && export SUPERTURTLE_LOOP_LOG_PATH=${q(logPaths.loop)}` +
+    ` && export SUPERTURTLE_TMUX_SESSION=${q(tmuxSession)}` +
+    ` && ./run-loop.sh 2>&1 | tee -a ${q(logPaths.loop)}`;
 
   console.log("Starting Super Turtle bot...");
 
@@ -580,8 +991,9 @@ function start() {
 
 function stop() {
   const cwd = process.cwd();
+  const globalEnv = loadGlobalEnv() || {};
   const projectEnv = loadProjectEnv(cwd) || {};
-  const tmuxSession = resolveTmuxSession(cwd, { ...process.env, ...projectEnv });
+  const tmuxSession = resolveTmuxSession(cwd, { ...process.env, ...globalEnv, ...projectEnv });
 
   // Kill tmux session
   const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
@@ -609,10 +1021,31 @@ function stop() {
 
 function status() {
   const cwd = process.cwd();
+  const globalEnv = loadGlobalEnv() || {};
   const projectEnv = loadProjectEnv(cwd) || {};
-  const env = { ...process.env, ...projectEnv };
+  const env = { ...process.env, ...globalEnv, ...projectEnv };
   const tmuxSession = resolveTmuxSession(cwd, env);
   const logPaths = getLogPaths(cwd, env);
+
+  // Global env info
+  if (fs.existsSync(GLOBAL_ENV_FILE)) {
+    console.log(`  Config: ~/.superturtle/.env`);
+  }
+  const registry = loadProjectRegistry();
+  const normalized = resolvePath(cwd);
+  const pc = registry.projects[normalized] || registry.projects[cwd];
+  if (pc) {
+    console.log(`  Topic: ${pc.name} (thread: ${pc.threadId})`);
+  }
+
+  // Check router
+  const tokenPrefix = deriveTokenPrefix(env);
+  if (isRouterRunning(tokenPrefix)) {
+    const pid = getRouterPid(tokenPrefix);
+    console.log(`Router: running (pid ${pid})`);
+  } else {
+    console.log(`Router: stopped`);
+  }
 
   // Check tmux session
   const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
@@ -647,8 +1080,9 @@ function status() {
 function doctor() {
   checkTmux();
   const cwd = process.cwd();
+  const globalEnv = loadGlobalEnv() || {};
   const projectEnv = loadProjectEnv(cwd) || {};
-  const env = { ...process.env, ...projectEnv };
+  const env = { ...process.env, ...globalEnv, ...projectEnv };
   const tmuxSession = resolveTmuxSession(cwd, env);
   const logPaths = getLogPaths(cwd, env);
   const ctlPath = resolve(PACKAGE_ROOT, "subturtle", "ctl");
@@ -656,6 +1090,16 @@ function doctor() {
   console.log(`Project: ${cwd}`);
   console.log(`Token prefix: ${logPaths.tokenPrefix}`);
   console.log(`Session: ${tmuxSession}`);
+
+  // Router status
+  const tokenPrefix = deriveTokenPrefix(env);
+  if (isRouterRunning(tokenPrefix)) {
+    const pid = getRouterPid(tokenPrefix);
+    const paths = getRouterPaths(tokenPrefix);
+    console.log(`Router: running (pid ${pid}, socket: ${paths.sock})`);
+  } else {
+    console.log(`Router: stopped`);
+  }
 
   const tmuxCheck = spawnSync("tmux", ["has-session", "-t", tmuxSession], { stdio: "pipe" });
   if (tmuxCheck.status === 0) {
@@ -742,8 +1186,9 @@ function parseLogsArgs(args) {
 
 function logs() {
   const cwd = process.cwd();
+  const globalEnv = loadGlobalEnv() || {};
   const projectEnv = loadProjectEnv(cwd) || {};
-  const env = { ...process.env, ...projectEnv };
+  const env = { ...process.env, ...globalEnv, ...projectEnv };
   const logPaths = getLogPaths(cwd, env);
   const args = process.argv.slice(3);
   let opts;
@@ -801,7 +1246,7 @@ switch (command) {
     init().catch((err) => { console.error(err); process.exit(1); });
     break;
   case "start":
-    start();
+    start().catch((err) => { console.error(err); process.exit(1); });
     break;
   case "stop":
     stop();
@@ -815,6 +1260,47 @@ switch (command) {
   case "logs":
     logs();
     break;
+  case "router": {
+    const routerSub = process.argv[3];
+    const cwd = process.cwd();
+    const globalEnv = loadGlobalEnv() || {};
+    const projectEnv = loadProjectEnv(cwd) || {};
+    const env = { ...process.env, ...globalEnv, ...projectEnv };
+    const tokenPrefix = deriveTokenPrefix(env);
+    switch (routerSub) {
+      case "stop":
+        if (isRouterRunning(tokenPrefix)) {
+          stopRouter(tokenPrefix);
+          console.log("Router stopped.");
+        } else {
+          console.log("Router is not running.");
+        }
+        break;
+      case "status": {
+        const paths = getRouterPaths(tokenPrefix);
+        if (isRouterRunning(tokenPrefix)) {
+          const pid = getRouterPid(tokenPrefix);
+          console.log(`Router: running (pid ${pid})`);
+          console.log(`  Socket: ${paths.sock}`);
+        } else {
+          console.log("Router: stopped");
+        }
+        break;
+      }
+      case "restart":
+        if (isRouterRunning(tokenPrefix)) {
+          stopRouter(tokenPrefix);
+          console.log("Router stopped.");
+        }
+        startRouter(tokenPrefix, env.TELEGRAM_BOT_TOKEN);
+        console.log("Router started.");
+        break;
+      default:
+        console.log(`Usage: superturtle router <stop|status|restart>`);
+        if (routerSub) process.exit(1);
+    }
+    break;
+  }
   case "--version":
   case "-v":
     try {
@@ -834,6 +1320,7 @@ Commands:
   start     Launch the bot
   stop      Stop the bot and all SubTurtles
   status    Show bot and SubTurtle status
+  router    Manage the router (stop|status|restart)
   doctor    Full process + log observability snapshot
   logs      Tail logs (loop|pino|audit)
 

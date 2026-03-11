@@ -5,7 +5,7 @@
  */
 
 import type { Context } from "grammy";
-import { run, sequentialize } from "@grammyjs/runner";
+import { sequentialize } from "@grammyjs/runner";
 import {
   WORKING_DIR,
   CTL_PATH,
@@ -18,8 +18,12 @@ import {
   TOKEN_PREFIX,
   IPC_DIR,
   SUPERTURTLE_DATA_DIR,
+  TELEGRAM_THREAD_ID,
+  TELEGRAM_FORUM_CHAT_ID,
 } from "./config";
-import { unlinkSync, readFileSync, existsSync, writeFileSync, openSync, closeSync, mkdirSync } from "fs";
+import { RouterClient } from "./router-client";
+import { execFileSync } from "child_process";
+import { unlinkSync, readFileSync, existsSync, mkdirSync } from "fs";
 import {
   handleNew,
   handleStatus,
@@ -51,7 +55,7 @@ import { drainDeferredQueue, isCronJobQueued } from "./deferred-queue";
 import { session } from "./session";
 import { codexSession } from "./codex-session";
 import { getDueJobs, getJobs, advanceRecurringJob, removeJob } from "./cron";
-import { bot } from "./bot";
+import { bot, assignThread } from "./bot";
 import { startDashboardServer } from "./dashboard";
 import {
   beginBackgroundRun,
@@ -89,63 +93,21 @@ import { botLog, cronLog, eventLog } from "./logger";
 // Re-export for any existing consumers
 export { bot };
 
-// Use bot token prefix in lock file so multiple bots can run on one machine
-const INSTANCE_LOCK_FILE = `/tmp/claude-telegram-bot.${TOKEN_PREFIX}.instance.lock`;
+// ============== Router Connection ==============
+//
+// Instead of polling Telegram directly (which causes 409 conflicts when
+// multiple instances share a bot token), each worker connects to a shared
+// router process via a Unix domain socket. The router is the sole Telegram
+// poller and forwards updates to the appropriate worker by thread ID.
+//
+// Socket path: ~/.superturtle/router-{tokenPrefix}.sock
+// The router is started by `superturtle start` (see bin/superturtle.js).
+
+import { homedir } from "os";
+import { resolve } from "path";
+const HOME = homedir();
+const ROUTER_SOCK = resolve(HOME, ".superturtle", `router-${TOKEN_PREFIX}.sock`);
 const telegramUpdateDedupe = new UpdateDedupeCache();
-
-function acquireInstanceLockOrExit(): () => void {
-  const thisPid = process.pid;
-
-  const isPidAlive = (pid: number): boolean => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const writeLock = () => {
-    const fd = openSync(INSTANCE_LOCK_FILE, "wx");
-    writeFileSync(fd, String(thisPid));
-    closeSync(fd);
-  };
-
-  try {
-    writeLock();
-  } catch {
-    let holderPid = Number.NaN;
-    try {
-      holderPid = Number.parseInt(readFileSync(INSTANCE_LOCK_FILE, "utf-8").trim(), 10);
-    } catch {
-      // unreadable lockfile - retry with overwrite semantics below
-    }
-
-    if (Number.isFinite(holderPid) && holderPid > 0 && isPidAlive(holderPid)) {
-      botLog.error(
-        `[startup] Another bot instance is already running (PID ${holderPid}). Exiting to avoid Telegram getUpdates 409 conflict.`
-      );
-      process.exit(1);
-    }
-
-    // stale lock; replace it
-    try { unlinkSync(INSTANCE_LOCK_FILE); } catch {}
-    writeLock();
-  }
-
-  const release = () => {
-    try {
-      const holderPid = Number.parseInt(readFileSync(INSTANCE_LOCK_FILE, "utf-8").trim(), 10);
-      if (holderPid === thisPid) {
-        unlinkSync(INSTANCE_LOCK_FILE);
-      }
-    } catch {
-      // ignore cleanup failures
-    }
-  };
-
-  return release;
-}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -422,6 +384,9 @@ bot.use(async (ctx, next) => {
     }
   }
 });
+
+// Thread routing is handled by the router process — this worker only receives
+// updates for its assigned thread. No dispatcher middleware or thread filter needed.
 
 // Canonical command ingress events for replay/debug.
 // Logs both /slash commands and bare-word commands (e.g. "status").
@@ -901,6 +866,12 @@ botLog.info(
   },
   `Driver capabilities: claude_cli=${CLAUDE_CLI_AVAILABLE} codex_pref=${CODEX_USER_ENABLED} codex_cli=${CODEX_CLI_AVAILABLE} codex_available=${CODEX_AVAILABLE}`
 );
+if (TELEGRAM_THREAD_ID) {
+  botLog.info(
+    { forumChatId: TELEGRAM_FORUM_CHAT_ID, threadId: TELEGRAM_THREAD_ID },
+    `Forum topic mode: chat=${TELEGRAM_FORUM_CHAT_ID} thread=${TELEGRAM_THREAD_ID}`
+  );
+}
 botLog.info("Starting bot...");
 
 if (!CLAUDE_CLI_AVAILABLE) {
@@ -911,10 +882,12 @@ if (!CLAUDE_CLI_AVAILABLE) {
 }
 
 mkdirSync(IPC_DIR, { recursive: true });
-const releaseInstanceLock = acquireInstanceLockOrExit();
 
-// Get bot info first
-const botInfo = await bot.api.getMe();
+// Initialize bot (sets botInfo internally — needed for handleUpdate).
+// We don't call bot.start() here because we don't poll Telegram directly;
+// the router process handles polling and sends us updates via socket.
+await bot.init();
+const botInfo = bot.botInfo;
 botLog.info({ username: botInfo.username }, `Bot started: @${botInfo.username}`);
 await syncTelegramCommands();
 
@@ -923,9 +896,6 @@ if (process.env.TURTLE_GREETINGS !== "false" && ALLOWED_USERS.length > 0) {
   botLog.info("Turtle greetings enabled (8am/8pm Europe/Prague)");
 }
 startDashboardServer();
-
-// Drop any messages that arrived while the bot was offline
-await bot.api.deleteWebhook({ drop_pending_updates: true });
 
 // Check for pending restart message to update
 if (existsSync(RESTART_FILE)) {
@@ -1000,27 +970,66 @@ await runConductorMaintenancePass({ recoverInFlightWakeups: true });
 // Start cron timer after boot-time recovery so recurring ticks never race startup maintenance.
 startCronTimer();
 
-// Start with concurrent runner (commands work immediately)
-// Retry forever on getUpdates failures (e.g. network drop during sleep)
-const runner = run(bot, {
-  runner: {
-    maxRetryTime: Infinity,
-    retryInterval: "exponential",
-  },
+// Connect to router — this replaces the old `run(bot, { runner: { ... } })` call.
+// The router polls Telegram and routes updates to us via Unix socket.
+// We register with our working directory and git branch so the router can
+// create a named forum topic (e.g. "🐢 my-project / feature-branch").
+
+function getGitBranch(dir: string): string | null {
+  try {
+    return execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir, timeout: 5000, encoding: "utf-8" })
+      .trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+const routerClient = new RouterClient({
+  socketPath: ROUTER_SOCK,
+  workingDir: WORKING_DIR,
+  threadId: TELEGRAM_THREAD_ID,
+  branch: getGitBranch(WORKING_DIR),
 });
 
-// Graceful shutdown
+// Feed router updates into Grammy's middleware pipeline (same as if we
+// were polling Telegram directly, but without the getUpdates call).
+routerClient.onUpdate((update) => {
+  bot.handleUpdate(update);
+});
+
+// The router creates a forum topic for us on first connect (if multi-project)
+// and sends back the thread ID. We update bot.ts's runtime config so all
+// outgoing messages are scoped to our topic.
+routerClient.onAssignThread((threadId, forumChatId) => {
+  botLog.info({ threadId, forumChatId }, "Received thread assignment from router");
+  assignThread(threadId, forumChatId);
+});
+
+// Graceful shutdown — defined before connect() so onReject can reference stopBot
 let shutdownInitiated = false;
 
-const stopRunner = () => {
+const stopBot = () => {
   if (shutdownInitiated) return;
   shutdownInitiated = true;
-  if (runner.isRunning()) {
-    botLog.info("Stopping bot...");
-    runner.stop();
-  }
-  releaseInstanceLock();
+  botLog.info("Stopping bot...");
+  routerClient.close();
 };
+
+// Register onReject before connect() to handle rejects during the
+// handshake (router sends reject synchronously after receiving register)
+routerClient.onReject((reason) => {
+  botLog.warn({ reason }, "Rejected by router");
+  console.error(reason);
+  stopBot();
+});
+
+try {
+  await routerClient.connect();
+  botLog.info({ socketPath: ROUTER_SOCK }, "Connected to router");
+} catch (err) {
+  botLog.error({ err, socketPath: ROUTER_SOCK }, "Failed to connect to router");
+  process.exit(1);
+}
 
 process.on("uncaughtException", (error) => {
   botLog.fatal({ err: error }, "Uncaught exception");
@@ -1028,7 +1037,7 @@ process.on("uncaughtException", (error) => {
     { eventType: "process_uncaught_exception", error: summarizeCronError(error) },
     "Process-level crash"
   );
-  stopRunner();
+  stopBot();
   process.exit(1);
 });
 
@@ -1038,18 +1047,18 @@ process.on("unhandledRejection", (reason) => {
     { eventType: "process_unhandled_rejection", error: summarizeCronError(reason) },
     "Process-level crash"
   );
-  stopRunner();
+  stopBot();
   process.exit(1);
 });
 
 process.on("SIGINT", () => {
   botLog.info("Received SIGINT");
-  stopRunner();
+  stopBot();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
   botLog.info("Received SIGTERM");
-  stopRunner();
+  stopBot();
   process.exit(0);
 });

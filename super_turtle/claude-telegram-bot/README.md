@@ -126,6 +126,104 @@ OPENAI_API_KEY=<optional_openai_api_key>   # For voice transcription
 
 **Finding your Telegram user ID:** Message [@userinfobot](https://t.me/userinfobot) on Telegram.
 
+### Multi-Project & Forum Topics
+
+Run SuperTurtle on multiple projects at the same time. Each project gets its
+own topic in a Telegram supergroup — messages stay isolated, and you can see
+all your agents in one group.
+
+```
+🐢 my-app              ← topic auto-created
+🦊 api-server           ← topic auto-created
+🐙 landing-page         ← topic auto-created
+```
+
+#### Quick start
+
+If you already have one instance running:
+
+```bash
+cd ~/projects/another-project
+superturtle start
+```
+
+That's it. SuperTurtle detects the running instance, creates a forum topic for
+the new project, and routes messages to the right place. Each topic gets a
+deterministic emoji based on the project directory name.
+
+#### One-time setup: create a forum group
+
+Before multi-project works, you need a Telegram supergroup with topics enabled.
+You only do this once.
+
+**Step 1 — Create a group:**
+1. In Telegram, tap the compose/new message button (pencil icon)
+2. Select **"New Group"**
+3. Add your SuperTurtle bot as a member
+4. Give the group a name (e.g. "SuperTurtle")
+5. Create it
+
+**Step 2 — Enable Topics:**
+1. Open the group → tap the group name at the top
+2. Tap **"Edit"** (pencil icon)
+3. Find **"Topics"** and toggle it **ON**
+
+Telegram automatically converts the group to a supergroup when you enable
+Topics.
+
+**Step 3 — Make the bot an admin:**
+1. In group settings → **"Administrators"** → **"Add Admin"**
+2. Select the SuperTurtle bot
+3. Enable these permissions: **Send Messages**, **Manage Topics**, **Pin Messages**
+
+**Step 4 — Connect the group:**
+Start SuperTurtle and send any message in the group. SuperTurtle auto-detects
+the group chat ID — no manual configuration needed.
+
+#### How it works
+
+A lightweight **router process** runs alongside the bot. It polls Telegram once
+and routes each update to the right instance based on which forum topic the
+message came from. Instances connect to the router via a local socket.
+
+```
+Telegram → Router → Instance A (topic: 🐢 my-app)
+                  → Instance B (topic: 🦊 api-server)
+                  → Instance C (topic: 🐙 landing-page)
+```
+
+- **Single instance** — the router still runs, but transparently. You can use
+  SuperTurtle in a direct chat or a forum topic, both work.
+- **Multiple projects** — each gets its own topic. Messages in one topic never
+  reach another project.
+- **Duplicate detection** — starting SuperTurtle twice in the same directory
+  shows a friendly message pointing you to the existing topic.
+- **Thread registry** — topic assignments persist in `~/.superturtle/projects.json`.
+  Restarting an instance reuses its existing topic (conversation history is
+  preserved).
+
+#### Manual configuration
+
+You can also set the forum group and thread ID manually in `.env`:
+
+```bash
+TELEGRAM_FORUM_CHAT_ID=-100XXXXXXXXXX   # Supergroup ID (starts with -100)
+TELEGRAM_THREAD_ID=42                    # Reuse a specific topic
+```
+
+#### Troubleshooting
+
+**"Failed to connect to router"** — the router process isn't running. Run
+`superturtle start` again; it starts the router automatically.
+
+**Messages going to the wrong topic** — check `~/.superturtle/projects.json` to
+see which directory is mapped to which thread. Delete an entry to force a new
+topic on next start.
+
+**Bot not responding in the group** — make sure the bot is an admin with
+**Manage Topics** permission. Without it, the bot can't create topics or send
+messages in them.
+
 ### Codex Configuration (Optional)
 
 Enable Codex usage reporting in `/usage` by setting:
