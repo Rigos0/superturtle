@@ -19,6 +19,10 @@ type ConfigProbeOverrides = {
   defaultCodexModel?: string | undefined;
   defaultCodexEffort?: string | undefined;
   mainProvider?: string | undefined;
+  dashboardPort?: string | undefined;
+  dashboardHost?: string | undefined;
+  telegramForumChatId?: string | undefined;
+  telegramThreadId?: string | undefined;
 };
 
 const configPath = resolve(import.meta.dir, "config.ts");
@@ -37,6 +41,8 @@ const MARKERS = {
   defaultCodexModel: "__DEFAULT_CODEX_MODEL__=",
   defaultCodexEffort: "__DEFAULT_CODEX_EFFORT__=",
   mainProvider: "__MAIN_PROVIDER__=",
+  forumChatId: "__TELEGRAM_FORUM_CHAT_ID__=",
+  threadId: "__TELEGRAM_THREAD_ID__=",
 } as const;
 
 async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbeResult> {
@@ -66,6 +72,10 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
   applyOverride("DEFAULT_CODEX_MODEL", overrides.defaultCodexModel);
   applyOverride("DEFAULT_CODEX_EFFORT", overrides.defaultCodexEffort);
   applyOverride("MAIN_PROVIDER", overrides.mainProvider);
+  applyOverride("DASHBOARD_PORT", overrides.dashboardPort);
+  applyOverride("DASHBOARD_HOST", overrides.dashboardHost);
+  applyOverride("TELEGRAM_FORUM_CHAT_ID", overrides.telegramForumChatId);
+  applyOverride("TELEGRAM_THREAD_ID", overrides.telegramThreadId);
 
   const script = `
     const config = await import(${JSON.stringify(configPath)});
@@ -82,6 +92,8 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
     console.log(${JSON.stringify(MARKERS.defaultCodexModel)} + String(config.DEFAULT_CODEX_MODEL));
     console.log(${JSON.stringify(MARKERS.defaultCodexEffort)} + String(config.DEFAULT_CODEX_EFFORT));
     console.log(${JSON.stringify(MARKERS.mainProvider)} + String(config.MAIN_PROVIDER));
+    console.log(${JSON.stringify(MARKERS.forumChatId)} + String(config.TELEGRAM_FORUM_CHAT_ID));
+    console.log(${JSON.stringify(MARKERS.threadId)} + String(config.TELEGRAM_THREAD_ID));
   `;
 
   const proc = Bun.spawn({
@@ -132,9 +144,9 @@ describe("config defaults", () => {
     expect(extractMarker(result.stdout, MARKERS.approvalPolicy)).toBe("never");
     expect(extractMarker(result.stdout, MARKERS.networkAccess)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.dashboardEnabled)).toBe("true");
-    expect(extractMarker(result.stdout, MARKERS.dashboardPort)).toBe(expectedDashboardPort("test-token"));
+    expect(extractMarker(result.stdout, MARKERS.dashboardPort)).toBe(expectedDashboardPort(`test-token.${process.cwd()}`));
     expect(extractMarker(result.stdout, MARKERS.dashboardPublicBaseUrl)).toBe(
-      `http://localhost:${expectedDashboardPort("test-token")}`
+      `http://localhost:${expectedDashboardPort(`test-token.${process.cwd()}`)}`
     );
     expect(extractMarker(result.stdout, MARKERS.showToolStatus)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.defaultClaudeModel)).toBe("claude-opus-4-6");
@@ -224,5 +236,62 @@ describe("config overrides", () => {
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("medium");
     expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("claude");
+  });
+});
+
+describe("forum topic routing config", () => {
+  it("defaults to null when env vars are unset", async () => {
+    const result = await probeConfig({
+      telegramForumChatId: undefined,
+      telegramThreadId: undefined,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.forumChatId)).toBe("null");
+    expect(extractMarker(result.stdout, MARKERS.threadId)).toBe("null");
+  });
+
+  it("parses valid chat ID and thread ID", async () => {
+    const result = await probeConfig({
+      telegramForumChatId: "-1003792037700",
+      telegramThreadId: "42",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.forumChatId)).toBe("-1003792037700");
+    expect(extractMarker(result.stdout, MARKERS.threadId)).toBe("42");
+  });
+
+  it("returns null for non-numeric values", async () => {
+    const result = await probeConfig({
+      telegramForumChatId: "not-a-number",
+      telegramThreadId: "abc",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.forumChatId)).toBe("null");
+    expect(extractMarker(result.stdout, MARKERS.threadId)).toBe("null");
+  });
+
+  it("returns null for empty strings", async () => {
+    const result = await probeConfig({
+      telegramForumChatId: "",
+      telegramThreadId: "",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.forumChatId)).toBe("null");
+    expect(extractMarker(result.stdout, MARKERS.threadId)).toBe("null");
+  });
+
+  it("handles whitespace-padded values", async () => {
+    const result = await probeConfig({
+      telegramForumChatId: "  -1003792037700  ",
+      telegramThreadId: "  7  ",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.forumChatId)).toBe("-1003792037700");
+    expect(extractMarker(result.stdout, MARKERS.threadId)).toBe("7");
   });
 });

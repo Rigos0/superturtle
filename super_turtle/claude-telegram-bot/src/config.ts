@@ -340,6 +340,7 @@ try {
     .replace(/\{\{SUPER_TURTLE_DIR\}\}/g, SUPER_TURTLE_DIR)
     .replace(/\{\{CTL_PATH\}\}/g, CTL_PATH)
     .replace(/\{\{DATA_DIR\}\}/g, SUPERTURTLE_DATA_DIR)
+    .replace(/\{\{WORKING_DIR\}\}/g, WORKING_DIR)
     .trim();
   configLog.info({ metaPath }, `Loaded meta prompt from ${metaPath}`);
 } catch {
@@ -357,6 +358,7 @@ try {
     .replace(/\{\{SUPER_TURTLE_DIR\}\}/g, SUPER_TURTLE_DIR)
     .replace(/\{\{CTL_PATH\}\}/g, CTL_PATH)
     .replace(/\{\{DATA_DIR\}\}/g, SUPERTURTLE_DATA_DIR)
+    .replace(/\{\{WORKING_DIR\}\}/g, WORKING_DIR)
     .trim();
   configLog.info(
     { codexBootstrapPath },
@@ -425,6 +427,32 @@ export const TELEGRAM_SAFE_LIMIT = 4000; // Safe limit with buffer for formattin
 export const STREAMING_THROTTLE_MS = 500; // Throttle streaming updates
 export const BUTTON_LABEL_MAX_LENGTH = 30; // Max chars for inline button labels
 
+// ============== Forum Topic Routing ==============
+//
+// When both TELEGRAM_FORUM_CHAT_ID and TELEGRAM_THREAD_ID are set, the bot
+// scopes all outgoing messages to a specific topic thread in a Telegram
+// supergroup with forum mode enabled, and filters incoming updates to only
+// process messages from that thread.
+//
+// This enables running multiple SuperTurtle instances on a single bot by
+// creating a separate forum topic per instance.
+
+function parseOptionalChatId(raw: string | undefined): number | null {
+  if (!raw || raw.trim() === "") return null;
+  const parsed = parseInt(raw.trim(), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// Forum chat ID and thread ID are set by the CLI from ~/.superturtle/projects.json
+// and passed as environment variables.
+export const TELEGRAM_FORUM_CHAT_ID = parseOptionalChatId(
+  process.env.TELEGRAM_FORUM_CHAT_ID
+);
+
+export const TELEGRAM_THREAD_ID = parseOptionalChatId(
+  process.env.TELEGRAM_THREAD_ID
+);
+
 // ============== Dashboard Configuration ==============
 
 function stablePortHash(input: string): number {
@@ -440,7 +468,13 @@ function computeDefaultDashboardPort(seed: string): number {
   return 46000 + (stablePortHash(seed) % 1000);
 }
 
-const defaultDashboardPort = computeDefaultDashboardPort(TOKEN_PREFIX);
+// Include thread ID or working dir in seed so multi-project bots get different ports.
+// Thread ID isn't known at boot (router assigns it after connect), so use the
+// working directory as fallback — guarantees different ports for different projects.
+const dashboardPortSeed = TELEGRAM_THREAD_ID
+  ? `${TOKEN_PREFIX}.t${TELEGRAM_THREAD_ID}`
+  : `${TOKEN_PREFIX}.${WORKING_DIR}`;
+const defaultDashboardPort = computeDefaultDashboardPort(dashboardPortSeed);
 export const DASHBOARD_ENABLED = (
   process.env.DASHBOARD_ENABLED || "true"
 ).toLowerCase() === "true";

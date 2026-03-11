@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Multi-project support**: run SuperTurtle on multiple projects simultaneously — each project gets its own forum topic in a Telegram supergroup, with messages routed automatically
+- Dedicated router process: single Telegram poller that routes updates to project instances via Unix domain sockets, replacing per-instance polling
+- Auto-topic creation: starting `superturtle start` in a new directory auto-creates a forum topic with a deterministic emoji name (e.g. `🐢 my-app`)
+- Duplicate detection: starting a second instance in the same directory shows a friendly message pointing to the existing topic instead of creating a conflict
+- Thread registry: topic assignments persist in `~/.superturtle/projects.json` so instances reuse their topic across restarts
+- Global env: bot token, allowed users, and API keys stored in `~/.superturtle/.env` (shared across all projects)
+
+### Changed
+- `superturtle start` now starts a router process alongside the bot (transparent to single-instance users)
+- Configuration moved from per-project `.superturtle/.env` to global `~/.superturtle/.env` (existing configs are migrated automatically)
+
 ## [0.2.3] - 2026-03-09
 
 ### Added

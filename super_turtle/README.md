@@ -58,6 +58,7 @@ superturtle init --token <BOT_TOKEN> --user <TELEGRAM_USER_ID> --openai-key <KEY
 3. **Long-running, multi-step work** — spawns parallel SubTurtles.
 4. **Milestone updates** — you get progress, not noise.
 5. **Works from anywhere** — phone, tablet, another machine.
+6. **Multi-project** — run on several projects at once, each in its own forum topic.
 
 ## Architecture
 
