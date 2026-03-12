@@ -91,6 +91,11 @@ function assertNoStoreHeaders(request, context) {
 
 function assertCredentiallessRequest(request, context) {
   assert.strictEqual(
+    request.options?.cache,
+    "no-store",
+    `expected ${context} to force fetch cache bypass`
+  );
+  assert.strictEqual(
     request.options?.credentials,
     "omit",
     `expected ${context} to omit ambient fetch credentials`

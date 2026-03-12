@@ -1011,6 +1011,7 @@ async function requestJson(url, options = {}, env = process.env) {
   try {
     const response = await fetch(url, {
       ...options,
+      cache: "no-store",
       credentials: "omit",
       referrerPolicy: "no-referrer",
       redirect: "manual",
