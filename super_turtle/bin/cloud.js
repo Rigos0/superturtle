@@ -1250,6 +1250,9 @@ async function requestWithSession(session, env, path) {
     if (status === 401 && !activeSession?.refresh_token) {
       throw invalidateSession(env, "expired and cannot be refreshed");
     }
+    if (status === 403) {
+      throw invalidateSession(env, "was rejected by the control plane");
+    }
     if (status !== 401 || !activeSession?.refresh_token) {
       if (sessionChanged && error && typeof error === "object") {
         error.session = activeSession;
@@ -1263,7 +1266,7 @@ async function requestWithSession(session, env, path) {
       data = await doRequest(activeSession);
     } catch (error) {
       const retryStatus = error && typeof error === "object" ? error.status : undefined;
-      if (retryStatus === 401) {
+      if (retryStatus === 401 || retryStatus === 403) {
         throw invalidateSession(env, "was rejected after refresh");
       }
       throw error;

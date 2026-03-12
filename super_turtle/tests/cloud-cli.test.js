@@ -290,6 +290,11 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
       }
+      if (sessionMode === "http-403") {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden" }));
+        return;
+      }
       if (sessionMode === "invalid-user-email") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -345,6 +350,11 @@ const server = http.createServer((req, res) => {
       if (statusMode === "http-503") {
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "service unavailable" }));
+        return;
+      }
+      if (statusMode === "http-403") {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden" }));
         return;
       }
       if (statusMode === "invalid-content-type") {
@@ -1410,6 +1420,55 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(unauthorizedWhoami.stderr, /superturtle login/i);
     assert.ok(!fs.existsSync(sessionPath), "expected unauthorized session to clear the local session");
     sessionMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        user: { id: "user_123", email: "user@example.com" },
+        workspace: { slug: "acme" },
+        entitlement: { plan: "managed", state: "active" },
+      }, null, 2)}\n`
+    );
+    sessionMode = "http-403";
+    const forbiddenWhoami = await runCli(["whoami"], env);
+    assert.strictEqual(forbiddenWhoami.code, 1);
+    assert.match(forbiddenWhoami.stderr, /Hosted session .* rejected by the control plane/i);
+    assert.match(forbiddenWhoami.stderr, /Removed local cloud session/i);
+    assert.match(forbiddenWhoami.stderr, /superturtle login/i);
+    assert.ok(!fs.existsSync(sessionPath), "expected forbidden whoami session to clear the local session");
+    sessionMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        instance: {
+          id: "inst_123",
+          state: "running",
+          region: "us-central1",
+          hostname: "managed-123.internal",
+        },
+        provisioning_job: {
+          state: "succeeded",
+          updated_at: "2026-03-12T10:10:00Z",
+        },
+      }, null, 2)}\n`
+    );
+    statusMode = "http-403";
+    const forbiddenCloudStatus = await runCli(["cloud", "status"], env);
+    assert.strictEqual(forbiddenCloudStatus.code, 1);
+    assert.match(forbiddenCloudStatus.stderr, /Hosted session .* rejected by the control plane/i);
+    assert.match(forbiddenCloudStatus.stderr, /Removed local cloud session/i);
+    assert.match(forbiddenCloudStatus.stderr, /superturtle login/i);
+    assert.ok(!fs.existsSync(sessionPath), "expected forbidden cloud status session to clear the local session");
+    statusMode = "normal";
 
     const logout = await runCli(["logout"], env);
     assert.strictEqual(logout.code, 0, logout.stderr);
