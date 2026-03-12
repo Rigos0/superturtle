@@ -8,6 +8,13 @@ Usage: ./super_turtle/scripts/teleport-manual.sh <ssh_target> <remote_root> [opt
 Teleport the current Super Turtle repo to a remote Linux host and continue
 chatting with the same Telegram bot there.
 
+Remote Claude auth can come from either:
+  - an already logged-in remote `claude` session, or
+  - `CLAUDE_CODE_OAUTH_TOKEN` in `.superturtle/.env`
+
+Runbook:
+  super_turtle/docs/MANUAL_TELEPORT_RUNBOOK.md
+
 Options:
   --port <N>         SSH port
   --identity <PATH>  SSH identity file
@@ -136,7 +143,13 @@ if [[ -n "$SSH_IDENTITY" ]]; then
 fi
 
 ssh_run() {
-  ssh "${SSH_ARGS[@]}" "$SSH_TARGET" "$@"
+  local -a cmd=(ssh)
+  if (( ${#SSH_ARGS[@]} > 0 )); then
+    cmd+=("${SSH_ARGS[@]}")
+  fi
+  cmd+=("$SSH_TARGET")
+  cmd+=("$@")
+  "${cmd[@]}"
 }
 
 local_preflight() {
@@ -249,7 +262,10 @@ stop_local_subturtles() {
     return 0
   fi
 
-  mapfile -t running_names < <("$CTL_PATH" list 2>/dev/null | awk '$2 == "running" {print $1}')
+  local -a running_names=()
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && running_names+=("$name")
+  done < <("$CTL_PATH" list 2>/dev/null | awk '$2 == "running" {print $1}')
   if (( ${#running_names[@]} == 0 )); then
     return 0
   fi
@@ -286,6 +302,42 @@ if [[ ! -f "$env_file" ]]; then
   echo "[teleport][remote] Missing env file: $env_file" >&2
   exit 1
 fi
+
+python3 - "$env_file" "$remote_root" <<'PY'
+from pathlib import Path
+import sys
+
+env_path = Path(sys.argv[1])
+remote_root = sys.argv[2]
+home = str(Path.home())
+
+desired = {
+    "CLAUDE_WORKING_DIR": remote_root,
+    "ALLOWED_PATHS": f"{remote_root},{home}/.claude",
+}
+
+lines = env_path.read_text().splitlines()
+updated = []
+seen = set()
+
+for raw in lines:
+    stripped = raw.strip()
+    if not stripped or stripped.startswith("#") or "=" not in raw:
+        updated.append(raw)
+        continue
+    key, _, _ = raw.partition("=")
+    if key in desired:
+        updated.append(f"{key}={desired[key]}")
+        seen.add(key)
+    else:
+        updated.append(raw)
+
+for key, value in desired.items():
+    if key not in seen:
+        updated.append(f"{key}={value}")
+
+env_path.write_text("\n".join(updated) + "\n")
+PY
 
 set -a
 source "$env_file"
@@ -326,10 +378,13 @@ EOF
 
 send_remote_notification() {
   local message="$1"
-  ssh_run bash -s -- "$REMOTE_ROOT" "$message" <<'EOF'
+  local message_b64
+  message_b64="$(printf '%s' "$message" | base64 | tr -d '\n')"
+  ssh_run bash -s -- "$REMOTE_ROOT" "$message_b64" <<'EOF'
 set -euo pipefail
 remote_root="$1"
-message="$2"
+message_b64="$2"
+message="$(printf '%s' "$message_b64" | base64 --decode)"
 python3 "$remote_root/super_turtle/state/teleport_handoff.py" notify --project-root "$remote_root" --text "$message"
 EOF
 }
