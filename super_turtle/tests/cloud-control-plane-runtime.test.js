@@ -10,6 +10,7 @@ const {
   createRuntime,
   handleHttpRequest,
   readState,
+  requestCloudStatus,
   requestSession,
   requestInstanceResume,
   runNextProvisioningJob,
@@ -99,6 +100,21 @@ async function run() {
     "expected session lookups to be written to the durable audit log"
   );
 
+  const initialStatus = requestCloudStatus(runtime, "access_123");
+  assert.strictEqual(initialStatus.status, 200);
+  assert.strictEqual(initialStatus.data.instance, null);
+  assert.strictEqual(initialStatus.data.provisioning_job, null);
+  assert.deepStrictEqual(initialStatus.data.audit_log, []);
+
+  const persistedAfterStatus = readState(statePath);
+  assert.strictEqual(persistedAfterStatus.sessions[0].last_authenticated_at, "2026-03-12T10:00:02Z");
+  assert.strictEqual(persistedAfterStatus.identities[0].last_used_at, "2026-03-12T10:00:02Z");
+  assert.match(
+    JSON.stringify(persistedAfterStatus.audit_log),
+    /cloud_status\.lookup/,
+    "expected cloud status lookups to be written to the durable audit log"
+  );
+
   const created = requestInstanceResume(runtime, "access_123");
   assert.strictEqual(created.status, 200);
   assert.strictEqual(created.data.instance.state, "provisioning");
@@ -128,6 +144,13 @@ async function run() {
   const persistedAfterRun = readState(statePath);
   assert.strictEqual(persistedAfterRun.managed_instances[0].state, "running");
   assert.strictEqual(persistedAfterRun.provisioning_jobs[0].state, "succeeded");
+
+  const runningStatus = requestCloudStatus(runtime, "access_123");
+  assert.strictEqual(runningStatus.status, 200);
+  assert.strictEqual(runningStatus.data.instance.id, created.data.instance.id);
+  assert.strictEqual(runningStatus.data.instance.state, "running");
+  assert.strictEqual(runningStatus.data.provisioning_job.id, created.data.provisioning_job.id);
+  assert.strictEqual(runningStatus.data.provisioning_job.state, "succeeded");
 
   const forbiddenPath = resolve(tmpDir, "forbidden-state.json");
   const forbiddenState = createSeedState();
@@ -170,6 +193,16 @@ async function run() {
   assert.strictEqual(whoamiPayload.user.email, "user@example.com");
   assert.strictEqual(whoamiPayload.session.id, "sess_123");
   assert.strictEqual(whoamiPayload.identities[0].provider, "github");
+
+  const cloudStatusResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/cloud/status`, {
+    headers: {
+      authorization: "Bearer access_123",
+    },
+  });
+  assert.strictEqual(cloudStatusResponse.status, 200);
+  const cloudStatusPayload = await cloudStatusResponse.json();
+  assert.strictEqual(cloudStatusPayload.instance.state, "provisioning");
+  assert.strictEqual(cloudStatusPayload.provisioning_job.state, "queued");
 
   server.close();
 }

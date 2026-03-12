@@ -413,6 +413,32 @@ function requestSession(runtime, accessToken) {
   return { status: 200, data: buildWhoAmIPayload(state, session) };
 }
 
+function requestCloudStatus(runtime, accessToken) {
+  const state = readState(runtime.statePath);
+  const session = getAuthenticatedSession(state, accessToken);
+  if (!session) {
+    return { status: 401, data: { error: "invalid_session" } };
+  }
+
+  const timestamp = runtime.now();
+  session.last_authenticated_at = timestamp;
+  const identities = getIdentities(state, session.user_id);
+  for (const identity of identities) {
+    identity.last_used_at = timestamp;
+  }
+
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: session.user_id,
+    action: "cloud_status.lookup",
+    target_type: "session",
+    target_id: session.id,
+    metadata: { surface: "cli_cloud_status" },
+  });
+  writeState(runtime.statePath, state);
+  return { status: 200, data: buildCloudStatusPayload(state, getManagedInstance(state, session.user_id)) };
+}
+
 async function runNextProvisioningJob(runtime) {
   const state = readState(runtime.statePath);
   const job = state.provisioning_jobs.find((candidate) => candidate && candidate.state === "queued");
@@ -536,6 +562,23 @@ async function handleHttpRequest(runtime, request) {
     };
   }
 
+  if (request.method === "GET" && request.url === "/v1/cli/cloud/status") {
+    const accessToken = extractBearerToken(request);
+    if (!accessToken) {
+      return {
+        status: 401,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: "missing_bearer_token" }),
+      };
+    }
+    const result = requestCloudStatus(runtime, accessToken);
+    return {
+      status: result.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      body: JSON.stringify(result.data),
+    };
+  }
+
   if (request.method === "POST" && request.url === "/v1/cli/cloud/instance/resume") {
     const accessToken = extractBearerToken(request);
     if (!accessToken) {
@@ -582,6 +625,7 @@ module.exports = {
   createRuntime,
   handleHttpRequest,
   readState,
+  requestCloudStatus,
   requestSession,
   requestInstanceResume,
   runNextProvisioningJob,
