@@ -64,10 +64,12 @@ function readSession(env = process.env) {
   }
 
   if (!Object.prototype.hasOwnProperty.call(parsed, "schema_version")) {
-    return {
+    const normalized = {
       schema_version: CLOUD_SESSION_SCHEMA_VERSION,
       ...parsed,
     };
+    writeSession(normalized, env);
+    return normalized;
   }
 
   if (!Number.isInteger(parsed.schema_version) || parsed.schema_version <= 0) {

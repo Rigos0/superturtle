@@ -262,12 +262,15 @@ server.listen(0, "127.0.0.1", async () => {
         user: { id: "user_123", email: "user@example.com" },
       }, null, 2)}\n`
     );
+    sessionMode = "network-fail";
 
-    const legacyWhoami = await runCli(["whoami"], postLoginEnv);
+    const legacyWhoami = await runCli(["whoami"], env);
     assert.strictEqual(legacyWhoami.code, 0, legacyWhoami.stderr);
+    assert.match(legacyWhoami.stderr, /using cached identity snapshot/i);
     const migratedLegacySession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
     assert.strictEqual(migratedLegacySession.schema_version, 1);
     assert.strictEqual(migratedLegacySession.control_plane, baseUrl);
+    sessionMode = "normal";
 
     fs.writeFileSync(
       sessionPath,
