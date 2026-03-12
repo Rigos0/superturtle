@@ -313,10 +313,46 @@ function fsyncDescriptor(fd, pathDescription) {
   }
 }
 
-function fsyncPath(path, pathDescription) {
+function openPathForSync(path, kind = "file") {
+  if (process.platform === "win32") {
+    return fs.openSync(path, "r");
+  }
+
+  let flags = fs.constants.O_RDONLY;
+  if (typeof fs.constants?.O_NOFOLLOW === "number") {
+    flags |= fs.constants.O_NOFOLLOW;
+  }
+  if (kind === "directory" && typeof fs.constants?.O_DIRECTORY === "number") {
+    flags |= fs.constants.O_DIRECTORY;
+  }
+
+  try {
+    const fd = fs.openSync(path, flags);
+    const stats = fs.fstatSync(fd);
+    if (kind === "directory" ? !stats.isDirectory() : !stats.isFile()) {
+      fs.closeSync(fd);
+      if (kind === "directory") {
+        throw invalidSessionDirectory(path, "must be a directory");
+      }
+      throw invalidSessionFile(path, "must be a regular file");
+    }
+    return fd;
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ELOOP") {
+      if (kind === "directory") {
+        throw invalidSessionDirectory(path, "must not be a symlink");
+      }
+      throw invalidSessionFile(path, "must be a regular file");
+    }
+    throw error;
+  }
+}
+
+function fsyncPath(path, pathDescription, options = {}) {
+  const kind = options.kind === "directory" ? "directory" : "file";
   let fd;
   try {
-    fd = fs.openSync(path, "r");
+    fd = openPathForSync(path, kind);
     fsyncDescriptor(fd, pathDescription);
   } finally {
     if (fd != null) {
@@ -329,7 +365,7 @@ function fsyncParentDirectory(path) {
   if (process.platform === "win32") {
     return;
   }
-  fsyncPath(dirname(path), `directory ${dirname(path)}`);
+  fsyncPath(dirname(path), `directory ${dirname(path)}`, { kind: "directory" });
 }
 
 function isNonEmptyString(value) {

@@ -120,6 +120,51 @@ try {
     !fs.existsSync(sessionPath),
     "expected oversized hosted session writes to fail before recreating the session file"
   );
+
+  if (process.platform !== "win32" && typeof fs.constants?.O_NOFOLLOW === "number") {
+    const redirectedPath = resolve(tmpDir, "redirected.json");
+    fs.writeFileSync(redirectedPath, "{\"access_token\":\"stolen\"}\n", "utf-8");
+    const redirectedContents = fs.readFileSync(redirectedPath, "utf-8");
+    let swappedForFinalSync = false;
+
+    fs.openSync = function patchedFinalSyncOpen(path, flags, mode) {
+      if (path === sessionPath && !swappedForFinalSync) {
+        swappedForFinalSync = true;
+        fs.unlinkSync(sessionPath);
+        fs.symlinkSync(redirectedPath, sessionPath);
+      }
+      const fd = originalOpenSync.call(fs, path, flags, mode);
+      openPathsByFd.set(fd, path);
+      return fd;
+    };
+
+    assert.throws(
+      () =>
+        writeSession(
+          {
+            access_token: "access-ghi",
+            refresh_token: "refresh-jkl",
+            control_plane: "https://api.superturtle.dev",
+          },
+          env
+        ),
+      /Hosted session file at .* must be a regular file/i
+    );
+    assert.ok(swappedForFinalSync, "expected final session fsync test to swap the session path");
+    assert.ok(fs.lstatSync(sessionPath).isSymbolicLink(), "expected swapped session path to remain a symlink");
+    assert.strictEqual(
+      fs.readFileSync(redirectedPath, "utf-8"),
+      redirectedContents,
+      "expected final session fsync to avoid touching the redirected target"
+    );
+
+    fs.unlinkSync(sessionPath);
+    fs.openSync = function patchedOpenSync(path, flags, mode) {
+      const fd = originalOpenSync.call(fs, path, flags, mode);
+      openPathsByFd.set(fd, path);
+      return fd;
+    };
+  }
 } finally {
   fs.openSync = originalOpenSync;
   fs.closeSync = originalCloseSync;
