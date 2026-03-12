@@ -941,6 +941,10 @@ server.listen(0, "127.0.0.1", async () => {
     assert.strictEqual(symlinkWhoami.code, 1);
     assert.match(symlinkWhoami.stderr, /Hosted session file .* must be a regular file/i);
     assert.match(symlinkWhoami.stderr, /superturtle logout/i);
+    const symlinkLogout = await runCli(["logout"], env);
+    assert.strictEqual(symlinkLogout.code, 1);
+    assert.match(symlinkLogout.stderr, /Hosted session file .* must be a regular file/i);
+    assert.ok(fs.lstatSync(sessionPath).isSymbolicLink(), "expected logout to leave a symlinked session path untouched");
     fs.rmSync(sessionPath, { force: true });
 
     const danglingSymlinkTargetPath = resolve(tmpDir, "cloud-session-dangling-target.json");
@@ -989,6 +993,13 @@ server.listen(0, "127.0.0.1", async () => {
     assert.strictEqual(symlinkedDirWhoami.code, 1);
     assert.match(symlinkedDirWhoami.stderr, /Hosted session directory .* must not be a symlink/i);
     assert.match(symlinkedDirWhoami.stderr, /superturtle logout/i);
+    const symlinkedDirLogout = await runCli(["logout"], symlinkedDirEnv);
+    assert.strictEqual(symlinkedDirLogout.code, 1);
+    assert.match(symlinkedDirLogout.stderr, /Hosted session directory .* must not be a symlink/i);
+    assert.ok(
+      fs.existsSync(resolve(symlinkedConfigTargetDir, "cloud-session.json")),
+      "expected logout to refuse deleting through a symlinked session directory"
+    );
 
     fs.mkdirSync(sessionPath);
     const directoryWhoami = await runCli(["whoami"], env);

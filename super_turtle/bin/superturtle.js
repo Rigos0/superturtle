@@ -1011,7 +1011,12 @@ switch (command) {
     process.exit(1);
     break;
   case "logout":
-    logout();
+    try {
+      logout();
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
     break;
   case "--version":
   case "-v":
