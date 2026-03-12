@@ -181,6 +181,7 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(cachedStatusFromLogin.stdout, /Provisioning: queued/);
 
     fs.writeFileSync(sessionPath, `${JSON.stringify(savedSession, null, 2)}\n`);
+    fs.chmodSync(sessionPath, 0o644);
 
     const whoami = await runCli(["whoami"], postLoginEnv);
     assert.strictEqual(whoami.code, 0, whoami.stderr);
@@ -188,6 +189,7 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(whoami.stdout, /User: user@example.com/);
     assert.match(whoami.stdout, /Plan: managed/);
     assert.strictEqual(refreshCount, 1, "expected whoami to refresh the expired session");
+    assert.strictEqual(fs.statSync(sessionPath).mode & 0o777, 0o600);
 
     const refreshedSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
     assert.strictEqual(refreshedSession.access_token, "access-abc");

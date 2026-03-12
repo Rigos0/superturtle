@@ -40,6 +40,19 @@ function ensureParentDir(filePath) {
   fs.mkdirSync(dirname(filePath), { recursive: true });
 }
 
+function hardenSessionFilePermissions(path) {
+  if (process.platform === "win32" || !fs.existsSync(path)) {
+    return;
+  }
+
+  const currentMode = fs.statSync(path).mode & 0o777;
+  if (currentMode === 0o600) {
+    return;
+  }
+
+  fs.chmodSync(path, 0o600);
+}
+
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -140,6 +153,8 @@ function readSession(env = process.env) {
 
   if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
     writeSession(normalized, env);
+  } else {
+    hardenSessionFilePermissions(path);
   }
 
   return normalized;
