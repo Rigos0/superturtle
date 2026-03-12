@@ -6,11 +6,14 @@ const { resolve } = require("path");
 
 const {
   CONTROL_PLANE_WRITE_SCOPE,
+  completeLoginRequest,
   createDefaultState,
   createRuntime,
   handleHttpRequest,
   readState,
   requestCloudStatus,
+  requestLoginPoll,
+  requestLoginStart,
   requestSession,
   requestSessionRefresh,
   requestInstanceResume,
@@ -91,10 +94,52 @@ async function run() {
   const runtime = createRuntime({
     statePath,
     now: createClock(),
+    publicOrigin: "https://api.superturtle.dev",
     createId(prefix) {
       return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
     },
   });
+
+  const loginStarted = requestLoginStart(runtime, {
+    client_name: "superturtle-cli",
+    device_name: "devbox",
+    scopes: ["cloud:read", "teleport:write"],
+  });
+  assert.strictEqual(loginStarted.status, 200);
+  assert.match(loginStarted.data.device_code, /^device_/);
+  assert.strictEqual(loginStarted.data.interval_ms, 2000);
+  assert.strictEqual(loginStarted.data.verification_uri, "https://api.superturtle.dev/verify");
+  assert.match(
+    loginStarted.data.verification_uri_complete,
+    /^https:\/\/api\.superturtle\.dev\/verify\?user_code=/
+  );
+
+  const loginPending = requestLoginPoll(runtime, loginStarted.data.device_code);
+  assert.strictEqual(loginPending.status, 428);
+  assert.strictEqual(loginPending.data.error, "authorization_pending");
+
+  const completedLogin = completeLoginRequest(runtime, loginStarted.data.device_code, {
+    userId: "user_123",
+  });
+  assert.strictEqual(completedLogin.status, 200);
+  assert.match(completedLogin.data.access_token, /^access_/);
+  assert.match(completedLogin.data.refresh_token, /^refresh_/);
+  assert.strictEqual(completedLogin.data.user.email, "user@example.com");
+  assert.strictEqual(completedLogin.data.entitlement.state, "active");
+
+  const loginPollCompleted = requestLoginPoll(runtime, loginStarted.data.device_code);
+  assert.strictEqual(loginPollCompleted.status, 200);
+  assert.strictEqual(loginPollCompleted.data.session.id, completedLogin.data.session.id);
+
+  const persistedAfterLogin = readState(statePath);
+  assert.strictEqual(persistedAfterLogin.login_requests.length, 1);
+  assert.strictEqual(persistedAfterLogin.login_requests[0].state, "completed");
+  assert.strictEqual(persistedAfterLogin.login_requests[0].session_id, completedLogin.data.session.id);
+  assert.match(
+    JSON.stringify(persistedAfterLogin.audit_log),
+    /login_request\.completed/,
+    "expected completed login requests to be written to the durable audit log"
+  );
 
   const whoami = requestSession(runtime, "access_123");
   assert.strictEqual(whoami.status, 200);
@@ -102,11 +147,11 @@ async function run() {
   assert.strictEqual(whoami.data.identities.length, 1);
   assert.strictEqual(whoami.data.identities[0].provider, "github");
   assert.strictEqual(whoami.data.session.id, "sess_123");
-  assert.strictEqual(whoami.data.session.last_authenticated_at, "2026-03-12T10:00:00Z");
+  assert.strictEqual(whoami.data.session.last_authenticated_at, "2026-03-12T10:00:10Z");
 
   const persistedAfterWhoAmI = readState(statePath);
-  assert.strictEqual(persistedAfterWhoAmI.sessions[0].last_authenticated_at, "2026-03-12T10:00:00Z");
-  assert.strictEqual(persistedAfterWhoAmI.identities[0].last_used_at, "2026-03-12T10:00:00Z");
+  assert.strictEqual(persistedAfterWhoAmI.sessions[0].last_authenticated_at, "2026-03-12T10:00:10Z");
+  assert.strictEqual(persistedAfterWhoAmI.identities[0].last_used_at, "2026-03-12T10:00:10Z");
   assert.match(
     JSON.stringify(persistedAfterWhoAmI.audit_log),
     /session\.lookup/,
@@ -118,15 +163,15 @@ async function run() {
   assert.match(refreshed.data.access_token, /^access_/);
   assert.match(refreshed.data.refresh_token, /^refresh_/);
   assert.strictEqual(refreshed.data.session.id, "sess_123");
-  assert.strictEqual(refreshed.data.session.last_authenticated_at, "2026-03-12T10:00:02Z");
+  assert.strictEqual(refreshed.data.session.last_authenticated_at, "2026-03-12T10:00:12Z");
   assert.strictEqual(refreshed.data.entitlement.state, "active");
 
   const persistedAfterRefresh = readState(statePath);
   assert.strictEqual(persistedAfterRefresh.sessions[0].access_token, refreshed.data.access_token);
   assert.strictEqual(persistedAfterRefresh.sessions[0].refresh_token, refreshed.data.refresh_token);
-  assert.strictEqual(persistedAfterRefresh.sessions[0].expires_at, "2026-03-12T11:00:02.000Z");
-  assert.strictEqual(persistedAfterRefresh.sessions[0].last_authenticated_at, "2026-03-12T10:00:02Z");
-  assert.strictEqual(persistedAfterRefresh.identities[0].last_used_at, "2026-03-12T10:00:02Z");
+  assert.strictEqual(persistedAfterRefresh.sessions[0].expires_at, "2026-03-12T11:00:12.000Z");
+  assert.strictEqual(persistedAfterRefresh.sessions[0].last_authenticated_at, "2026-03-12T10:00:12Z");
+  assert.strictEqual(persistedAfterRefresh.identities[0].last_used_at, "2026-03-12T10:00:12Z");
   assert.match(
     JSON.stringify(persistedAfterRefresh.audit_log),
     /session\.refreshed/,
@@ -140,8 +185,8 @@ async function run() {
   assert.deepStrictEqual(initialStatus.data.audit_log, []);
 
   const persistedAfterStatus = readState(statePath);
-  assert.strictEqual(persistedAfterStatus.sessions[0].last_authenticated_at, "2026-03-12T10:00:04Z");
-  assert.strictEqual(persistedAfterStatus.identities[0].last_used_at, "2026-03-12T10:00:04Z");
+  assert.strictEqual(persistedAfterStatus.sessions[0].last_authenticated_at, "2026-03-12T10:00:14Z");
+  assert.strictEqual(persistedAfterStatus.identities[0].last_used_at, "2026-03-12T10:00:14Z");
   assert.match(
     JSON.stringify(persistedAfterStatus.audit_log),
     /cloud_status\.lookup/,
@@ -249,6 +294,46 @@ async function run() {
   const cloudStatusPayload = await cloudStatusResponse.json();
   assert.strictEqual(cloudStatusPayload.instance.state, "provisioning");
   assert.strictEqual(cloudStatusPayload.provisioning_job.state, "queued");
+
+  const loginStartResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/login/start`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      client_name: "superturtle-cli",
+      device_name: "http-devbox",
+      scopes: ["cloud:read"],
+    }),
+  });
+  assert.strictEqual(loginStartResponse.status, 200);
+  const loginStartPayload = await loginStartResponse.json();
+  assert.match(loginStartPayload.device_code, /^device_/);
+
+  const loginPollPendingResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/login/poll`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ device_code: loginStartPayload.device_code }),
+  });
+  assert.strictEqual(loginPollPendingResponse.status, 428);
+
+  const httpRuntimeCompleted = completeLoginRequest(httpRuntime, loginStartPayload.device_code, {
+    userId: "user_123",
+  });
+  assert.strictEqual(httpRuntimeCompleted.status, 200);
+
+  const loginPollCompletedResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/login/poll`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ device_code: loginStartPayload.device_code }),
+  });
+  assert.strictEqual(loginPollCompletedResponse.status, 200);
+  const loginPollCompletedPayload = await loginPollCompletedResponse.json();
+  assert.strictEqual(loginPollCompletedPayload.session.id, httpRuntimeCompleted.data.session.id);
 
   const malformedRefreshResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/session/refresh`, {
     method: "POST",

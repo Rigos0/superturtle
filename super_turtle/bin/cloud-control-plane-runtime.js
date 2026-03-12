@@ -14,6 +14,8 @@ const ACTIVE_ENTITLEMENT_STATES = new Set(["active", "trialing"]);
 const CONTROL_PLANE_WRITE_SCOPE = "cloud:write";
 const DEFAULT_SESSION_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_REQUEST_BODY_MAX_BYTES = 16 * 1024;
+const DEFAULT_LOGIN_INTERVAL_MS = 2000;
+const DEFAULT_LOGIN_TTL_MS = 15 * 60 * 1000;
 
 function createDefaultState() {
   return {
@@ -21,6 +23,7 @@ function createDefaultState() {
     users: [],
     identities: [],
     sessions: [],
+    login_requests: [],
     entitlements: [],
     managed_instances: [],
     provisioning_jobs: [],
@@ -58,6 +61,10 @@ function ensureStateShape(state, statePath) {
     if (!Array.isArray(state[field])) {
       throw new Error(`Control-plane state at ${statePath} is missing array field ${field}.`);
     }
+  }
+
+  if (!Array.isArray(state.login_requests)) {
+    state.login_requests = [];
   }
 
   return state;
@@ -118,6 +125,7 @@ function createRuntime(options) {
       region: options.region || "us-central1",
       zone: options.zone || "us-central1-a",
       hostnameDomain: options.hostnameDomain || "managed.superturtle.internal",
+      publicOrigin: String(options.publicOrigin || "https://api.superturtle.dev").replace(/\/+$/, ""),
     },
     sessionTtlMs: Number.isFinite(options.sessionTtlMs) && options.sessionTtlMs > 0
       ? options.sessionTtlMs
@@ -125,6 +133,12 @@ function createRuntime(options) {
     requestBodyMaxBytes: Number.isInteger(options.requestBodyMaxBytes) && options.requestBodyMaxBytes > 0
       ? options.requestBodyMaxBytes
       : DEFAULT_REQUEST_BODY_MAX_BYTES,
+    loginPollIntervalMs: Number.isInteger(options.loginPollIntervalMs) && options.loginPollIntervalMs > 0
+      ? options.loginPollIntervalMs
+      : DEFAULT_LOGIN_INTERVAL_MS,
+    loginRequestTtlMs: Number.isInteger(options.loginRequestTtlMs) && options.loginRequestTtlMs > 0
+      ? options.loginRequestTtlMs
+      : DEFAULT_LOGIN_TTL_MS,
   };
 }
 
@@ -185,6 +199,10 @@ function getRecentAuditLog(state, targetId) {
     .filter((entry) => entry && entry.target_id === targetId)
     .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
     .slice(0, 20);
+}
+
+function getLoginRequest(state, deviceCode) {
+  return state.login_requests.find((request) => request && request.device_code === deviceCode) || null;
 }
 
 function appendAudit(state, runtime, entry) {
@@ -293,12 +311,73 @@ function buildTokenPayload(state, session) {
   });
 }
 
+function buildLoginStartPayload(loginRequest) {
+  return {
+    device_code: loginRequest.device_code,
+    user_code: loginRequest.user_code,
+    verification_uri: loginRequest.verification_uri,
+    verification_uri_complete: loginRequest.verification_uri_complete,
+    interval_ms: loginRequest.interval_ms,
+  };
+}
+
 function addDuration(timestamp, durationMs) {
   const parsed = Date.parse(timestamp);
   if (!Number.isFinite(parsed)) {
     throw new Error(`Cannot add a session duration to invalid timestamp ${JSON.stringify(timestamp)}.`);
   }
   return new Date(parsed + durationMs).toISOString();
+}
+
+function normalizeRequestedScopes(scopes) {
+  const normalized = Array.isArray(scopes)
+    ? scopes.filter((scope) => typeof scope === "string" && scope.trim().length > 0)
+    : [];
+  if (!normalized.includes(CONTROL_PLANE_WRITE_SCOPE)) {
+    normalized.push(CONTROL_PLANE_WRITE_SCOPE);
+  }
+  return Array.from(new Set(normalized));
+}
+
+function createUserCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const chunk = () =>
+    Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  return `${chunk()}-${chunk()}`;
+}
+
+function createLoginRequest(state, runtime, payload) {
+  const timestamp = runtime.now();
+  const userCode = createUserCode();
+  const loginRequest = {
+    id: runtime.createId("login"),
+    state: "pending",
+    client_name: typeof payload.client_name === "string" ? payload.client_name : null,
+    device_name: typeof payload.device_name === "string" ? payload.device_name : null,
+    scopes: normalizeRequestedScopes(payload.scopes),
+    device_code: runtime.createId("device"),
+    user_code: userCode,
+    verification_uri: `${runtime.config.publicOrigin}/verify`,
+    verification_uri_complete: `${runtime.config.publicOrigin}/verify?user_code=${encodeURIComponent(userCode)}`,
+    interval_ms: runtime.loginPollIntervalMs,
+    created_at: timestamp,
+    expires_at: addDuration(timestamp, runtime.loginRequestTtlMs),
+    completed_at: null,
+    session_id: null,
+  };
+  state.login_requests.push(loginRequest);
+  appendAudit(state, runtime, {
+    actor_type: "system",
+    actor_id: "control-plane",
+    action: "login_request.created",
+    target_type: "login_request",
+    target_id: loginRequest.id,
+    metadata: {
+      client_name: loginRequest.client_name,
+      device_name: loginRequest.device_name,
+    },
+  });
+  return loginRequest;
 }
 
 function createManagedInstance(state, runtime, session) {
@@ -426,6 +505,143 @@ function requestInstanceResume(runtime, accessToken) {
   writeState(runtime.statePath, state);
 
   return { status: 200, data: buildCloudStatusPayload(state, instance) };
+}
+
+function requestLoginStart(runtime, payload = {}) {
+  const state = readState(runtime.statePath);
+  const requestPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const loginRequest = createLoginRequest(state, runtime, requestPayload);
+  writeState(runtime.statePath, state);
+  return { status: 200, data: buildLoginStartPayload(loginRequest) };
+}
+
+function completeLoginRequest(runtime, deviceCode, options = {}) {
+  const state = readState(runtime.statePath);
+  const loginRequest = getLoginRequest(state, deviceCode);
+  if (!loginRequest) {
+    return { status: 404, data: { error: "invalid_device_code" } };
+  }
+  if (loginRequest.state !== "pending") {
+    return { status: 409, data: { error: "login_request_not_pending" } };
+  }
+  if (Date.parse(loginRequest.expires_at) <= Date.parse(runtime.now())) {
+    loginRequest.state = "expired";
+    appendAudit(state, runtime, {
+      actor_type: "system",
+      actor_id: "control-plane",
+      action: "login_request.expired",
+      target_type: "login_request",
+      target_id: loginRequest.id,
+      metadata: null,
+    });
+    writeState(runtime.statePath, state);
+    return { status: 410, data: { error: "expired_device_code" } };
+  }
+
+  const user = getUser(state, options.userId);
+  if (!user) {
+    throw new Error(`Cannot complete login for missing user ${JSON.stringify(options.userId)}.`);
+  }
+
+  const timestamp = runtime.now();
+  const session = {
+    id: runtime.createId("sess"),
+    user_id: user.id,
+    state: "active",
+    access_token: runtime.createId("access"),
+    refresh_token: runtime.createId("refresh"),
+    scopes: normalizeRequestedScopes(loginRequest.scopes),
+    created_at: timestamp,
+    expires_at: addDuration(timestamp, runtime.sessionTtlMs),
+    last_authenticated_at: timestamp,
+  };
+  state.sessions.push(session);
+  loginRequest.state = "completed";
+  loginRequest.completed_at = timestamp;
+  loginRequest.session_id = session.id;
+
+  const identities = getIdentities(state, user.id);
+  for (const identity of identities) {
+    identity.last_used_at = timestamp;
+  }
+
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: user.id,
+    action: "login_request.completed",
+    target_type: "login_request",
+    target_id: loginRequest.id,
+    metadata: { session_id: session.id },
+  });
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: user.id,
+    action: "session.created",
+    target_type: "session",
+    target_id: session.id,
+    metadata: { origin: "device_login" },
+  });
+  writeState(runtime.statePath, state);
+  return { status: 200, data: buildTokenPayload(state, session) };
+}
+
+function requestLoginPoll(runtime, deviceCode) {
+  const state = readState(runtime.statePath);
+  const loginRequest = getLoginRequest(state, deviceCode);
+  if (!loginRequest) {
+    return { status: 404, data: { error: "invalid_device_code" } };
+  }
+
+  const nowValue = Date.parse(runtime.now());
+  if (Number.isFinite(nowValue) && Date.parse(loginRequest.expires_at) <= nowValue) {
+    if (loginRequest.state !== "expired") {
+      loginRequest.state = "expired";
+      appendAudit(state, runtime, {
+        actor_type: "system",
+        actor_id: "control-plane",
+        action: "login_request.expired",
+        target_type: "login_request",
+        target_id: loginRequest.id,
+        metadata: null,
+      });
+      writeState(runtime.statePath, state);
+    }
+    return { status: 410, data: { error: "expired_device_code" } };
+  }
+
+  if (loginRequest.state === "pending") {
+    appendAudit(state, runtime, {
+      actor_type: "system",
+      actor_id: "control-plane",
+      action: "login_request.polled_pending",
+      target_type: "login_request",
+      target_id: loginRequest.id,
+      metadata: null,
+    });
+    writeState(runtime.statePath, state);
+    return { status: 428, data: { error: "authorization_pending" } };
+  }
+
+  if (loginRequest.state !== "completed" || !loginRequest.session_id) {
+    return { status: 409, data: { error: "invalid_login_request_state" } };
+  }
+
+  const session = state.sessions.find((candidate) => candidate && candidate.id === loginRequest.session_id);
+  if (!session) {
+    throw new Error(`Login request ${loginRequest.id} references missing session ${loginRequest.session_id}.`);
+  }
+
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: session.user_id,
+    action: "login_request.polled_completed",
+    target_type: "login_request",
+    target_id: loginRequest.id,
+    metadata: { session_id: session.id },
+  });
+  writeState(runtime.statePath, state);
+  return { status: 200, data: buildTokenPayload(state, session) };
 }
 
 function requestSession(runtime, accessToken) {
@@ -616,6 +832,53 @@ function extractBearerToken(request) {
 }
 
 async function handleHttpRequest(runtime, request) {
+  if (request.method === "POST" && request.url === "/v1/cli/login/start") {
+    let payload;
+    try {
+      payload = await readJsonRequestBody(request, runtime.requestBodyMaxBytes);
+    } catch (error) {
+      return {
+        status: error.status || 400,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: error.code || "invalid_request" }),
+      };
+    }
+    const result = requestLoginStart(runtime, payload);
+    return {
+      status: result.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      body: JSON.stringify(result.data),
+    };
+  }
+
+  if (request.method === "POST" && request.url === "/v1/cli/login/poll") {
+    let payload;
+    try {
+      payload = await readJsonRequestBody(request, runtime.requestBodyMaxBytes);
+    } catch (error) {
+      return {
+        status: error.status || 400,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: error.code || "invalid_request" }),
+      };
+    }
+    const deviceCode =
+      payload && typeof payload === "object" && !Array.isArray(payload) ? payload.device_code : null;
+    if (typeof deviceCode !== "string" || deviceCode.length === 0) {
+      return {
+        status: 400,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: "invalid_device_code" }),
+      };
+    }
+    const result = requestLoginPoll(runtime, deviceCode);
+    return {
+      status: result.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      body: JSON.stringify(result.data),
+    };
+  }
+
   if (request.method === "GET" && request.url === "/v1/cli/session") {
     const accessToken = extractBearerToken(request);
     if (!accessToken) {
@@ -760,12 +1023,15 @@ function createNoopProvisioner() {
 module.exports = {
   CONTROL_PLANE_WRITE_SCOPE,
   STATE_SCHEMA_VERSION,
+  completeLoginRequest,
   createDefaultState,
   createNoopProvisioner,
   createRuntime,
   handleHttpRequest,
   readState,
   requestCloudStatus,
+  requestLoginPoll,
+  requestLoginStart,
   requestSession,
   requestSessionRefresh,
   requestInstanceResume,
