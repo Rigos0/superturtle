@@ -2,6 +2,10 @@
   <img src="https://raw.githubusercontent.com/Rigos0/superturtle/main/assets/readme-stickers/hero-double-turtle.png" width="160" alt="superturtle" />
 </p>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Rigos0/superturtle/feat/teleport/assets/readme-stickers/clone-laptop-turtle.png" width="120" alt="teleport turtle" />
+</p>
+
 <h3 align="center">superturtle</h3>
 <p align="center">Code from anywhere with your voice.</p>
 
