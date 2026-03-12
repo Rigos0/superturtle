@@ -52,6 +52,56 @@ function createSeedState() {
   return state;
 }
 
+function createConflictState() {
+  const state = createSeedState();
+  state.users.push({
+    id: "user_456",
+    email: "other@example.com",
+    created_at: "2026-03-12T10:00:00Z",
+  });
+  state.identities.push({
+    id: "ident_456",
+    user_id: "user_456",
+    provider: "google",
+    provider_user_id: "google_456",
+    email: "other@example.com",
+    created_at: "2026-03-12T10:00:00Z",
+    last_used_at: null,
+  });
+  state.sessions.push({
+    id: "sess_456",
+    user_id: "user_456",
+    state: "active",
+    access_token: "access_456",
+    refresh_token: "refresh_456",
+    scopes: [CONTROL_PLANE_WRITE_SCOPE],
+    created_at: "2026-03-12T10:00:00Z",
+    expires_at: "2026-03-12T11:00:00Z",
+    last_authenticated_at: "2026-03-12T10:00:00Z",
+  });
+  state.entitlements.push({
+    user_id: "user_456",
+    plan: "managed",
+    state: "active",
+    subscription_id: "sub_456",
+    current_period_end: "2026-04-12T10:00:00Z",
+    cancel_at_period_end: false,
+  });
+  state.provider_credentials.push({
+    id: "cred_conflict",
+    user_id: "user_456",
+    provider: "claude",
+    state: "valid",
+    access_token: "claude-shared-token",
+    account_email: "other-claude@example.com",
+    configured_at: "2026-03-12T10:00:00Z",
+    last_validated_at: "2026-03-12T10:00:00Z",
+    last_error_code: null,
+    last_error_message: null,
+  });
+  return state;
+}
+
 async function run() {
   const tmpDir = fs.mkdtempSync(resolve(os.tmpdir(), "superturtle-claude-auth-runtime-"));
   const statePath = resolve(tmpDir, "control-plane-state.json");
@@ -124,6 +174,27 @@ async function run() {
     "expected rejected Claude validation attempts to be written to the audit log"
   );
 
+  writeState(statePath, createConflictState());
+
+  const conflict = await setupClaudeProviderAuth(runtime, "access_123", {
+    access_token: "claude-shared-token",
+  });
+  assert.strictEqual(conflict.status, 409);
+  assert.strictEqual(conflict.data.error, "provider_credential_conflict");
+
+  const persistedAfterConflict = readState(statePath);
+  assert.strictEqual(
+    persistedAfterConflict.provider_credentials.filter((credential) => credential.provider === "claude").length,
+    1,
+    "expected cross-user Claude token conflicts not to create a second stored provider credential"
+  );
+  assert.match(
+    JSON.stringify(persistedAfterConflict.audit_log),
+    /provider_credential\.claude_conflict_rejected/,
+    "expected cross-user Claude token conflicts to be written to the audit log"
+  );
+
+  writeState(statePath, persistedAfterReject);
   const revoked = revokeClaudeProviderAuth(runtime, "access_123");
   assert.strictEqual(revoked.status, 200);
   assert.strictEqual(revoked.data.configured, false);

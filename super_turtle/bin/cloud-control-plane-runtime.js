@@ -234,6 +234,18 @@ function getProviderCredential(state, userId, provider) {
   );
 }
 
+function findProviderCredentialByAccessToken(state, provider, accessToken, excludedUserId = null) {
+  return (
+    state.provider_credentials.find(
+      (credential) =>
+        credential &&
+        credential.provider === provider &&
+        credential.access_token === accessToken &&
+        credential.user_id !== excludedUserId
+    ) || null
+  );
+}
+
 function getManagedInstanceByMachineToken(state, machineToken) {
   return (
     state.managed_instances.find(
@@ -1371,6 +1383,31 @@ async function setupClaudeProviderAuth(runtime, accessToken, payload = {}) {
   }
 
   const existingCredential = getProviderCredential(state, session.user_id, "claude");
+  const conflictingCredential = findProviderCredentialByAccessToken(
+    state,
+    "claude",
+    validatedPayload.accessToken,
+    session.user_id
+  );
+  if (conflictingCredential) {
+    appendAudit(state, runtime, {
+      actor_type: "user",
+      actor_id: session.user_id,
+      action: "provider_credential.claude_conflict_rejected",
+      target_type: "provider_credential",
+      target_id: conflictingCredential.id,
+      metadata: {
+        conflicting_user_id: conflictingCredential.user_id,
+      },
+    });
+    writeState(runtime.statePath, state);
+    return {
+      status: 409,
+      data: {
+        error: "provider_credential_conflict",
+      },
+    };
+  }
   let validationResult;
   try {
     validationResult = await runtime.claude.authAdapter.validateAccessToken({
