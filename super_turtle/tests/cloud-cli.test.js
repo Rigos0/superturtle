@@ -94,6 +94,11 @@ const server = http.createServer((req, res) => {
         req.socket.destroy();
         return;
       }
+      if (sessionMode === "http-503") {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "service unavailable" }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         user: { id: "user_123", email: "user@example.com" },
@@ -106,6 +111,11 @@ const server = http.createServer((req, res) => {
       assert.strictEqual(req.headers.authorization, "Bearer access-abc");
       if (statusMode === "network-fail") {
         req.socket.destroy();
+        return;
+      }
+      if (statusMode === "http-503") {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "service unavailable" }));
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -228,11 +238,27 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(cachedWhoami.stdout, /User: user@example.com/);
     assert.match(cachedWhoami.stdout, /Plan: managed/);
 
+    sessionMode = "http-503";
+    const cachedWhoamiFromHttp503 = await runCli(["whoami"], env);
+    assert.strictEqual(cachedWhoamiFromHttp503.code, 0, cachedWhoamiFromHttp503.stderr);
+    assert.match(cachedWhoamiFromHttp503.stderr, /using cached identity snapshot/i);
+    assert.match(cachedWhoamiFromHttp503.stdout, /User: user@example.com/);
+    assert.match(cachedWhoamiFromHttp503.stdout, /Plan: managed/);
+    sessionMode = "normal";
+
     const cachedStatus = await runCli(["cloud", "status"], env);
     assert.strictEqual(cachedStatus.code, 0, cachedStatus.stderr);
     assert.match(cachedStatus.stderr, /using cached cloud status snapshot/i);
     assert.match(cachedStatus.stdout, /Instance: inst_123/);
     assert.match(cachedStatus.stdout, /Provisioning: running/);
+
+    statusMode = "http-503";
+    const cachedStatusFromHttp503 = await runCli(["cloud", "status"], env);
+    assert.strictEqual(cachedStatusFromHttp503.code, 0, cachedStatusFromHttp503.stderr);
+    assert.match(cachedStatusFromHttp503.stderr, /using cached cloud status snapshot/i);
+    assert.match(cachedStatusFromHttp503.stdout, /Instance: inst_123/);
+    assert.match(cachedStatusFromHttp503.stdout, /Provisioning: running/);
+    statusMode = "normal";
 
     fs.writeFileSync(
       sessionPath,

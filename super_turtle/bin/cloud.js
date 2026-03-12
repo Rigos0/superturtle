@@ -303,7 +303,9 @@ function hasCachedSnapshot(session, keys) {
 
 function isRetryableCloudError(error) {
   if (!error || typeof error !== "object") return false;
-  if (typeof error.status === "number") return false;
+  if (typeof error.status === "number") {
+    return [408, 425, 429, 500, 502, 503, 504].includes(error.status);
+  }
   if (error.name === "AbortError") return true;
 
   const code = typeof error.code === "string" ? error.code : "";
