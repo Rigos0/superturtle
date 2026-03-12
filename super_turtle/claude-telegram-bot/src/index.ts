@@ -34,6 +34,7 @@ import {
   handleDebug,
   handleRestart,
   handleStopCommand,
+  handleTeleportCommand,
   handleText,
   handleVoice,
   handlePhoto,
@@ -495,6 +496,7 @@ bot.use(
 const COMMAND_HANDLERS: Record<string, (ctx: Context) => Promise<void> | void> = {
   new: handleNew,
   stop: handleStopCommand,
+  teleport: handleTeleportCommand,
   status: handleStatus,
   looplogs: handleLooplogs,
   pinologs: handlePinologs,

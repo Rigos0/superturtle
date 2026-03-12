@@ -132,6 +132,7 @@ describe("getCommandLines", () => {
 
     for (const expected of [
       "/new",
+      "/teleport",
       "/model",
       "/switch",
       "/usage",

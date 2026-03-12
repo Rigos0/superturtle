@@ -8,6 +8,7 @@ describe("TELEGRAM_COMMANDS", () => {
     expect(names).toEqual([
       "new",
       "stop",
+      "teleport",
       "model",
       "switch",
       "usage",

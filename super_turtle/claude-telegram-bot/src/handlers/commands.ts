@@ -37,6 +37,7 @@ import type { BotCommand } from "grammy/types";
 // Canonical main-loop log written by live.sh (tmux + caffeinate + run-loop).
 export const MAIN_LOOP_LOG_PATH = `/tmp/claude-telegram-${TOKEN_PREFIX}-bot-ts.log`;
 const LEGACY_MAIN_LOOP_LOG_PATH = "/tmp/claude-telegram-bot-ts.log";
+const TELEPORT_SCRIPT_PATH = `${WORKING_DIR}/super_turtle/scripts/teleport-manual.sh`;
 const LOOPLOGS_LINE_COUNT = 50;
 const RESUME_SESSIONS_LIMIT = 5;
 const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
@@ -45,6 +46,7 @@ const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
 export const TELEGRAM_COMMANDS: readonly BotCommand[] = [
   { command: "new", description: "Start a fresh session" },
   { command: "stop", description: "Stop current work" },
+  { command: "teleport", description: "Teleport to managed VM" },
   { command: "model", description: "Switch model or effort" },
   { command: "switch", description: "Switch between Claude and Codex" },
   { command: "usage", description: "Show subscription usage" },
@@ -69,6 +71,7 @@ export function getCommandLines(): string[] {
   return [
     `/new - Fresh session`,
     `/stop - Stop current work`,
+    `/teleport - Move to managed VM`,
     `/model - Switch model/effort`,
     switchLine,
     `/usage - Subscription usage`,
@@ -95,6 +98,100 @@ export async function handleStopCommand(ctx: Context): Promise<void> {
     return;
   }
   await handleStop(ctx, chatId);
+}
+
+type TeleportCommandOptions = {
+  dryRun: boolean;
+};
+
+function parseTeleportCommandOptions(text: string | undefined): TeleportCommandOptions | null {
+  const args = text?.split(/\s+/).slice(1).filter(Boolean) || [];
+  let dryRun = false;
+
+  for (const arg of args) {
+    const normalized = arg.trim().toLowerCase();
+    if (normalized === "managed" || normalized === "--managed") {
+      continue;
+    }
+    if (normalized === "dry-run" || normalized === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    return null;
+  }
+
+  return { dryRun };
+}
+
+function countDeferredQueueItems(): number {
+  return Array.from(getAllDeferredQueues().values()).reduce(
+    (count, queue) => count + queue.length,
+    0
+  );
+}
+
+export async function handleTeleportCommand(ctx: Context): Promise<void> {
+  const userId = ctx.from?.id;
+
+  if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await ctx.reply("Unauthorized.");
+    return;
+  }
+
+  const options = parseTeleportCommandOptions(ctx.message?.text);
+  if (!options) {
+    await ctx.reply("❌ Usage: /teleport [managed] [dry-run]");
+    return;
+  }
+
+  if (isBackgroundRunActive() || isAnyDriverRunning()) {
+    await ctx.reply("❌ Teleport requires the bot to be idle. Stop the current run and retry.");
+    return;
+  }
+
+  const queuedItems = countDeferredQueueItems();
+  if (queuedItems > 0) {
+    await ctx.reply(
+      `❌ Teleport requires an empty queue. Clear ${queuedItems} queued item${queuedItems === 1 ? "" : "s"} and retry.`
+    );
+    return;
+  }
+
+  try {
+    const child = Bun.spawn(
+      [
+        "bash",
+        TELEPORT_SCRIPT_PATH,
+        "--managed",
+        ...(options.dryRun ? ["--dry-run"] : []),
+      ],
+      {
+        cwd: WORKING_DIR,
+        env: {
+          ...process.env,
+          SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
+          CLAUDE_WORKING_DIR: WORKING_DIR,
+        },
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: true,
+      }
+    );
+    child.unref();
+  } catch (error) {
+    cmdLog.error({ err: error }, "Failed to launch managed teleport");
+    await ctx.reply(
+      `❌ Failed to launch teleport: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`
+    );
+    return;
+  }
+
+  await ctx.reply(
+    options.dryRun
+      ? "🛰️ Starting managed teleport dry-run in the background."
+      : "🛰️ Starting managed teleport to the linked SuperTurtle VM."
+  );
 }
 
 function getCodexUnavailableMessage(): string {
