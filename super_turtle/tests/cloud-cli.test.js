@@ -13,6 +13,7 @@ const sessionPath = resolve(tmpDir, "cloud-session.json");
 
 let pollCount = 0;
 let refreshCount = 0;
+let loginStartMode = "normal";
 let loginPollMode = "normal";
 let refreshMode = "normal";
 let sessionMode = "normal";
@@ -45,6 +46,36 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf-8")) : null;
     if (req.method === "POST" && req.url === "/v1/cli/login/start") {
+      if (loginStartMode === "missing-device-code") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          user_code: "USER-123",
+          verification_uri: "https://example.com/verify",
+          verification_uri_complete: "https://example.com/verify?code=USER-123",
+          interval_ms: 10,
+        }));
+        return;
+      }
+      if (loginStartMode === "missing-verification-uri") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: "USER-123",
+          interval_ms: 10,
+        }));
+        return;
+      }
+      if (loginStartMode === "invalid-interval") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: "USER-123",
+          verification_uri: "https://example.com/verify",
+          verification_uri_complete: "https://example.com/verify?code=USER-123",
+          interval_ms: 0,
+        }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         device_code: "dev-code-123",
@@ -181,6 +212,43 @@ server.listen(0, "127.0.0.1", async () => {
   };
 
   try {
+    loginStartMode = "missing-device-code";
+    const invalidLoginStartMissingDeviceCode = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginStartMissingDeviceCode.code, 1);
+    assert.match(
+      invalidLoginStartMissingDeviceCode.stderr,
+      /Hosted login start did not include a valid device_code/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected malformed login start without device_code to avoid writing a session file"
+    );
+
+    loginStartMode = "missing-verification-uri";
+    const invalidLoginStartMissingVerificationUri = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginStartMissingVerificationUri.code, 1);
+    assert.match(
+      invalidLoginStartMissingVerificationUri.stderr,
+      /Hosted login start did not include a valid verification_uri or verification_uri_complete/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected malformed login start without verification URL to avoid writing a session file"
+    );
+
+    loginStartMode = "invalid-interval";
+    const invalidLoginStartInterval = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginStartInterval.code, 1);
+    assert.match(
+      invalidLoginStartInterval.stderr,
+      /Hosted login start returned an invalid interval_ms/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected malformed login start with invalid interval to avoid writing a session file"
+    );
+
+    loginStartMode = "normal";
     loginPollMode = "missing-access-token";
     pollCount = 0;
     const invalidLogin = await runCli(["login", "--no-browser"], env);

@@ -90,6 +90,45 @@ function validateTokenResponse(payload, context) {
   };
 }
 
+function validateLoginStartResponse(payload, context) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`${context} returned an invalid response.`);
+  }
+
+  if (!isNonEmptyString(payload.device_code)) {
+    throw new Error(`${context} did not include a valid device_code.`);
+  }
+
+  const verificationUri = isNonEmptyString(payload.verification_uri)
+    ? payload.verification_uri
+    : null;
+  const verificationUriComplete = isNonEmptyString(payload.verification_uri_complete)
+    ? payload.verification_uri_complete
+    : null;
+  if (!verificationUri && !verificationUriComplete) {
+    throw new Error(
+      `${context} did not include a valid verification_uri or verification_uri_complete.`
+    );
+  }
+
+  let intervalMs = DEFAULT_POLL_INTERVAL_MS;
+  if (Object.prototype.hasOwnProperty.call(payload, "interval_ms") && payload.interval_ms != null) {
+    intervalMs = Number(payload.interval_ms);
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      throw new Error(`${context} returned an invalid interval_ms.`);
+    }
+  }
+
+  return {
+    ...payload,
+    device_code: payload.device_code,
+    verification_uri: verificationUri,
+    verification_uri_complete: verificationUriComplete,
+    user_code: isNonEmptyString(payload.user_code) ? payload.user_code : null,
+    interval_ms: intervalMs,
+  };
+}
+
 function normalizeStoredSession(session, env = process.env, fallbackTimestamp = null) {
   if (!session || typeof session !== "object" || Array.isArray(session)) {
     return session;
@@ -386,7 +425,7 @@ async function startLogin(options = {}, env = process.env) {
     device_name: options.deviceName || os.hostname(),
     scopes: ["cloud:read", "teleport:write"],
   };
-  return requestJson(`${baseUrl}/v1/cli/login/start`, {
+  const started = await requestJson(`${baseUrl}/v1/cli/login/start`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -394,6 +433,7 @@ async function startLogin(options = {}, env = process.env) {
     },
     body: JSON.stringify(payload),
   });
+  return validateLoginStartResponse(started, "Hosted login start");
 }
 
 async function pollLogin(started, options = {}, env = process.env) {
@@ -533,5 +573,6 @@ module.exports = {
   startLogin,
   isRetryableCloudError,
   persistSessionIfChanged,
+  validateLoginStartResponse,
   writeSession,
 };
