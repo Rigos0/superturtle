@@ -132,10 +132,33 @@ function assertCredentiallessRequest(request, context) {
         ),
       /Hosted session contains an invalid control_plane/i
     );
+    await assert.rejects(
+      () =>
+        refreshSession(
+          {
+            access_token: "access-abc",
+            refresh_token: { token: "refresh-def" },
+            control_plane: "https://api.superturtle.dev",
+          },
+          env
+        ),
+      /Hosted session contains an invalid refresh_token/i
+    );
+    await assert.rejects(
+      () =>
+        fetchCloudStatus(
+          {
+            access_token: ["access-abc"],
+            control_plane: "https://api.superturtle.dev",
+          },
+          env
+        ),
+      /Hosted session contains an invalid access_token/i
+    );
     assert.strictEqual(
       recordedRequests.length,
       invalidSessionRequestCount,
-      "expected invalid in-memory hosted session control-plane origins to fail closed before issuing fetch requests"
+      "expected invalid in-memory hosted session auth fields to fail closed before issuing fetch requests"
     );
 
     const started = await startLogin({}, env);

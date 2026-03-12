@@ -197,6 +197,20 @@ function getSessionControlPlaneBaseUrl(session, env = process.env) {
   return getControlPlaneBaseUrl(env);
 }
 
+function getSessionAccessToken(session) {
+  if (!isNonEmptyString(session?.access_token)) {
+    throw new Error("Hosted session contains an invalid access_token.");
+  }
+  return session.access_token;
+}
+
+function getSessionRefreshToken(session) {
+  if (!isNonEmptyString(session?.refresh_token)) {
+    throw new Error("Hosted session contains an invalid refresh_token.");
+  }
+  return session.refresh_token;
+}
+
 function ensureSafeSessionDirectory(dirPath, options = {}) {
   const resolvedDir = resolve(dirPath);
   const { root } = parse(resolvedDir);
@@ -1157,7 +1171,7 @@ function getJsonRequestHeaders() {
 
 function getAuthHeaders(session) {
   return {
-    authorization: `Bearer ${session.access_token}`,
+    authorization: `Bearer ${getSessionAccessToken(session)}`,
     accept: "application/json",
     ...getNoStoreHeaders(),
   };
@@ -1346,7 +1360,7 @@ async function refreshSession(session, env = process.env) {
     refreshed = await requestJson(`${baseUrl}/v1/cli/session/refresh`, {
       method: "POST",
       headers: getJsonRequestHeaders(),
-      body: JSON.stringify({ refresh_token: session.refresh_token }),
+      body: JSON.stringify({ refresh_token: getSessionRefreshToken(session) }),
     }, env);
   } catch (error) {
     const status = error && typeof error === "object" ? error.status : undefined;
