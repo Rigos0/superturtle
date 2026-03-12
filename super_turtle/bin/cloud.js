@@ -57,6 +57,39 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function validateTimestamp(value, fieldName, context) {
+  if (value == null) {
+    return null;
+  }
+  if (!isNonEmptyString(value) || !Number.isFinite(Date.parse(value))) {
+    throw new Error(`${context} returned an invalid ${fieldName}.`);
+  }
+  return value;
+}
+
+function validateTokenResponse(payload, context) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`${context} returned an invalid response.`);
+  }
+  if (!isNonEmptyString(payload.access_token)) {
+    throw new Error(`${context} did not include a valid access_token.`);
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "refresh_token") &&
+    payload.refresh_token != null &&
+    !isNonEmptyString(payload.refresh_token)
+  ) {
+    throw new Error(`${context} returned an invalid refresh_token.`);
+  }
+
+  return {
+    ...payload,
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token || null,
+    expires_at: validateTimestamp(payload.expires_at || null, "expires_at", context),
+  };
+}
+
 function normalizeStoredSession(session, env = process.env, fallbackTimestamp = null) {
   if (!session || typeof session !== "object" || Array.isArray(session)) {
     return session;
@@ -378,7 +411,7 @@ async function pollLogin(started, options = {}, env = process.env) {
     }
     await sleep(intervalMs);
     try {
-      return await requestJson(`${baseUrl}/v1/cli/login/poll`, {
+      const completed = await requestJson(`${baseUrl}/v1/cli/login/poll`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -386,6 +419,7 @@ async function pollLogin(started, options = {}, env = process.env) {
         },
         body: JSON.stringify({ device_code: started.device_code }),
       });
+      return validateTokenResponse(completed, "Hosted login completion");
     } catch (error) {
       const status = error && typeof error === "object" ? error.status : undefined;
       const message = error instanceof Error ? error.message : String(error);
@@ -423,7 +457,7 @@ async function refreshSession(session, env = process.env) {
     throw error;
   }
 
-  return normalizeSessionUpdate(refreshed, session, baseUrl);
+  return normalizeSessionUpdate(validateTokenResponse(refreshed, "Hosted session refresh"), session, baseUrl);
 }
 
 async function requestWithSession(session, env, path) {

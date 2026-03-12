@@ -13,6 +13,7 @@ const sessionPath = resolve(tmpDir, "cloud-session.json");
 
 let pollCount = 0;
 let refreshCount = 0;
+let loginPollMode = "normal";
 let refreshMode = "normal";
 let sessionMode = "normal";
 let statusMode = "normal";
@@ -62,6 +63,14 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: "authorization pending" }));
         return;
       }
+      if (loginPollMode === "missing-access-token") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          refresh_token: "refresh-def",
+          expires_at: "2000-03-12T10:00:00Z",
+        }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         access_token: "expired-access",
@@ -83,6 +92,14 @@ const server = http.createServer((req, res) => {
       if (refreshMode === "http-401") {
         res.writeHead(401, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "refresh token revoked" }));
+        return;
+      }
+      if (refreshMode === "missing-access-token") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          refresh_token: "refresh-ghi",
+          expires_at: "2999-03-12T10:00:00Z",
+        }));
         return;
       }
       refreshCount += 1;
@@ -164,6 +181,15 @@ server.listen(0, "127.0.0.1", async () => {
   };
 
   try {
+    loginPollMode = "missing-access-token";
+    pollCount = 0;
+    const invalidLogin = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLogin.code, 1);
+    assert.match(invalidLogin.stderr, /Hosted login completion did not include a valid access_token/i);
+    assert.ok(!fs.existsSync(sessionPath), "expected malformed login completion to avoid writing a session file");
+    loginPollMode = "normal";
+    pollCount = 0;
+
     const login = await runCli(["login", "--no-browser"], env);
     assert.strictEqual(login.code, 0, login.stderr);
     assert.match(login.stdout, /Logged in\./);
@@ -389,6 +415,27 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(revokedRefreshWhoami.stderr, /Removed local cloud session/i);
     assert.match(revokedRefreshWhoami.stderr, /superturtle login/i);
     assert.ok(!fs.existsSync(sessionPath), "expected revoked refresh token to clear the local session");
+    refreshMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "expired-access",
+        refresh_token: "refresh-def",
+        expires_at: "2000-03-12T10:00:00Z",
+        control_plane: baseUrl,
+      }, null, 2)}\n`
+    );
+    refreshMode = "missing-access-token";
+    const malformedRefreshWhoami = await runCli(["whoami"], env);
+    assert.strictEqual(malformedRefreshWhoami.code, 1);
+    assert.match(malformedRefreshWhoami.stderr, /Hosted session refresh did not include a valid access_token/i);
+    const malformedRefreshSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.strictEqual(
+      malformedRefreshSession.access_token,
+      "expired-access",
+      "expected malformed refresh responses to leave the previous local session untouched"
+    );
     refreshMode = "normal";
 
     fs.writeFileSync(
