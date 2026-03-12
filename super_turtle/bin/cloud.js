@@ -125,11 +125,38 @@ function validateTokenResponse(payload, context) {
     throw new Error(`${context} returned an invalid refresh_token.`);
   }
 
+  const identity = validateWhoAmIResponse(
+    {
+      user: Object.prototype.hasOwnProperty.call(payload, "user") ? payload.user : undefined,
+      workspace: Object.prototype.hasOwnProperty.call(payload, "workspace")
+        ? payload.workspace
+        : undefined,
+      entitlement: Object.prototype.hasOwnProperty.call(payload, "entitlement")
+        ? payload.entitlement
+        : undefined,
+    },
+    context
+  );
+  const cloudStatus = validateCloudStatusResponse(
+    {
+      instance: Object.prototype.hasOwnProperty.call(payload, "instance") ? payload.instance : undefined,
+      provisioning_job: Object.prototype.hasOwnProperty.call(payload, "provisioning_job")
+        ? payload.provisioning_job
+        : undefined,
+    },
+    context
+  );
+
   return {
     ...payload,
     access_token: payload.access_token,
     refresh_token: payload.refresh_token || null,
     expires_at: validateTimestamp(payload.expires_at || null, "expires_at", context),
+    user: identity.user,
+    workspace: identity.workspace,
+    entitlement: identity.entitlement,
+    instance: cloudStatus.instance,
+    provisioning_job: cloudStatus.provisioning_job,
   };
 }
 

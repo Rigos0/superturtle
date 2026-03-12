@@ -112,6 +112,16 @@ const server = http.createServer((req, res) => {
         }));
         return;
       }
+      if (loginPollMode === "invalid-user-email") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          access_token: "expired-access",
+          refresh_token: "refresh-def",
+          expires_at: "2000-03-12T10:00:00Z",
+          user: { id: "user_123", email: 42 },
+        }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         access_token: "expired-access",
@@ -140,6 +150,19 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({
           refresh_token: "refresh-ghi",
           expires_at: "2999-03-12T10:00:00Z",
+        }));
+        return;
+      }
+      if (refreshMode === "invalid-provisioning-updated-at") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          access_token: "access-abc",
+          refresh_token: "refresh-ghi",
+          expires_at: "2999-03-12T10:00:00Z",
+          provisioning_job: {
+            state: "running",
+            updated_at: "not-a-timestamp",
+          },
         }));
         return;
       }
@@ -302,6 +325,18 @@ server.listen(0, "127.0.0.1", async () => {
     assert.strictEqual(invalidLogin.code, 1);
     assert.match(invalidLogin.stderr, /Hosted login completion did not include a valid access_token/i);
     assert.ok(!fs.existsSync(sessionPath), "expected malformed login completion to avoid writing a session file");
+    loginPollMode = "normal";
+    pollCount = 0;
+
+    loginPollMode = "invalid-user-email";
+    pollCount = 0;
+    const invalidLoginSnapshot = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginSnapshot.code, 1);
+    assert.match(invalidLoginSnapshot.stderr, /Hosted login completion returned an invalid user.email/i);
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected malformed login completion snapshot fields to avoid writing a session file"
+    );
     loginPollMode = "normal";
     pollCount = 0;
 
@@ -635,6 +670,38 @@ server.listen(0, "127.0.0.1", async () => {
       malformedRefreshSession.access_token,
       "expired-access",
       "expected malformed refresh responses to leave the previous local session untouched"
+    );
+    refreshMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "expired-access",
+        refresh_token: "refresh-def",
+        expires_at: "2000-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        provisioning_job: {
+          state: "succeeded",
+          updated_at: "2026-03-12T10:10:00Z",
+        },
+      }, null, 2)}\n`
+    );
+    refreshMode = "invalid-provisioning-updated-at";
+    const malformedRefreshSnapshotWhoami = await runCli(["cloud", "status"], env);
+    assert.strictEqual(malformedRefreshSnapshotWhoami.code, 1);
+    assert.match(
+      malformedRefreshSnapshotWhoami.stderr,
+      /Hosted session refresh returned an invalid provisioning_job.updated_at/i
+    );
+    const malformedRefreshSnapshotSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(malformedRefreshSnapshotSession.provisioning_job, {
+      state: "succeeded",
+      updated_at: "2026-03-12T10:10:00Z",
+    });
+    assert.strictEqual(
+      malformedRefreshSnapshotSession.access_token,
+      "expired-access",
+      "expected malformed refresh snapshot fields to leave the previous local session untouched"
     );
     refreshMode = "normal";
 
