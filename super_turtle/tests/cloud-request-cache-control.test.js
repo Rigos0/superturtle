@@ -89,6 +89,19 @@ function assertNoStoreHeaders(request, context) {
   );
 }
 
+function assertCredentiallessRequest(request, context) {
+  assert.strictEqual(
+    request.options?.credentials,
+    "omit",
+    `expected ${context} to omit ambient fetch credentials`
+  );
+  assert.strictEqual(
+    request.options?.referrerPolicy,
+    "no-referrer",
+    `expected ${context} to suppress referrer propagation`
+  );
+}
+
 (async () => {
   try {
     const env = {
@@ -157,6 +170,12 @@ function assertNoStoreHeaders(request, context) {
     assertNoStoreHeaders(byPath.get("/v1/cli/session/refresh"), "hosted session refresh");
     assertNoStoreHeaders(byPath.get("/v1/cli/session"), "hosted session lookup");
     assertNoStoreHeaders(byPath.get("/v1/cli/cloud/status"), "hosted cloud status lookup");
+
+    assertCredentiallessRequest(byPath.get("/v1/cli/login/start"), "hosted login start");
+    assertCredentiallessRequest(byPath.get("/v1/cli/login/poll"), "hosted login poll");
+    assertCredentiallessRequest(byPath.get("/v1/cli/session/refresh"), "hosted session refresh");
+    assertCredentiallessRequest(byPath.get("/v1/cli/session"), "hosted session lookup");
+    assertCredentiallessRequest(byPath.get("/v1/cli/cloud/status"), "hosted cloud status lookup");
   } finally {
     global.fetch = originalFetch;
   }

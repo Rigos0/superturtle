@@ -980,6 +980,8 @@ async function requestJson(url, options = {}, env = process.env) {
   try {
     const response = await fetch(url, {
       ...options,
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
       redirect: "manual",
       signal: controller.signal,
     });
