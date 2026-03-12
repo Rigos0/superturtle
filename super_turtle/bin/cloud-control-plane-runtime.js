@@ -200,9 +200,15 @@ function getLatestProvisioningJob(state, instanceId) {
   }
   return jobs.reduce((latest, job) => {
     if (!latest) return job;
-    return String(job.updated_at || job.created_at || "") > String(latest.updated_at || latest.created_at || "")
-      ? job
-      : latest;
+    const jobTimestamp = String(job.updated_at || job.created_at || "");
+    const latestTimestamp = String(latest.updated_at || latest.created_at || "");
+    if (jobTimestamp > latestTimestamp) {
+      return job;
+    }
+    if (jobTimestamp === latestTimestamp) {
+      return job;
+    }
+    return latest;
   }, null);
 }
 
@@ -645,6 +651,68 @@ function requestInstanceResume(runtime, accessToken) {
   return { status: 200, data: buildCloudStatusPayload(state, instance) };
 }
 
+function requestInstanceReprovision(runtime, accessToken) {
+  const state = readState(runtime.statePath);
+  const session = getUserSession(state, accessToken);
+  if (!session) {
+    return { status: 401, data: { error: "invalid_session" } };
+  }
+
+  const entitlement = getEntitlement(state, session.user_id);
+  if (!entitlement || !ACTIVE_ENTITLEMENT_STATES.has(entitlement.state)) {
+    return { status: 403, data: { error: "managed_hosting_inactive" } };
+  }
+
+  const instance = getManagedInstance(state, session.user_id);
+  if (!instance || ["requested", "deleted", "deleting"].includes(instance.state)) {
+    return { status: 409, data: { error: "managed_instance_not_ready_for_reprovision" } };
+  }
+
+  const activeJob = state.provisioning_jobs.find(
+    (job) =>
+      job &&
+      job.instance_id === instance.id &&
+      ["queued", "running"].includes(job.state) &&
+      ["provision", "resume", "reprovision"].includes(job.kind)
+  );
+
+  if (activeJob) {
+    appendAudit(state, runtime, {
+      actor_type: "system",
+      actor_id: "control-plane",
+      action: "instance.reprovision_deduplicated",
+      target_type: "managed_instance",
+      target_id: instance.id,
+      metadata: { job_id: activeJob.id, job_kind: activeJob.kind },
+    });
+    writeState(runtime.statePath, state);
+    return { status: 200, data: buildCloudStatusPayload(state, instance) };
+  }
+
+  assertManagedInstanceTransition(instance.state, "provisioning");
+  instance.state = "provisioning";
+  instance.resume_requested_at = runtime.now();
+  instance.machine_token_id = null;
+  instance.machine_auth_token = null;
+  instance.last_seen_at = null;
+  instance.registered_at = null;
+  instance.health_checked_at = null;
+  instance.health_status = null;
+
+  enqueueProvisioningJob(state, runtime, instance, session, "reprovision");
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: session.user_id,
+    action: "instance.reprovision_requested",
+    target_type: "managed_instance",
+    target_id: instance.id,
+    metadata: null,
+  });
+  writeState(runtime.statePath, state);
+
+  return { status: 200, data: buildCloudStatusPayload(state, instance) };
+}
+
 function requestLoginStart(runtime, payload = {}) {
   const state = readState(runtime.statePath);
   const requestPayload =
@@ -1069,6 +1137,23 @@ async function handleHttpRequest(runtime, request) {
     };
   }
 
+  if (request.method === "POST" && request.url === "/v1/cli/cloud/instance/reprovision") {
+    const accessToken = extractBearerToken(request);
+    if (!accessToken) {
+      return {
+        status: 401,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: "missing_bearer_token" }),
+      };
+    }
+    const result = requestInstanceReprovision(runtime, accessToken);
+    return {
+      status: result.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      body: JSON.stringify(result.data),
+    };
+  }
+
   if (request.method === "POST" && request.url === "/v1/cli/session/refresh") {
     let payload;
     try {
@@ -1226,6 +1311,7 @@ module.exports = {
   requestCloudStatus,
   requestMachineHeartbeat,
   requestMachineRegister,
+  requestInstanceReprovision,
   requestLoginPoll,
   requestLoginStart,
   requestSession,

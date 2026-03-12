@@ -14,6 +14,7 @@ const {
   requestCloudStatus,
   requestMachineHeartbeat,
   requestMachineRegister,
+  requestInstanceReprovision,
   requestLoginPoll,
   requestLoginStart,
   requestSession,
@@ -271,6 +272,43 @@ async function run() {
   assert.strictEqual(runningStatus.data.provisioning_job.id, created.data.provisioning_job.id);
   assert.strictEqual(runningStatus.data.provisioning_job.state, "succeeded");
 
+  const reprovisionRequested = requestInstanceReprovision(runtime, refreshed.data.access_token);
+  assert.strictEqual(reprovisionRequested.status, 200);
+  assert.strictEqual(reprovisionRequested.data.instance.id, created.data.instance.id);
+  assert.strictEqual(reprovisionRequested.data.instance.state, "provisioning");
+  assert.strictEqual(reprovisionRequested.data.provisioning_job.kind, "reprovision");
+  assert.strictEqual(reprovisionRequested.data.provisioning_job.state, "queued");
+  assert.strictEqual(reprovisionRequested.data.instance.machine_token_id, null);
+  assert.strictEqual(readState(statePath).managed_instances[0].machine_auth_token, null);
+
+  const reprovisionDeduped = requestInstanceReprovision(runtime, refreshed.data.access_token);
+  assert.strictEqual(reprovisionDeduped.status, 200);
+  assert.strictEqual(
+    reprovisionDeduped.data.provisioning_job.id,
+    reprovisionRequested.data.provisioning_job.id
+  );
+  assert.match(
+    JSON.stringify(readState(statePath).audit_log),
+    /instance\.reprovision_deduplicated/,
+    "expected reprovision dedupe to be written to the durable audit log"
+  );
+
+  const reprovisionCompleted = await runNextProvisioningJob(runtime);
+  assert.strictEqual(reprovisionCompleted.instance.state, "running");
+  assert.strictEqual(reprovisionCompleted.provisioning_job.kind, "reprovision");
+  assert.strictEqual(reprovisionCompleted.provisioning_job.state, "succeeded");
+  assert.ok(reprovisionCompleted.instance.machine_token_id);
+  assert.ok(readState(statePath).managed_instances[0].machine_auth_token);
+
+  const reprovisionForbiddenPath = resolve(tmpDir, "reprovision-forbidden-state.json");
+  writeState(reprovisionForbiddenPath, createSeedState());
+  const reprovisionForbiddenRuntime = createRuntime({
+    statePath: reprovisionForbiddenPath,
+    now: createClock(),
+  });
+  const reprovisionForbidden = requestInstanceReprovision(reprovisionForbiddenRuntime, "access_123");
+  assert.strictEqual(reprovisionForbidden.status, 409);
+
   const forbiddenPath = resolve(tmpDir, "forbidden-state.json");
   const forbiddenState = createSeedState();
   forbiddenState.entitlements[0].state = "inactive";
@@ -370,6 +408,21 @@ async function run() {
   const machineHeartbeatPayload = await machineHeartbeatResponse.json();
   assert.strictEqual(machineHeartbeatPayload.ok, true);
   assert.strictEqual(machineHeartbeatPayload.health_status, "degraded");
+
+  const reprovisionResponse = await fetch(
+    `http://127.0.0.1:${address.port}/v1/cli/cloud/instance/reprovision`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${refreshPayload.access_token}`,
+      },
+    }
+  );
+  assert.strictEqual(reprovisionResponse.status, 200);
+  const reprovisionPayload = await reprovisionResponse.json();
+  assert.strictEqual(reprovisionPayload.instance.state, "provisioning");
+  assert.strictEqual(reprovisionPayload.provisioning_job.kind, "reprovision");
+  assert.strictEqual(reprovisionPayload.provisioning_job.state, "queued");
 
   const loginStartResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/login/start`, {
     method: "POST",

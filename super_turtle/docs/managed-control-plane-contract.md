@@ -14,6 +14,8 @@ This document defines the first production-shaped contract for the hosted manage
   Returns the managed instance record, the latest provisioning job, and recent audit entries relevant to the hosted VM lifecycle.
 - `POST /v1/cli/cloud/instance/resume`
   Enqueues or deduplicates a managed-instance resume/provisioning job and returns the updated instance, latest provisioning job, and recent audit entries.
+- `POST /v1/cli/cloud/instance/reprovision`
+  Enqueues or deduplicates a managed-instance reprovision job, rotates machine credentials, and returns the updated instance, latest provisioning job, and recent audit entries.
 - `POST /v1/machine/register`
   Authenticated by the managed VM's machine token. Finalizes bootstrap registration, records the VM identity metadata, and marks the hosted instance as online after provisioning.
 - `POST /v1/machine/heartbeat`
@@ -51,7 +53,7 @@ This document defines the first production-shaped contract for the hosted manage
 
 - Managed instance transitions:
   `requested -> provisioning -> running`
-  Recovery and teardown: `provisioning -> failed|deleted`, `running -> stopped|suspended|failed|deleting`, `stopped -> running|suspended|failed|deleting`, `suspended -> running|deleting`, `failed -> provisioning|deleting`, `deleting -> deleted`
+  Recovery and teardown: `provisioning -> failed|deleted`, `running -> provisioning|stopped|suspended|failed|deleting`, `stopped -> provisioning|running|suspended|failed|deleting`, `suspended -> provisioning|running|deleting`, `failed -> provisioning|deleting`, `deleting -> deleted`
 - Provisioning job transitions:
   `queued -> running -> succeeded|failed|canceled`
   Retry semantics: `failed -> queued`, `canceled -> queued`

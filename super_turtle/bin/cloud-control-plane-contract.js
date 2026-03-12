@@ -32,9 +32,9 @@ const AUDIT_TARGET_TYPES = [
 const MANAGED_INSTANCE_TRANSITIONS = {
   requested: ["provisioning", "deleted"],
   provisioning: ["running", "failed", "deleted"],
-  running: ["stopped", "suspended", "failed", "deleting"],
-  stopped: ["running", "suspended", "failed", "deleting"],
-  suspended: ["running", "deleting"],
+  running: ["provisioning", "stopped", "suspended", "failed", "deleting"],
+  stopped: ["provisioning", "running", "suspended", "failed", "deleting"],
+  suspended: ["provisioning", "running", "deleting"],
   failed: ["provisioning", "deleting"],
   deleting: ["deleted"],
   deleted: [],
