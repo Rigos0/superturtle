@@ -855,7 +855,7 @@ async function login() {
   }
 
   if (options.openBrowser) {
-    const opened = openBrowser(verificationUrl);
+    const opened = openBrowser(verificationUrl, process.env);
     console.log(opened ? "Browser opened." : "Browser open failed; continue in any browser.");
   }
 

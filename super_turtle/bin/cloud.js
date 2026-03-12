@@ -8,6 +8,7 @@ const DEFAULT_CONTROL_PLANE = "https://api.superturtle.dev";
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_BROWSER_OPEN_TIMEOUT_MS = 5 * 1000;
 const SESSION_EXPIRY_SKEW_MS = 30 * 1000;
 const CLOUD_SESSION_SCHEMA_VERSION = 1;
 
@@ -77,6 +78,20 @@ function getRequestTimeoutMs(env = process.env) {
   const timeoutMs = Number(configured);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("Configured hosted control plane timeout must be a positive number of milliseconds.");
+  }
+
+  return timeoutMs;
+}
+
+function getBrowserOpenTimeoutMs(env = process.env) {
+  const configured = env.SUPERTURTLE_CLOUD_BROWSER_TIMEOUT_MS;
+  if (configured == null || configured === "") {
+    return DEFAULT_BROWSER_OPEN_TIMEOUT_MS;
+  }
+
+  const timeoutMs = Number(configured);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Configured hosted browser launch timeout must be a positive number of milliseconds.");
   }
 
   return timeoutMs;
@@ -806,8 +821,9 @@ function getRetryAfterMs(value) {
   return Math.max(0, retryAt - Date.now());
 }
 
-function openBrowser(url) {
+function openBrowser(url, env = process.env) {
   const platform = process.platform;
+  const timeout = getBrowserOpenTimeoutMs(env);
   const commands =
     platform === "darwin"
       ? [["open", [url]]]
@@ -816,7 +832,10 @@ function openBrowser(url) {
         : [["xdg-open", [url]]];
 
   for (const [command, args] of commands) {
-    const result = spawnSync(command, args, { stdio: "ignore" });
+    const result = spawnSync(command, args, {
+      stdio: "ignore",
+      timeout,
+    });
     if (!result.error && result.status === 0) return true;
   }
   return false;
@@ -1093,10 +1112,12 @@ async function fetchCloudStatus(session, env = process.env) {
 module.exports = {
   clearSession,
   DEFAULT_CONTROL_PLANE,
+  DEFAULT_BROWSER_OPEN_TIMEOUT_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   CLOUD_SESSION_SCHEMA_VERSION,
   fetchCloudStatus,
   fetchWhoAmI,
+  getBrowserOpenTimeoutMs,
   getControlPlaneBaseUrl,
   getRequestTimeoutMs,
   getSessionControlPlaneBaseUrl,

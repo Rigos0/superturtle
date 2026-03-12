@@ -395,6 +395,23 @@ server.listen(0, "127.0.0.1", async () => {
     loginPollMode = "normal";
     pollCount = 0;
 
+    const invalidBrowserTimeoutLogin = await runCli(
+      ["login", "--browser"],
+      {
+        ...env,
+        SUPERTURTLE_CLOUD_BROWSER_TIMEOUT_MS: "0",
+      }
+    );
+    assert.strictEqual(invalidBrowserTimeoutLogin.code, 1);
+    assert.match(
+      invalidBrowserTimeoutLogin.stderr,
+      /Configured hosted browser launch timeout must be a positive number of milliseconds/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected invalid browser launch timeout configuration to avoid writing a session file"
+    );
+
     loginPollDelayMs = 50;
     pollCount = 0;
     const timedOutLogin = await runCli(
