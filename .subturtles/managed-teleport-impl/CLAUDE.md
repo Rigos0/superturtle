@@ -1,6 +1,6 @@
 # Current task
 
-Continue the hosted auth foundation by tightening durable hosted session semantics for `superturtle login` / `whoami` / `cloud status`, with session-pinned control-plane resolution and token refresh behavior wired into the CLI contract.
+Continue the hosted auth foundation by tightening durable hosted session semantics for `superturtle login` / `whoami` / `cloud status`, with session-pinned control-plane resolution, token refresh behavior, and persisted identity/instance snapshots wired into the CLI contract.
 
 # End goal with specs
 
@@ -33,7 +33,7 @@ Continue the hosted auth foundation by tightening durable hosted session semanti
 
 # Backlog
 - [ ] Design and implement the hosted auth foundation and `superturtle login` browser OAuth flow, including browser launch, callback completion, local session storage, and `whoami`/cloud status semantics <- current
-  Progress: the CLI now has production-shaped `login`, `whoami`, `cloud status`, and `logout` commands backed by a durable local cloud session file, session-pinned control-plane reuse, refresh-on-expiry/401 semantics, and stubbed control-plane login/session/status/refresh APIs.
+  Progress: the CLI now has production-shaped `login`, `whoami`, `cloud status`, and `logout` commands backed by a durable local cloud session file, session-pinned control-plane reuse, refresh-on-expiry/401 semantics, persisted identity/entitlement/instance/provisioning snapshots, and stubbed control-plane login/session/status/refresh APIs.
 - [ ] Define and implement the control-plane schema, APIs, and durable state transitions for users, identities, sessions, entitlements, managed instances, provisioning jobs, and audit log
 - [ ] Build GCP managed VM provisioning, bootstrap, registration, health reporting, and idempotent reprovision behavior for one VM per paid account
 - [ ] Add Stripe checkout, subscriptions, webhook processing, and entitlement enforcement behind production-shaped adapters and verified webhook handling

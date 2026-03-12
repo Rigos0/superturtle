@@ -147,12 +147,26 @@ server.listen(0, "127.0.0.1", async () => {
     const refreshedSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
     assert.strictEqual(refreshedSession.access_token, "access-abc");
     assert.strictEqual(refreshedSession.refresh_token, "refresh-ghi");
+    assert.deepStrictEqual(refreshedSession.entitlement, { plan: "managed", state: "active" });
+    assert.deepStrictEqual(refreshedSession.workspace, { slug: "acme" });
 
     const status = await runCli(["cloud", "status"], postLoginEnv);
     assert.strictEqual(status.code, 0, status.stderr);
     assert.match(status.stdout, new RegExp(`Control plane: ${baseUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     assert.match(status.stdout, /State: provisioning/);
     assert.match(status.stdout, /Provisioning: running/);
+
+    const statusSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(statusSession.instance, {
+      id: "inst_123",
+      state: "provisioning",
+      region: "us-central1",
+      hostname: "managed-123.internal",
+    });
+    assert.deepStrictEqual(statusSession.provisioning_job, {
+      state: "running",
+      updated_at: "2026-03-12T09:59:00Z",
+    });
 
     const logout = await runCli(["logout"], env);
     assert.strictEqual(logout.code, 0, logout.stderr);

@@ -23,6 +23,7 @@ const {
   getControlPlaneBaseUrl,
   getSessionControlPlaneBaseUrl,
   getSessionPath,
+  mergeSessionSnapshot,
   openBrowser,
   pollLogin,
   readSession,
@@ -883,9 +884,14 @@ async function whoami() {
 
   const result = await fetchWhoAmI(session);
   const identity = result.data;
-  if (JSON.stringify(result.session) !== JSON.stringify(session)) {
-    writeSession(result.session);
-    session = result.session;
+  const mergedSession = mergeSessionSnapshot(
+    result.session,
+    identity,
+    getSessionControlPlaneBaseUrl(result.session)
+  );
+  if (JSON.stringify(mergedSession) !== JSON.stringify(session)) {
+    writeSession(mergedSession);
+    session = mergedSession;
   }
 
   console.log(`Control plane: ${getSessionControlPlaneBaseUrl(session)}`);
@@ -905,9 +911,14 @@ async function cloudStatus() {
 
   const result = await fetchCloudStatus(session);
   const status = result.data;
-  if (JSON.stringify(result.session) !== JSON.stringify(session)) {
-    writeSession(result.session);
-    session = result.session;
+  const mergedSession = mergeSessionSnapshot(
+    result.session,
+    status,
+    getSessionControlPlaneBaseUrl(result.session)
+  );
+  if (JSON.stringify(mergedSession) !== JSON.stringify(session)) {
+    writeSession(mergedSession);
+    session = mergedSession;
   }
 
   console.log(`Control plane: ${getSessionControlPlaneBaseUrl(session)}`);

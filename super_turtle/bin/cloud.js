@@ -126,6 +126,34 @@ function normalizeSessionUpdate(nextSession, session, baseUrl) {
   };
 }
 
+function mergeSessionSnapshot(session, snapshot, baseUrl = null) {
+  const nextSession = {
+    ...session,
+    last_sync_at: new Date().toISOString(),
+  };
+
+  if (snapshot && Object.prototype.hasOwnProperty.call(snapshot, "user")) {
+    nextSession.user = snapshot.user || null;
+  }
+  if (snapshot && Object.prototype.hasOwnProperty.call(snapshot, "workspace")) {
+    nextSession.workspace = snapshot.workspace || null;
+  }
+  if (snapshot && Object.prototype.hasOwnProperty.call(snapshot, "entitlement")) {
+    nextSession.entitlement = snapshot.entitlement || null;
+  }
+  if (snapshot && Object.prototype.hasOwnProperty.call(snapshot, "instance")) {
+    nextSession.instance = snapshot.instance || null;
+  }
+  if (snapshot && Object.prototype.hasOwnProperty.call(snapshot, "provisioning_job")) {
+    nextSession.provisioning_job = snapshot.provisioning_job || null;
+  }
+  if (baseUrl) {
+    nextSession.control_plane = baseUrl;
+  }
+
+  return nextSession;
+}
+
 async function startLogin(options = {}, env = process.env) {
   const baseUrl = getControlPlaneBaseUrl(env);
   const payload = {
@@ -245,6 +273,7 @@ module.exports = {
   pollLogin,
   readSession,
   refreshSession,
+  mergeSessionSnapshot,
   startLogin,
   writeSession,
 };
