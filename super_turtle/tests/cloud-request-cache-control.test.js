@@ -94,6 +94,36 @@ function assertNoStoreHeaders(request, context) {
     const env = {
       SUPERTURTLE_CLOUD_URL: "https://api.superturtle.dev",
     };
+    const invalidSessionRequestCount = recordedRequests.length;
+
+    await assert.rejects(
+      () =>
+        fetchWhoAmI(
+          {
+            access_token: "access-abc",
+            control_plane: "https://api.superturtle.dev/tenant-a",
+          },
+          env
+        ),
+      /Hosted session contains an invalid control_plane/i
+    );
+    await assert.rejects(
+      () =>
+        refreshSession(
+          {
+            access_token: "access-abc",
+            refresh_token: "refresh-def",
+            control_plane: "http://example.com",
+          },
+          env
+        ),
+      /Hosted session contains an invalid control_plane/i
+    );
+    assert.strictEqual(
+      recordedRequests.length,
+      invalidSessionRequestCount,
+      "expected invalid in-memory hosted session control-plane origins to fail closed before issuing fetch requests"
+    );
 
     const started = await startLogin({}, env);
     await pollLogin(started, { timeoutMs: 5_000 }, env);

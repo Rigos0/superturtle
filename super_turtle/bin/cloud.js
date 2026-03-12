@@ -183,7 +183,16 @@ function getSessionPath(env = process.env) {
 
 function getSessionControlPlaneBaseUrl(session, env = process.env) {
   if (session && typeof session.control_plane === "string" && session.control_plane.trim()) {
-    return session.control_plane.replace(/\/+$/, "");
+    try {
+      return validateControlPlaneUrl(
+        session.control_plane,
+        "control_plane",
+        "Hosted session",
+        { disallowSearch: true, disallowHash: true, disallowPath: true }
+      ).replace(/\/+$/, "");
+    } catch (error) {
+      throw new Error("Hosted session contains an invalid control_plane.");
+    }
   }
   return getControlPlaneBaseUrl(env);
 }
