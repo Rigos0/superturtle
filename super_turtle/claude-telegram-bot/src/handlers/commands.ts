@@ -3,6 +3,8 @@
  */
 
 import { InlineKeyboard, type Context } from "grammy";
+import { appendFileSync, mkdirSync } from "fs";
+import { join } from "path";
 import { session, getAvailableModels, EFFORT_DISPLAY, type EffortLevel } from "../session";
 import { codexSession } from "../codex-session";
 import {
@@ -38,6 +40,7 @@ import type { BotCommand } from "grammy/types";
 export const MAIN_LOOP_LOG_PATH = `/tmp/claude-telegram-${TOKEN_PREFIX}-bot-ts.log`;
 const LEGACY_MAIN_LOOP_LOG_PATH = "/tmp/claude-telegram-bot-ts.log";
 const TELEPORT_SCRIPT_PATH = `${WORKING_DIR}/super_turtle/scripts/teleport-manual.sh`;
+const TELEPORT_LOG_DIR = join(WORKING_DIR, ".superturtle", "logs", "teleport");
 const LOOPLOGS_LINE_COUNT = 50;
 const RESUME_SESSIONS_LIMIT = 5;
 const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
@@ -123,6 +126,25 @@ function parseTeleportCommandOptions(text: string | undefined): TeleportCommandO
   return { dryRun };
 }
 
+function formatTeleportLogTimestamp(date: Date): string {
+  return date.toISOString().replaceAll(":", "-");
+}
+
+function createTeleportLogFile(dryRun: boolean): string {
+  mkdirSync(TELEPORT_LOG_DIR, { recursive: true, mode: 0o700 });
+  const logPath = join(
+    TELEPORT_LOG_DIR,
+    `${formatTeleportLogTimestamp(new Date())}${dryRun ? "-dry-run" : ""}.log`
+  );
+  appendFileSync(
+    logPath,
+    `[teleport] launched_at=${new Date().toISOString()}\n` +
+      `[teleport] mode=${dryRun ? "dry-run" : "live"}\n`,
+    { mode: 0o600 }
+  );
+  return logPath;
+}
+
 function countDeferredQueueItems(): number {
   return Array.from(getAllDeferredQueues().values()).reduce(
     (count, queue) => count + queue.length,
@@ -158,11 +180,13 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
   }
 
   try {
+    const teleportLogPath = createTeleportLogFile(options.dryRun);
     const child = Bun.spawn(
       [
         "bash",
-        TELEPORT_SCRIPT_PATH,
-        "--managed",
+        "-lc",
+        'exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1',
+        "teleport-managed",
         ...(options.dryRun ? ["--dry-run"] : []),
       ],
       {
@@ -171,6 +195,8 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
           ...process.env,
           SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
           CLAUDE_WORKING_DIR: WORKING_DIR,
+          TELEPORT_SCRIPT_PATH,
+          SUPERTURTLE_TELEPORT_LOG_PATH: teleportLogPath,
         },
         stdin: "ignore",
         stdout: "ignore",
@@ -179,6 +205,13 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
       }
     );
     child.unref();
+    cmdLog.info({ dryRun: options.dryRun, logPath: teleportLogPath }, "Launched managed teleport");
+    await ctx.reply(
+      `${options.dryRun
+        ? "🛰️ Starting managed teleport dry-run in the background."
+        : "🛰️ Starting managed teleport to the linked SuperTurtle VM."}\n` +
+      `Log: ${teleportLogPath}`
+    );
   } catch (error) {
     cmdLog.error({ err: error }, "Failed to launch managed teleport");
     await ctx.reply(
@@ -186,12 +219,6 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
     );
     return;
   }
-
-  await ctx.reply(
-    options.dryRun
-      ? "🛰️ Starting managed teleport dry-run in the background."
-      : "🛰️ Starting managed teleport to the linked SuperTurtle VM."
-  );
 }
 
 function getCodexUnavailableMessage(): string {

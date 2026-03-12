@@ -15,6 +15,7 @@ type TeleportProbePayload = {
     stdout?: string;
     stderr?: string;
     detached?: boolean;
+    env?: Record<string, string>;
   } | null;
   unrefCalled: boolean;
 };
@@ -129,18 +130,27 @@ describe("/teleport", () => {
 
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replies).toEqual([
-      "🛰️ Starting managed teleport dry-run in the background.",
+      expect.stringMatching(
+        /^🛰️ Starting managed teleport dry-run in the background\.\nLog: .+\/\.superturtle\/logs\/teleport\/.+-dry-run\.log$/
+      ),
     ]);
     expect(result.payload?.spawnCmd).toEqual([
       "bash",
-      `${process.cwd()}/super_turtle/scripts/teleport-manual.sh`,
-      "--managed",
+      "-lc",
+      'exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1',
+      "teleport-managed",
       "--dry-run",
     ]);
     expect(result.payload?.spawnOpts?.detached).toBe(true);
     expect(result.payload?.spawnOpts?.stdin).toBe("ignore");
     expect(result.payload?.spawnOpts?.stdout).toBe("ignore");
     expect(result.payload?.spawnOpts?.stderr).toBe("ignore");
+    expect(result.payload?.spawnOpts?.env?.TELEPORT_SCRIPT_PATH).toBe(
+      `${process.cwd()}/super_turtle/scripts/teleport-manual.sh`
+    );
+    expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_LOG_PATH).toMatch(
+      /\/\.superturtle\/logs\/teleport\/.+-dry-run\.log$/
+    );
     expect(result.payload?.unrefCalled).toBe(true);
   });
 
