@@ -158,6 +158,15 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: "unauthorized" }));
         return;
       }
+      if (sessionMode === "invalid-user-email") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          user: { id: "user_123", email: 42 },
+          workspace: { slug: "acme" },
+          entitlement: { plan: "managed", state: "active" },
+        }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         user: { id: "user_123", email: "user@example.com" },
@@ -175,6 +184,22 @@ const server = http.createServer((req, res) => {
       if (statusMode === "http-503") {
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "service unavailable" }));
+        return;
+      }
+      if (statusMode === "invalid-provisioning-updated-at") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          instance: {
+            id: "inst_123",
+            state: "provisioning",
+            region: "us-central1",
+            hostname: "managed-123.internal",
+          },
+          provisioning_job: {
+            state: "running",
+            updated_at: "not-a-timestamp",
+          },
+        }));
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -505,6 +530,62 @@ server.listen(0, "127.0.0.1", async () => {
       "expected malformed refresh responses to leave the previous local session untouched"
     );
     refreshMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        user: { id: "user_123", email: "user@example.com" },
+        workspace: { slug: "acme" },
+        entitlement: { plan: "managed", state: "active" },
+      }, null, 2)}\n`
+    );
+    sessionMode = "invalid-user-email";
+    const malformedWhoami = await runCli(["whoami"], env);
+    assert.strictEqual(malformedWhoami.code, 1);
+    assert.match(malformedWhoami.stderr, /Hosted session lookup returned an invalid user.email/i);
+    const malformedWhoamiSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(malformedWhoamiSession.user, {
+      id: "user_123",
+      email: "user@example.com",
+    });
+    sessionMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        instance: {
+          id: "inst_123",
+          state: "running",
+          region: "us-central1",
+          hostname: "managed-123.internal",
+        },
+        provisioning_job: {
+          state: "succeeded",
+          updated_at: "2026-03-12T10:10:00Z",
+        },
+      }, null, 2)}\n`
+    );
+    statusMode = "invalid-provisioning-updated-at";
+    const malformedCloudStatus = await runCli(["cloud", "status"], env);
+    assert.strictEqual(malformedCloudStatus.code, 1);
+    assert.match(
+      malformedCloudStatus.stderr,
+      /Hosted cloud status lookup returned an invalid provisioning_job.updated_at/i
+    );
+    const malformedCloudStatusSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(malformedCloudStatusSession.provisioning_job, {
+      state: "succeeded",
+      updated_at: "2026-03-12T10:10:00Z",
+    });
+    statusMode = "normal";
 
     fs.writeFileSync(
       sessionPath,

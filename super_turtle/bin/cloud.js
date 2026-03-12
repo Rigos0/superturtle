@@ -67,6 +67,16 @@ function validateTimestamp(value, fieldName, context) {
   return value;
 }
 
+function validateOptionalObject(value, fieldName, context) {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${context} returned an invalid ${fieldName}.`);
+  }
+  return value;
+}
+
 function validateTokenResponse(payload, context) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error(`${context} returned an invalid response.`);
@@ -126,6 +136,121 @@ function validateLoginStartResponse(payload, context) {
     verification_uri_complete: verificationUriComplete,
     user_code: isNonEmptyString(payload.user_code) ? payload.user_code : null,
     interval_ms: intervalMs,
+  };
+}
+
+function validateWhoAmIResponse(payload, context) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`${context} returned an invalid response.`);
+  }
+
+  const user = validateOptionalObject(payload.user, "user", context);
+  if (user) {
+    if (Object.prototype.hasOwnProperty.call(user, "id") && user.id != null && !isNonEmptyString(user.id)) {
+      throw new Error(`${context} returned an invalid user.id.`);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(user, "email") &&
+      user.email != null &&
+      !isNonEmptyString(user.email)
+    ) {
+      throw new Error(`${context} returned an invalid user.email.`);
+    }
+  }
+
+  const workspace = validateOptionalObject(payload.workspace, "workspace", context);
+  if (
+    workspace &&
+    Object.prototype.hasOwnProperty.call(workspace, "slug") &&
+    workspace.slug != null &&
+    !isNonEmptyString(workspace.slug)
+  ) {
+    throw new Error(`${context} returned an invalid workspace.slug.`);
+  }
+
+  const entitlement = validateOptionalObject(payload.entitlement, "entitlement", context);
+  if (entitlement) {
+    if (
+      Object.prototype.hasOwnProperty.call(entitlement, "plan") &&
+      entitlement.plan != null &&
+      !isNonEmptyString(entitlement.plan)
+    ) {
+      throw new Error(`${context} returned an invalid entitlement.plan.`);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(entitlement, "state") &&
+      entitlement.state != null &&
+      !isNonEmptyString(entitlement.state)
+    ) {
+      throw new Error(`${context} returned an invalid entitlement.state.`);
+    }
+  }
+
+  return {
+    user,
+    workspace,
+    entitlement,
+  };
+}
+
+function validateCloudStatusResponse(payload, context) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`${context} returned an invalid response.`);
+  }
+
+  const instance = validateOptionalObject(payload.instance, "instance", context);
+  if (instance) {
+    if (
+      Object.prototype.hasOwnProperty.call(instance, "id") &&
+      instance.id != null &&
+      !isNonEmptyString(instance.id)
+    ) {
+      throw new Error(`${context} returned an invalid instance.id.`);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(instance, "state") &&
+      instance.state != null &&
+      !isNonEmptyString(instance.state)
+    ) {
+      throw new Error(`${context} returned an invalid instance.state.`);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(instance, "region") &&
+      instance.region != null &&
+      !isNonEmptyString(instance.region)
+    ) {
+      throw new Error(`${context} returned an invalid instance.region.`);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(instance, "hostname") &&
+      instance.hostname != null &&
+      !isNonEmptyString(instance.hostname)
+    ) {
+      throw new Error(`${context} returned an invalid instance.hostname.`);
+    }
+  }
+
+  const provisioningJob = validateOptionalObject(
+    payload.provisioning_job,
+    "provisioning_job",
+    context
+  );
+  if (provisioningJob) {
+    if (
+      Object.prototype.hasOwnProperty.call(provisioningJob, "state") &&
+      provisioningJob.state != null &&
+      !isNonEmptyString(provisioningJob.state)
+    ) {
+      throw new Error(`${context} returned an invalid provisioning_job.state.`);
+    }
+    if (Object.prototype.hasOwnProperty.call(provisioningJob, "updated_at")) {
+      validateTimestamp(provisioningJob.updated_at, "provisioning_job.updated_at", context);
+    }
+  }
+
+  return {
+    instance,
+    provisioning_job: provisioningJob,
   };
 }
 
@@ -546,11 +671,19 @@ async function requestWithSession(session, env, path) {
 }
 
 async function fetchWhoAmI(session, env = process.env) {
-  return requestWithSession(session, env, "/v1/cli/session");
+  const result = await requestWithSession(session, env, "/v1/cli/session");
+  return {
+    ...result,
+    data: validateWhoAmIResponse(result.data, "Hosted session lookup"),
+  };
 }
 
 async function fetchCloudStatus(session, env = process.env) {
-  return requestWithSession(session, env, "/v1/cli/cloud/status");
+  const result = await requestWithSession(session, env, "/v1/cli/cloud/status");
+  return {
+    ...result,
+    data: validateCloudStatusResponse(result.data, "Hosted cloud status lookup"),
+  };
 }
 
 module.exports = {
@@ -574,5 +707,7 @@ module.exports = {
   isRetryableCloudError,
   persistSessionIfChanged,
   validateLoginStartResponse,
+  validateWhoAmIResponse,
+  validateCloudStatusResponse,
   writeSession,
 };
