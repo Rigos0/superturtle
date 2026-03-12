@@ -55,6 +55,21 @@ superturtle init --token <BOT_TOKEN> --user <TELEGRAM_USER_ID> --openai-key <KEY
   <img src="assets/readme-screenshots/chat-example-2.jpg" width="360" alt="SuperTurtle committing code and sending a GitHub screenshot" />
 </p>
 
+## Teleport
+
+<p align="center">
+  <img src="assets/readme-stickers/clone-laptop-turtle.png" width="120" alt="teleport turtle" />
+</p>
+
+Teleport is the new cutover flow we are developing for moving a live SuperTurtle project from your local machine to a remote Linux host over SSH while keeping the same Telegram bot identity. The current manual flow exports a handoff bundle, syncs the repo and project env to the target host, imports portable runtime state there, and starts the bot remotely so the next Telegram turn continues on the new machine.
+
+Current state:
+
+- `super_turtle/scripts/teleport-manual.sh` is the operator-driven v1 entry point.
+- It preserves semantic handoff context for the next turn, not the provider-native Claude/Codex thread.
+- Existing local SubTurtles are stopped during cutover and are not auto-restarted remotely yet.
+- The runbook lives in `super_turtle/docs/MANUAL_TELEPORT_RUNBOOK.md`.
+
 ## SubTurtles
 
 SubTurtles are autonomous worker agents that run in isolated loops. The Meta Agent spawns them for bounded tasks, while the conductor owns durable worker lifecycle state and recovery. Each SubTurtle gets its own working directory under `.subturtles/` with a task file, `CLAUDE.md`, and logs, while canonical orchestration state lives under `.superturtle/state/`.
