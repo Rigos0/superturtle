@@ -25,6 +25,10 @@ try {
     () => cloud.openBrowser("http://example.com/verify"),
     /Hosted browser login returned an invalid verification_uri/i
   );
+  assert.throws(
+    () => cloud.openBrowser("https://superturtle.dev/login#fragment"),
+    /Hosted browser login returned an invalid verification_uri/i
+  );
   assert.strictEqual(spawnCalls, 0, "expected invalid browser-open URLs to be rejected before spawnSync");
 
   let captured = null;

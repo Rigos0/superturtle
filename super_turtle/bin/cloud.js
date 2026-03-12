@@ -462,10 +462,14 @@ function validateLoginStartResponse(payload, context, controlPlaneBaseUrl = null
   }
 
   const verificationUri = isNonEmptyString(payload.verification_uri)
-    ? validateControlPlaneUrl(payload.verification_uri, "verification_uri", context)
+    ? validateControlPlaneUrl(payload.verification_uri, "verification_uri", context, {
+        disallowHash: true,
+      })
     : null;
   const verificationUriComplete = isNonEmptyString(payload.verification_uri_complete)
-    ? validateControlPlaneUrl(payload.verification_uri_complete, "verification_uri_complete", context)
+    ? validateControlPlaneUrl(payload.verification_uri_complete, "verification_uri_complete", context, {
+        disallowHash: true,
+      })
     : null;
   if (!verificationUri && !verificationUriComplete) {
     throw new Error(
@@ -1081,7 +1085,7 @@ function getRetryAfterMs(value) {
 }
 
 function openBrowser(url, env = process.env) {
-  validateControlPlaneUrl(url, "verification_uri", "Hosted browser login");
+  validateControlPlaneUrl(url, "verification_uri", "Hosted browser login", { disallowHash: true });
   const platform = process.platform;
   const timeout = getBrowserOpenTimeoutMs(env);
   const commands =

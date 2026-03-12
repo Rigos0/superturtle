@@ -73,6 +73,36 @@ assert.deepStrictEqual(
   "expected IPv6 loopback HTTP verification URLs to remain valid for local hosted login test harnesses"
 );
 
+assert.throws(
+  () =>
+    validateLoginStartResponse(
+      {
+        device_code: "dev-code-fragment",
+        verification_uri: "https://api.superturtle.dev/verify#fragment",
+        interval_ms: 10,
+      },
+      "Hosted login start",
+      "https://api.superturtle.dev"
+    ),
+  /Hosted login start returned an invalid verification_uri/i,
+  "expected hosted login verification links with URL fragments to fail closed"
+);
+
+assert.throws(
+  () =>
+    validateLoginStartResponse(
+      {
+        device_code: "dev-code-fragment-complete",
+        verification_uri_complete: "https://api.superturtle.dev/verify?code=USER-123#fragment",
+        interval_ms: 10,
+      },
+      "Hosted login start",
+      "https://api.superturtle.dev"
+    ),
+  /Hosted login start returned an invalid verification_uri_complete/i,
+  "expected hosted login verification_uri_complete links with URL fragments to fail closed"
+);
+
 function runCli(args, env) {
   return new Promise((resolveRun, rejectRun) => {
     const child = spawn("node", [CLI_PATH, ...args], {
@@ -148,6 +178,28 @@ const server = http.createServer((req, res) => {
           device_code: "dev-code-123",
           user_code: "USER-123",
           verification_uri: "javascript:alert('owned')",
+          interval_ms: 10,
+        }));
+        return;
+      }
+      if (loginStartMode === "fragment-verification-uri") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: "USER-123",
+          verification_uri: `${requestOrigin}/verify#fragment`,
+          verification_uri_complete: `${requestOrigin}/verify?code=USER-123`,
+          interval_ms: 10,
+        }));
+        return;
+      }
+      if (loginStartMode === "fragment-verification-uri-complete") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: "USER-123",
+          verification_uri: `${requestOrigin}/verify`,
+          verification_uri_complete: `${requestOrigin}/verify?code=USER-123#fragment`,
           interval_ms: 10,
         }));
         return;
@@ -521,6 +573,30 @@ server.listen(0, "127.0.0.1", async () => {
     assert.ok(
       !fs.existsSync(sessionPath),
       "expected malformed login start with invalid verification URI to avoid writing a session file"
+    );
+
+    loginStartMode = "fragment-verification-uri";
+    const fragmentLoginStartVerificationUri = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(fragmentLoginStartVerificationUri.code, 1);
+    assert.match(
+      fragmentLoginStartVerificationUri.stderr,
+      /Hosted login start returned an invalid verification_uri/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected login verification_uri fragments to be rejected before writing a session file"
+    );
+
+    loginStartMode = "fragment-verification-uri-complete";
+    const fragmentLoginStartVerificationUriComplete = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(fragmentLoginStartVerificationUriComplete.code, 1);
+    assert.match(
+      fragmentLoginStartVerificationUriComplete.stderr,
+      /Hosted login start returned an invalid verification_uri_complete/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected login verification_uri_complete fragments to be rejected before writing a session file"
     );
 
     loginStartMode = "invalid-verification-origin";
