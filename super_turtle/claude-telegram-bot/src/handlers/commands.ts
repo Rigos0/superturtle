@@ -3,7 +3,7 @@
  */
 
 import { InlineKeyboard, type Context } from "grammy";
-import { appendFileSync, mkdirSync, readFileSync, rmSync } from "fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { session, getAvailableModels, EFFORT_DISPLAY, type EffortLevel } from "../session";
 import { codexSession } from "../codex-session";
@@ -106,12 +106,20 @@ export async function handleStopCommand(ctx: Context): Promise<void> {
   await handleStop(ctx, chatId);
 }
 
-type TeleportCommandOptions = {
-  dryRun: boolean;
-};
+type TeleportCommandOptions =
+  | {
+    action: "launch";
+    dryRun: boolean;
+  }
+  | {
+    action: "status";
+  };
 
 function parseTeleportCommandOptions(text: string | undefined): TeleportCommandOptions | null {
   const args = text?.split(/\s+/).slice(1).filter(Boolean) || [];
+  if (args.length === 1 && args[0]?.trim().toLowerCase() === "status") {
+    return { action: "status" };
+  }
   let dryRun = false;
 
   for (const arg of args) {
@@ -126,7 +134,7 @@ function parseTeleportCommandOptions(text: string | undefined): TeleportCommandO
     return null;
   }
 
-  return { dryRun };
+  return { action: "launch", dryRun };
 }
 
 function formatTeleportLogTimestamp(date: Date): string {
@@ -207,6 +215,21 @@ function getActiveTeleportLockState(): TeleportLockState | null {
   return null;
 }
 
+function getLatestTeleportLogPath(): string | null {
+  let entries: string[];
+  try {
+    entries = readdirSync(TELEPORT_LOG_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".log"))
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return null;
+  }
+
+  const latestEntry = entries.at(-1);
+  return latestEntry ? join(TELEPORT_LOG_DIR, latestEntry) : null;
+}
+
 function countDeferredQueueItems(): number {
   return Array.from(getAllDeferredQueues().values()).reduce(
     (count, queue) => count + queue.length,
@@ -224,7 +247,28 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
 
   const options = parseTeleportCommandOptions(ctx.message?.text);
   if (!options) {
-    await ctx.reply("❌ Usage: /teleport [managed] [dry-run]");
+    await ctx.reply("❌ Usage: /teleport [status|managed] [dry-run]");
+    return;
+  }
+
+  if (options.action === "status") {
+    const activeTeleport = getActiveTeleportLockState();
+    if (activeTeleport) {
+      const modeLabel = activeTeleport.mode === "dry-run" ? "dry-run" : "live";
+      const launchedAt = activeTeleport.launchedAt || "unknown";
+      const logPath = activeTeleport.logPath || "unknown";
+      await ctx.reply(
+        `🛰️ Managed teleport ${modeLabel} is running.\nStarted: ${launchedAt}\nLog: ${logPath}`
+      );
+      return;
+    }
+
+    const latestLogPath = getLatestTeleportLogPath();
+    await ctx.reply(
+      latestLogPath
+        ? `🛰️ No managed teleport is running.\nLast log: ${latestLogPath}`
+        : "🛰️ No managed teleport is running.\nNo teleport logs found yet."
+    );
     return;
   }
 
