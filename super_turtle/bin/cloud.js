@@ -3,6 +3,11 @@ const os = require("os");
 const crypto = require("crypto");
 const { resolve, dirname, parse, sep } = require("path");
 const { spawnSync } = require("child_process");
+const {
+  validateCliCloudStatusResponse,
+  validateCliTokenResponse,
+  validateCliWhoAmIResponse,
+} = require("./cloud-control-plane-contract.js");
 
 const DEFAULT_CONTROL_PLANE = "https://api.superturtle.dev";
 const DEFAULT_POLL_INTERVAL_MS = 2000;
@@ -13,7 +18,6 @@ const DEFAULT_RESPONSE_MAX_BYTES = 256 * 1024;
 const DEFAULT_SESSION_FILE_MAX_BYTES = 256 * 1024;
 const MAX_OPAQUE_TOKEN_BYTES = 4096;
 const MAX_USER_CODE_BYTES = 256;
-const MAX_DISPLAY_FIELD_BYTES = 1024;
 const SESSION_EXPIRY_SKEW_MS = 30 * 1000;
 const CLOUD_SESSION_SCHEMA_VERSION = 1;
 
@@ -434,14 +438,25 @@ function isDisplayCodeString(value) {
   );
 }
 
-function isDisplayFieldString(value) {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.trim() === value &&
-    Buffer.byteLength(value, "utf-8") <= MAX_DISPLAY_FIELD_BYTES &&
-    !/[\x00-\x1F\x7F]/.test(value)
-  );
+function remapContractValidationError(error, context, options = {}) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (/^response is invalid\.$/i.test(message)) {
+    return new Error(`${context} returned an invalid response.`);
+  }
+  if (options.accessTokenRequired && /^access_token is invalid\.$/i.test(message)) {
+    return new Error(`${context} did not include a valid access_token.`);
+  }
+  if (/^refresh_token is invalid\.$/i.test(message)) {
+    return new Error(`${context} returned an invalid refresh_token.`);
+  }
+
+  const match = /^(.+) is invalid\.$/i.exec(message);
+  if (match) {
+    return new Error(`${context} returned an invalid ${match[1]}.`);
+  }
+
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function validateTimestamp(value, fieldName, context) {
@@ -465,53 +480,22 @@ function validateOptionalObject(value, fieldName, context) {
 }
 
 function validateTokenResponse(payload, context) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error(`${context} returned an invalid response.`);
+  try {
+    const response = validateCliTokenResponse(payload);
+    return {
+      ...payload,
+      access_token: response.access_token,
+      refresh_token: response.refresh_token || null,
+      expires_at: response.expires_at,
+      user: response.user,
+      workspace: response.workspace,
+      entitlement: response.entitlement,
+      instance: response.instance,
+      provisioning_job: response.provisioning_job,
+    };
+  } catch (error) {
+    throw remapContractValidationError(error, context, { accessTokenRequired: true });
   }
-  if (!isOpaqueTokenString(payload.access_token)) {
-    throw new Error(`${context} did not include a valid access_token.`);
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(payload, "refresh_token") &&
-    payload.refresh_token != null &&
-    !isOpaqueTokenString(payload.refresh_token)
-  ) {
-    throw new Error(`${context} returned an invalid refresh_token.`);
-  }
-
-  const identity = validateWhoAmIResponse(
-    {
-      user: Object.prototype.hasOwnProperty.call(payload, "user") ? payload.user : undefined,
-      workspace: Object.prototype.hasOwnProperty.call(payload, "workspace")
-        ? payload.workspace
-        : undefined,
-      entitlement: Object.prototype.hasOwnProperty.call(payload, "entitlement")
-        ? payload.entitlement
-        : undefined,
-    },
-    context
-  );
-  const cloudStatus = validateCloudStatusResponse(
-    {
-      instance: Object.prototype.hasOwnProperty.call(payload, "instance") ? payload.instance : undefined,
-      provisioning_job: Object.prototype.hasOwnProperty.call(payload, "provisioning_job")
-        ? payload.provisioning_job
-        : undefined,
-    },
-    context
-  );
-
-  return {
-    ...payload,
-    access_token: payload.access_token,
-    refresh_token: payload.refresh_token || null,
-    expires_at: validateTimestamp(payload.expires_at || null, "expires_at", context),
-    user: identity.user,
-    workspace: identity.workspace,
-    entitlement: identity.entitlement,
-    instance: cloudStatus.instance,
-    provisioning_job: cloudStatus.provisioning_job,
-  };
 }
 
 function validateLoginStartResponse(payload, context, controlPlaneBaseUrl = null) {
@@ -598,122 +582,29 @@ function validateLoginStartResponse(payload, context, controlPlaneBaseUrl = null
 }
 
 function validateWhoAmIResponse(payload, context) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error(`${context} returned an invalid response.`);
+  try {
+    const response = validateCliWhoAmIResponse(payload);
+    return {
+      user: response.user,
+      workspace: response.workspace,
+      entitlement: response.entitlement,
+    };
+  } catch (error) {
+    throw remapContractValidationError(error, context);
   }
-
-  const user = validateOptionalObject(payload.user, "user", context);
-  if (user) {
-    if (
-      Object.prototype.hasOwnProperty.call(user, "id") &&
-      user.id != null &&
-      !isDisplayFieldString(user.id)
-    ) {
-      throw new Error(`${context} returned an invalid user.id.`);
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(user, "email") &&
-      user.email != null &&
-      !isDisplayFieldString(user.email)
-    ) {
-      throw new Error(`${context} returned an invalid user.email.`);
-    }
-  }
-
-  const workspace = validateOptionalObject(payload.workspace, "workspace", context);
-  if (
-    workspace &&
-    Object.prototype.hasOwnProperty.call(workspace, "slug") &&
-    workspace.slug != null &&
-    !isDisplayFieldString(workspace.slug)
-  ) {
-    throw new Error(`${context} returned an invalid workspace.slug.`);
-  }
-
-  const entitlement = validateOptionalObject(payload.entitlement, "entitlement", context);
-  if (entitlement) {
-    if (
-      Object.prototype.hasOwnProperty.call(entitlement, "plan") &&
-      entitlement.plan != null &&
-      !isDisplayFieldString(entitlement.plan)
-    ) {
-      throw new Error(`${context} returned an invalid entitlement.plan.`);
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(entitlement, "state") &&
-      entitlement.state != null &&
-      !isDisplayFieldString(entitlement.state)
-    ) {
-      throw new Error(`${context} returned an invalid entitlement.state.`);
-    }
-  }
-
-  return {
-    user,
-    workspace,
-    entitlement,
-  };
 }
 
 function validateCloudStatusResponse(payload, context) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error(`${context} returned an invalid response.`);
+  try {
+    const response = validateCliCloudStatusResponse(payload);
+    return {
+      instance: response.instance,
+      provisioning_job: response.provisioning_job,
+      audit_log: response.audit_log,
+    };
+  } catch (error) {
+    throw remapContractValidationError(error, context);
   }
-
-  const instance = validateOptionalObject(payload.instance, "instance", context);
-  if (instance) {
-    if (
-      Object.prototype.hasOwnProperty.call(instance, "id") &&
-      instance.id != null &&
-      !isDisplayFieldString(instance.id)
-    ) {
-      throw new Error(`${context} returned an invalid instance.id.`);
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(instance, "state") &&
-      instance.state != null &&
-      !isDisplayFieldString(instance.state)
-    ) {
-      throw new Error(`${context} returned an invalid instance.state.`);
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(instance, "region") &&
-      instance.region != null &&
-      !isDisplayFieldString(instance.region)
-    ) {
-      throw new Error(`${context} returned an invalid instance.region.`);
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(instance, "hostname") &&
-      instance.hostname != null &&
-      !isDisplayFieldString(instance.hostname)
-    ) {
-      throw new Error(`${context} returned an invalid instance.hostname.`);
-    }
-  }
-
-  const provisioningJob = validateOptionalObject(
-    payload.provisioning_job,
-    "provisioning_job",
-    context
-  );
-  if (provisioningJob) {
-    if (
-      Object.prototype.hasOwnProperty.call(provisioningJob, "state") &&
-      provisioningJob.state != null &&
-      !isDisplayFieldString(provisioningJob.state)
-    ) {
-      throw new Error(`${context} returned an invalid provisioning_job.state.`);
-    }
-    if (Object.prototype.hasOwnProperty.call(provisioningJob, "updated_at")) {
-      validateTimestamp(provisioningJob.updated_at, "provisioning_job.updated_at", context);
-    }
-  }
-
-  return {
-    instance,
-    provisioning_job: provisioningJob,
-  };
 }
 
 function normalizeStoredSession(session, env = process.env, fallbackTimestamp = null) {
@@ -1104,7 +995,7 @@ async function requestJson(url, options = {}, env = process.env) {
       throw error;
     }
 
-    const text = await readResponseText(response, url, maxBytes);
+    const text = await readResponseText(response, url, maxBytes, response);
     let data = null;
     if (text) {
       try {
@@ -1146,11 +1037,21 @@ async function requestJson(url, options = {}, env = process.env) {
   }
 }
 
-async function readResponseText(response, url, maxBytes) {
+function createOversizedResponseError(url, maxBytes, response) {
+  const error = new Error(`Response from ${url} exceeded configured size limit of ${maxBytes} bytes.`);
+  if (response && typeof response === "object") {
+    error.status = response.status;
+    error.statusText = response.statusText;
+    error.retryAfterMs = getRetryAfterMs(response.headers?.get?.("retry-after"));
+  }
+  return error;
+}
+
+async function readResponseText(response, url, maxBytes, originalResponse = response) {
   if (!response.body || typeof response.body.getReader !== "function") {
     const text = await response.text();
     if (Buffer.byteLength(text, "utf-8") > maxBytes) {
-      throw new Error(`Response from ${url} exceeded configured size limit of ${maxBytes} bytes.`);
+      throw createOversizedResponseError(url, maxBytes, originalResponse);
     }
     return text;
   }
@@ -1168,7 +1069,7 @@ async function readResponseText(response, url, maxBytes) {
       }
       totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
-        throw new Error(`Response from ${url} exceeded configured size limit of ${maxBytes} bytes.`);
+        throw createOversizedResponseError(url, maxBytes, originalResponse);
       }
       chunks.push(decoder.decode(value, { stream: true }));
     }
@@ -1528,6 +1429,68 @@ async function fetchCloudStatus(session, env = process.env) {
   };
 }
 
+async function resumeManagedInstance(session, env = process.env) {
+  const baseUrl = getSessionControlPlaneBaseUrl(session, env);
+  let activeSession = session;
+  let sessionChanged = false;
+
+  if (isSessionExpired(activeSession)) {
+    activeSession = await refreshSession(activeSession, env);
+    sessionChanged = true;
+  }
+
+  const doRequest = async (currentSession) =>
+    requestJson(`${baseUrl}/v1/cli/cloud/instance/resume`, {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(currentSession),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    }, env);
+
+  try {
+    const data = await doRequest(activeSession);
+    return {
+      data: validateCloudStatusResponse(data, "Hosted instance resume"),
+      session: activeSession,
+    };
+  } catch (error) {
+    const status = error && typeof error === "object" ? error.status : undefined;
+    if (status === 401 && !activeSession?.refresh_token) {
+      throw invalidateSession(env, "expired and cannot be refreshed");
+    }
+    if (status === 403) {
+      throw invalidateSession(env, "was rejected by the control plane");
+    }
+    if (status !== 401 || !activeSession?.refresh_token) {
+      if (sessionChanged && error && typeof error === "object") {
+        error.session = activeSession;
+      }
+      throw error;
+    }
+
+    activeSession = await refreshSession(activeSession, env);
+    sessionChanged = true;
+
+    let data;
+    try {
+      data = await doRequest(activeSession);
+    } catch (retryError) {
+      const retryStatus = retryError && typeof retryError === "object" ? retryError.status : undefined;
+      if (retryStatus === 401 || retryStatus === 403) {
+        throw invalidateSession(env, "was rejected after refresh");
+      }
+      throw retryError;
+    }
+
+    return {
+      data: validateCloudStatusResponse(data, "Hosted instance resume"),
+      session: activeSession,
+    };
+  }
+}
+
 module.exports = {
   clearSession,
   DEFAULT_CONTROL_PLANE,
@@ -1550,6 +1513,7 @@ module.exports = {
   pollLogin,
   readSession,
   refreshSession,
+  resumeManagedInstance,
   mergeSessionSnapshot,
   hasCachedSnapshot,
   invalidateSession,

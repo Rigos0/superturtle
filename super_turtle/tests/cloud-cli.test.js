@@ -19,6 +19,7 @@ let loginPollMode = "normal";
 let refreshMode = "normal";
 let sessionMode = "normal";
 let statusMode = "normal";
+let resumeMode = "normal";
 let loginPollDelayMs = 0;
 let sessionDelayMs = 0;
 let statusDelayMs = 0;
@@ -396,6 +397,11 @@ const server = http.createServer((req, res) => {
         res.end("forbidden");
         return;
       }
+      if (refreshMode === "http-403-oversized-response") {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden", padding: "x".repeat(4096) }));
+        return;
+      }
       if (refreshMode === "missing-access-token") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -480,6 +486,11 @@ const server = http.createServer((req, res) => {
         res.end("forbidden");
         return;
       }
+      if (sessionMode === "http-403-oversized-response") {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden", padding: "x".repeat(4096) }));
+        return;
+      }
       if (sessionMode === "oversized-response") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -529,12 +540,16 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({
           instance: {
             id: "inst_123",
+            provider: "gcp",
             state: "provisioning",
             region: "us-central1",
             hostname: "managed-123.internal",
           },
           provisioning_job: {
+            id: "job_123",
+            kind: "provision",
             state: "running",
+            attempt: 1,
             updated_at: "2026-03-12T09:59:00Z",
           },
         }));
@@ -550,12 +565,16 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({
           instance: {
             id: "inst_123",
+            provider: "gcp",
             state: "provisioning",
             region: "us-central1",
             hostname: "managed-123.internal",
           },
           provisioning_job: {
+            id: "job_123",
+            kind: "provision",
             state: "running",
+            attempt: 1,
             updated_at: "not-a-timestamp",
           },
         }));
@@ -565,14 +584,74 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({
         instance: {
           id: "inst_123",
+          provider: "gcp",
           state: "provisioning",
           region: "us-central1",
           hostname: "managed-123.internal",
         },
         provisioning_job: {
+          id: "job_123",
+          kind: "provision",
           state: "running",
+          attempt: 1,
           updated_at: "2026-03-12T09:59:00Z",
         },
+      }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/cli/cloud/instance/resume") {
+      assert.strictEqual(req.headers.authorization, "Bearer access-abc");
+      if (resumeMode === "http-403") {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden" }));
+        return;
+      }
+      if (resumeMode === "invalid-provisioning-kind") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          instance: {
+            id: "inst_123",
+            provider: "gcp",
+            state: "provisioning",
+          },
+          provisioning_job: {
+            id: "job_resume_123",
+            kind: "wake",
+            state: "queued",
+            attempt: 1,
+            updated_at: "2026-03-12T10:01:00Z",
+          },
+        }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        instance: {
+          id: "inst_123",
+          provider: "gcp",
+          state: "provisioning",
+          region: "us-central1",
+          hostname: "managed-123.internal",
+          resume_requested_at: "2026-03-12T10:01:00Z",
+        },
+        provisioning_job: {
+          id: "job_resume_123",
+          kind: "resume",
+          state: "queued",
+          attempt: 1,
+          updated_at: "2026-03-12T10:01:00Z",
+        },
+        audit_log: [
+          {
+            id: "audit_123",
+            actor_type: "user",
+            actor_id: "user_123",
+            action: "instance.resume_requested",
+            target_type: "managed_instance",
+            target_id: "inst_123",
+            created_at: "2026-03-12T10:01:00Z",
+          },
+        ],
       }));
       return;
     }
@@ -963,15 +1042,42 @@ server.listen(0, "127.0.0.1", async () => {
     const statusSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
     assert.deepStrictEqual(statusSession.instance, {
       id: "inst_123",
+      provider: "gcp",
       state: "provisioning",
       region: "us-central1",
       hostname: "managed-123.internal",
     });
     assert.deepStrictEqual(statusSession.provisioning_job, {
+      id: "job_123",
+      kind: "provision",
       state: "running",
+      attempt: 1,
       updated_at: "2026-03-12T09:59:00Z",
     });
     assert.ok(statusSession.cloud_status_sync_at, "expected cloud status fetch to persist cloud_status_sync_at");
+
+    const resumed = await runCli(["cloud", "resume"], postLoginEnv);
+    assert.strictEqual(resumed.code, 0, resumed.stderr);
+    assert.match(resumed.stdout, /Instance: inst_123/);
+    assert.match(resumed.stdout, /State: provisioning/);
+    assert.match(resumed.stdout, /Provisioning: queued/);
+
+    const resumedSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(resumedSession.instance, {
+      id: "inst_123",
+      provider: "gcp",
+      state: "provisioning",
+      region: "us-central1",
+      hostname: "managed-123.internal",
+      resume_requested_at: "2026-03-12T10:01:00Z",
+    });
+    assert.deepStrictEqual(resumedSession.provisioning_job, {
+      id: "job_resume_123",
+      kind: "resume",
+      state: "queued",
+      attempt: 1,
+      updated_at: "2026-03-12T10:01:00Z",
+    });
 
     fs.writeFileSync(
       sessionPath,
@@ -1087,6 +1193,35 @@ server.listen(0, "127.0.0.1", async () => {
       sessionPath,
       `${JSON.stringify({
         ...statusSession,
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+      }, null, 2)}\n`
+    );
+    sessionMode = "http-403-oversized-response";
+    const rejectedWhoamiFromOversized403 = await runCli(
+      ["whoami"],
+      {
+        ...env,
+        SUPERTURTLE_CLOUD_RESPONSE_MAX_BYTES: "512",
+      }
+    );
+    assert.strictEqual(rejectedWhoamiFromOversized403.code, 1);
+    assert.match(
+      rejectedWhoamiFromOversized403.stderr,
+      /Hosted session was rejected by the control plane/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected oversized 403 whoami responses to invalidate and remove the local hosted session"
+    );
+    sessionMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        ...statusSession,
         access_token: "expired-access",
         refresh_token: "refresh-def",
         expires_at: "2000-03-12T10:00:00Z",
@@ -1100,6 +1235,35 @@ server.listen(0, "127.0.0.1", async () => {
     assert.ok(
       !fs.existsSync(sessionPath),
       "expected non-JSON 403 refresh responses to invalidate and remove the local hosted session"
+    );
+    refreshMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        ...statusSession,
+        access_token: "expired-access",
+        refresh_token: "refresh-def",
+        expires_at: "2000-03-12T10:00:00Z",
+        control_plane: baseUrl,
+      }, null, 2)}\n`
+    );
+    refreshMode = "http-403-oversized-response";
+    const rejectedRefreshFromOversized403 = await runCli(
+      ["whoami"],
+      {
+        ...env,
+        SUPERTURTLE_CLOUD_RESPONSE_MAX_BYTES: "512",
+      }
+    );
+    assert.strictEqual(rejectedRefreshFromOversized403.code, 1);
+    assert.match(
+      rejectedRefreshFromOversized403.stderr,
+      /Hosted session was rejected by the control plane/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected oversized 403 refresh responses to invalidate and remove the local hosted session"
     );
     refreshMode = "normal";
 
@@ -1678,6 +1842,15 @@ server.listen(0, "127.0.0.1", async () => {
     });
     statusMode = "normal";
 
+    resumeMode = "invalid-provisioning-kind";
+    const malformedResume = await runCli(["cloud", "resume"], env);
+    assert.strictEqual(malformedResume.code, 1);
+    assert.match(
+      malformedResume.stderr,
+      /Hosted instance resume returned an invalid provisioning_job.kind/i
+    );
+    resumeMode = "normal";
+
     fs.writeFileSync(
       sessionPath,
       `${JSON.stringify({
@@ -1744,6 +1917,34 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(forbiddenCloudStatus.stderr, /superturtle login/i);
     assert.ok(!fs.existsSync(sessionPath), "expected forbidden cloud status session to clear the local session");
     statusMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        instance: {
+          id: "inst_123",
+          state: "running",
+          region: "us-central1",
+          hostname: "managed-123.internal",
+        },
+        provisioning_job: {
+          state: "succeeded",
+          updated_at: "2026-03-12T10:10:00Z",
+        },
+      }, null, 2)}\n`
+    );
+    resumeMode = "http-403";
+    const forbiddenResume = await runCli(["cloud", "resume"], env);
+    assert.strictEqual(forbiddenResume.code, 1);
+    assert.match(forbiddenResume.stderr, /Hosted session .* rejected by the control plane/i);
+    assert.match(forbiddenResume.stderr, /Removed local cloud session/i);
+    assert.match(forbiddenResume.stderr, /superturtle login/i);
+    assert.ok(!fs.existsSync(sessionPath), "expected forbidden cloud resume session to clear the local session");
+    resumeMode = "normal";
 
     const logout = await runCli(["logout"], env);
     assert.strictEqual(logout.code, 0, logout.stderr);

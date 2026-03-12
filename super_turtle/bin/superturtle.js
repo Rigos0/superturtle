@@ -30,6 +30,7 @@ const {
   pollLogin,
   persistSessionIfChanged,
   readSession,
+  resumeManagedInstance,
   startLogin,
   writeSession,
 } = require("./cloud");
@@ -969,6 +970,30 @@ async function cloudStatus() {
   if (status.provisioning_job?.updated_at) console.log(`Provisioning updated: ${status.provisioning_job.updated_at}`);
 }
 
+async function cloudResume() {
+  let session = readSession();
+  if (!session?.access_token) {
+    console.error(`Not logged in. Run 'superturtle login'. Expected session file at ${getSessionPath()}`);
+    process.exit(1);
+  }
+
+  const result = await resumeManagedInstance(session);
+  const mergedSession = mergeSessionSnapshot(
+    result.session,
+    result.data,
+    getSessionControlPlaneBaseUrl(result.session)
+  );
+  session = persistSessionIfChanged(session, mergedSession);
+
+  console.log(`Control plane: ${getSessionControlPlaneBaseUrl(session)}`);
+  if (result.data.instance?.id) console.log(`Instance: ${result.data.instance.id}`);
+  if (result.data.instance?.state) console.log(`State: ${result.data.instance.state}`);
+  if (result.data.provisioning_job?.state) console.log(`Provisioning: ${result.data.provisioning_job.state}`);
+  if (result.data.provisioning_job?.updated_at) {
+    console.log(`Provisioning updated: ${result.data.provisioning_job.updated_at}`);
+  }
+}
+
 function logout() {
   const path = clearSession();
   console.log(`Removed local cloud session at ${path}`);
@@ -1007,7 +1032,11 @@ switch (command) {
       cloudStatus().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
       break;
     }
-    console.error("Usage: superturtle cloud status");
+    if (process.argv[3] === "resume") {
+      cloudResume().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+      break;
+    }
+    console.error("Usage: superturtle cloud <status|resume>");
     process.exit(1);
     break;
   case "logout":
@@ -1036,7 +1065,7 @@ Commands:
   init      Set up superturtle in the current project
   login     Sign in to the hosted SuperTurtle control plane
   whoami    Show the current hosted account identity
-  cloud     Hosted cloud commands (status)
+  cloud     Hosted cloud commands (status, resume)
   logout    Remove the local hosted account session
   start     Launch the bot
   stop      Stop the bot and all SubTurtles
@@ -1060,7 +1089,8 @@ Logs:
 Cloud:
   superturtle login
   superturtle whoami
-  superturtle cloud status`);
+  superturtle cloud status
+  superturtle cloud resume`);
     if (command && command !== "help" && command !== "--help" && command !== "-h") {
       process.exit(1);
     }

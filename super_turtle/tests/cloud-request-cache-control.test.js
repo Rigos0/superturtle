@@ -5,6 +5,7 @@ const {
   fetchWhoAmI,
   pollLogin,
   refreshSession,
+  resumeManagedInstance,
   startLogin,
 } = require("../bin/cloud.js");
 
@@ -65,8 +66,18 @@ global.fetch = async function patchedFetch(url, options = {}) {
 
   if (String(url).endsWith("/v1/cli/cloud/status")) {
     return new Response(JSON.stringify({
-      instance: { id: "inst_123", state: "running" },
-      provisioning_job: { state: "succeeded", updated_at: "2026-03-12T10:00:00Z" },
+      instance: { id: "inst_123", provider: "gcp", state: "running" },
+      provisioning_job: { id: "job_123", kind: "provision", state: "succeeded", updated_at: "2026-03-12T10:00:00Z" },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  if (String(url).endsWith("/v1/cli/cloud/instance/resume")) {
+    return new Response(JSON.stringify({
+      instance: { id: "inst_123", provider: "gcp", state: "provisioning", resume_requested_at: "2026-03-12T10:00:00Z" },
+      provisioning_job: { id: "job_456", kind: "resume", state: "queued", attempt: 1, updated_at: "2026-03-12T10:00:01Z" },
     }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -247,6 +258,13 @@ function assertCredentiallessRequest(request, context) {
       },
       env
     );
+    await resumeManagedInstance(
+      {
+        access_token: "access-abc",
+        control_plane: "https://api.superturtle.dev",
+      },
+      env
+    );
 
     const byPath = new Map(recordedRequests.map((request) => [new URL(request.url).pathname, request]));
 
@@ -255,12 +273,14 @@ function assertCredentiallessRequest(request, context) {
     assertNoStoreHeaders(byPath.get("/v1/cli/session/refresh"), "hosted session refresh");
     assertNoStoreHeaders(byPath.get("/v1/cli/session"), "hosted session lookup");
     assertNoStoreHeaders(byPath.get("/v1/cli/cloud/status"), "hosted cloud status lookup");
+    assertNoStoreHeaders(byPath.get("/v1/cli/cloud/instance/resume"), "hosted instance resume");
 
     assertCredentiallessRequest(byPath.get("/v1/cli/login/start"), "hosted login start");
     assertCredentiallessRequest(byPath.get("/v1/cli/login/poll"), "hosted login poll");
     assertCredentiallessRequest(byPath.get("/v1/cli/session/refresh"), "hosted session refresh");
     assertCredentiallessRequest(byPath.get("/v1/cli/session"), "hosted session lookup");
     assertCredentiallessRequest(byPath.get("/v1/cli/cloud/status"), "hosted cloud status lookup");
+    assertCredentiallessRequest(byPath.get("/v1/cli/cloud/instance/resume"), "hosted instance resume");
   } finally {
     global.fetch = originalFetch;
   }
