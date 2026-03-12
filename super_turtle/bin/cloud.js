@@ -1223,10 +1223,15 @@ async function pollLogin(started, options = {}, env = process.env) {
   );
 
   for (;;) {
-    if (Date.now() - startedAt > timeoutMs) {
+    let remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
       throw new Error("Timed out waiting for browser login completion.");
     }
-    await sleep(intervalMs);
+    await sleep(Math.min(intervalMs, remainingMs));
+    remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
+      throw new Error("Timed out waiting for browser login completion.");
+    }
     try {
       const completed = await requestJson(`${baseUrl}/v1/cli/login/poll`, {
         method: "POST",

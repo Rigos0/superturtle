@@ -70,6 +70,67 @@ global.fetch = async function patchedFetch(url) {
       [1000, 1000, 3000],
       "expected login polling to honor Retry-After throttling before the next poll"
     );
+
+    scheduledSleeps.length = 0;
+    pollRequests = 0;
+    const originalDateNow = Date.now;
+    let nowMs = 0;
+    try {
+      Date.now = () => nowMs;
+      global.fetch = async function patchedFetchOversizedBackoff(url) {
+        pollRequests += 1;
+        assert.match(String(url), /\/v1\/cli\/login\/poll$/);
+
+        if (pollRequests === 1) {
+          return new Response(JSON.stringify({ error: "authorization pending" }), {
+            status: 428,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({ error: "slow_down" }), {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "300",
+          },
+        });
+      };
+      global.setTimeout = function patchedBudgetedSetTimeout(callback, delay, ...args) {
+        if (delay > 5000) {
+          return originalSetTimeout(callback, delay, ...args);
+        }
+        scheduledSleeps.push(delay);
+        nowMs += delay;
+        callback(...args);
+        return 0;
+      };
+
+      await assert.rejects(
+        () =>
+          pollLogin(
+            {
+              device_code: "dev-code-123",
+              interval_ms: 1000,
+            },
+            {
+              timeoutMs: 2500,
+            },
+            {
+              SUPERTURTLE_CLOUD_URL: "https://api.superturtle.dev",
+            }
+          ),
+        /Timed out waiting for browser login completion/i
+      );
+      assert.deepStrictEqual(
+        scheduledSleeps,
+        [1000, 1000, 500],
+        "expected login polling sleeps to be capped by the remaining timeout budget"
+      );
+      assert.strictEqual(pollRequests, 2, "expected timeout-budgeted polling to stop before another request");
+    } finally {
+      Date.now = originalDateNow;
+    }
   } finally {
     global.fetch = originalFetch;
     global.setTimeout = originalSetTimeout;
