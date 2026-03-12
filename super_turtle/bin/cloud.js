@@ -9,6 +9,12 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 const SESSION_EXPIRY_SKEW_MS = 30 * 1000;
 const CLOUD_SESSION_SCHEMA_VERSION = 1;
 
+function invalidSessionFile(path, message) {
+  return new Error(
+    `Hosted session file at ${path} ${message}. Run 'superturtle logout' and then 'superturtle login' again.`
+  );
+}
+
 function getControlPlaneBaseUrl(env = process.env) {
   return String(env.SUPERTURTLE_CLOUD_URL || DEFAULT_CONTROL_PLANE).replace(/\/+$/, "");
 }
@@ -50,14 +56,27 @@ function readSession(env = process.env) {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new Error(
-      `Hosted session file at ${path} is invalid JSON. Run 'superturtle logout' and then 'superturtle login' again.`
-    );
+    throw invalidSessionFile(path, "is invalid JSON");
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw invalidSessionFile(path, "is invalid");
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(parsed, "schema_version")) {
+    return {
+      schema_version: CLOUD_SESSION_SCHEMA_VERSION,
+      ...parsed,
+    };
+  }
+
+  if (!Number.isInteger(parsed.schema_version) || parsed.schema_version <= 0) {
+    throw invalidSessionFile(path, "has an invalid schema_version");
+  }
+
+  if (parsed.schema_version > CLOUD_SESSION_SCHEMA_VERSION) {
     throw new Error(
-      `Hosted session file at ${path} is invalid. Run 'superturtle logout' and then 'superturtle login' again.`
+      `Hosted session file at ${path} uses schema_version ${parsed.schema_version}, but this CLI supports up to ${CLOUD_SESSION_SCHEMA_VERSION}. Upgrade SuperTurtle or run 'superturtle logout' and then 'superturtle login' again.`
     );
   }
 

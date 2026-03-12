@@ -1,6 +1,6 @@
 # Current task
 
-Continue the hosted auth foundation by tightening durable hosted session semantics for `superturtle login` / `whoami` / `cloud status`, with session-pinned control-plane resolution, atomic local session persistence, corruption recovery, token refresh behavior, persisted snapshots, and resilient cached reads when the pinned control plane is temporarily unreachable.
+Continue the hosted auth foundation by tightening durable hosted session semantics for `superturtle login` / `whoami` / `cloud status`, with session-pinned control-plane resolution, schema-aware local session compatibility, atomic local session persistence, corruption recovery, token refresh behavior, persisted snapshots, and resilient cached reads when the pinned control plane is temporarily unreachable.
 
 # End goal with specs
 
@@ -33,7 +33,7 @@ Continue the hosted auth foundation by tightening durable hosted session semanti
 
 # Backlog
 - [ ] Design and implement the hosted auth foundation and `superturtle login` browser OAuth flow, including browser launch, callback completion, local session storage, and `whoami`/cloud status semantics <- current
-  Progress: the CLI now has production-shaped `login`, `whoami`, `cloud status`, and `logout` commands backed by a durable local cloud session file, session-pinned control-plane reuse, atomic versioned session writes with `0600` permissions, explicit corruption recovery guidance, refresh-on-expiry/401 semantics, persisted identity/entitlement/instance/provisioning snapshots, cached snapshot fallback for temporary control-plane outages, and stubbed control-plane login/session/status/refresh APIs.
+  Progress: the CLI now has production-shaped `login`, `whoami`, `cloud status`, and `logout` commands backed by a durable local cloud session file, session-pinned control-plane reuse, atomic versioned session writes with `0600` permissions, schema-aware session reads that transparently normalize legacy pre-version files and reject unsupported future formats, explicit corruption recovery guidance, refresh-on-expiry/401 semantics, persisted identity/entitlement/instance/provisioning snapshots, cached snapshot fallback for temporary control-plane outages, and stubbed control-plane login/session/status/refresh APIs.
 - [ ] Define and implement the control-plane schema, APIs, and durable state transitions for users, identities, sessions, entitlements, managed instances, provisioning jobs, and audit log
 - [ ] Build GCP managed VM provisioning, bootstrap, registration, health reporting, and idempotent reprovision behavior for one VM per paid account
 - [ ] Add Stripe checkout, subscriptions, webhook processing, and entitlement enforcement behind production-shaped adapters and verified webhook handling

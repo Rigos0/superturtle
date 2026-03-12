@@ -188,6 +188,36 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(cachedStatus.stdout, /Instance: inst_123/);
     assert.match(cachedStatus.stdout, /Provisioning: running/);
 
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        user: { id: "user_123", email: "user@example.com" },
+      }, null, 2)}\n`
+    );
+
+    const legacyWhoami = await runCli(["whoami"], postLoginEnv);
+    assert.strictEqual(legacyWhoami.code, 0, legacyWhoami.stderr);
+    const migratedLegacySession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.strictEqual(migratedLegacySession.schema_version, 1);
+    assert.strictEqual(migratedLegacySession.control_plane, baseUrl);
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        ...migratedLegacySession,
+        schema_version: 99,
+      }, null, 2)}\n`
+    );
+
+    const futureWhoami = await runCli(["whoami"], env);
+    assert.strictEqual(futureWhoami.code, 1);
+    assert.match(futureWhoami.stderr, /uses schema_version 99/i);
+    assert.match(futureWhoami.stderr, /Upgrade SuperTurtle|superturtle logout/i);
+
     fs.writeFileSync(sessionPath, "{not-json\n");
     const corruptWhoami = await runCli(["whoami"], env);
     assert.strictEqual(corruptWhoami.code, 1);
