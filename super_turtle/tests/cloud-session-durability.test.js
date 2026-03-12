@@ -3,7 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const { dirname, resolve } = require("path");
 
-const { writeSession } = require("../bin/cloud.js");
+const { clearSession, writeSession } = require("../bin/cloud.js");
 
 const tmpDir = fs.mkdtempSync(resolve(os.tmpdir(), "superturtle-cloud-session-durable-"));
 const sessionPath = resolve(tmpDir, "cloud-session.json");
@@ -56,6 +56,17 @@ try {
     assert.ok(
       fsyncTargets.includes(dirname(sessionPath)),
       "expected writeSession to fsync the parent directory after replacing the hosted session file"
+    );
+  }
+
+  fsyncTargets.length = 0;
+  clearSession(env);
+  assert.ok(!fs.existsSync(sessionPath), "expected clearSession to remove the hosted session file");
+
+  if (process.platform !== "win32") {
+    assert.ok(
+      fsyncTargets.includes(dirname(sessionPath)),
+      "expected clearSession to fsync the parent directory after deleting the hosted session file"
     );
   }
 } finally {

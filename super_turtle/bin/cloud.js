@@ -770,7 +770,10 @@ function persistSessionIfChanged(previousSession, nextSession, env = process.env
 
 function clearSession(env = process.env) {
   const path = getSessionPath(env);
-  if (lstatIfExists(path)) fs.unlinkSync(path);
+  if (lstatIfExists(path)) {
+    fs.unlinkSync(path);
+    fsyncParentDirectory(path);
+  }
   return path;
 }
 
