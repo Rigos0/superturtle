@@ -140,8 +140,71 @@ After the script reports success:
 - remote `bun super_turtle/bin/superturtle.js status` shows `Bot: running`
 - the next Telegram message to the bot is answered by the remote host
 
+## Stop The Remote Bot
+
+If the teleported bot has already finished its work and everything important is committed, the safe operator path is simply to stop the remote instance:
+
+```bash
+ssh <user>@<host> 'cd /home/<user>/project && bun super_turtle/bin/superturtle.js stop'
+```
+
+Verify:
+
+```bash
+ssh <user>@<host> 'cd /home/<user>/project && bun super_turtle/bin/superturtle.js status'
+```
+
+Expected result:
+
+- `Bot: stopped`
+
+## Start The Remote Bot Again Later
+
+If you want to bring the same teleported instance back up on the cloud host later:
+
+```bash
+ssh <user>@<host> 'cd /home/<user>/project && git pull --ff-only && bun super_turtle/bin/superturtle.js start'
+```
+
+Verify:
+
+```bash
+ssh <user>@<host> 'cd /home/<user>/project && bun super_turtle/bin/superturtle.js status'
+```
+
+Expected result:
+
+- `Bot: running`
+
+## Manual Return To Local
+
+There is no reverse `teleport back` script yet.
+
+Current operator procedure:
+
+1. Stop the remote bot.
+2. Make sure any desired work is committed and pushed from the remote machine.
+3. On the local machine, `git pull --ff-only` so the local repo has the same commits.
+4. Start the local bot normally.
+
+Local restart:
+
+```bash
+cd /path/to/project
+bun super_turtle/bin/superturtle.js start
+```
+
+Local verification:
+
+```bash
+bun super_turtle/bin/superturtle.js status
+```
+
+This is sufficient when the remote work is already committed and you do not need live semantic handoff back to the local host.
+
 ## Current Limitations
 
 - This preserves semantic conversation continuity, not the exact provider-native Claude/Codex thread
 - Existing SubTurtle processes are stopped locally and are not auto-restarted remotely in v1
 - There is no automatic rollback if the remote start fails after local shutdown
+- Reverse teleport back to local is not implemented yet; returning local is currently a manual stop/pull/start flow

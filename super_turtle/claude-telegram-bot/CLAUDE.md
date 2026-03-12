@@ -69,6 +69,25 @@ MCP servers defined in `mcp-config.ts`.
 - `/tmp/telegram-bot/` - Downloaded photos/documents
 - `/tmp/claude-telegram-audit.log` - Audit log
 
+## Manual Teleport Status
+
+- Manual operator-run teleport exists via `../scripts/teleport-manual.sh`
+- The tested path is local macOS -> remote Linux VM over SSH
+- Remote operator runbook: `../docs/MANUAL_TELEPORT_RUNBOOK.md`
+- Stop a remote instance with:
+
+```bash
+ssh <user>@<host> 'cd /home/<user>/project && bun super_turtle/bin/superturtle.js stop'
+```
+
+- Start a remote instance again later with:
+
+```bash
+ssh <user>@<host> 'cd /home/<user>/project && git pull --ff-only && bun super_turtle/bin/superturtle.js start'
+```
+
+- Reverse teleport back to local is not automated; the current operator flow is stop remote, pull the committed work locally, and start the local bot normally
+
 ## Patterns
 
 **Adding a command**: Create handler in `commands.ts`, register in `index.ts` with `bot.command("name", handler)`

@@ -60,6 +60,7 @@ usage() {
   echo "         Create workspace, seed CLAUDE.md from --state-file/stdin, start SubTurtle, and auto-register cron"
   echo "         Defaults: --type yolo-codex, --timeout ${DEFAULT_TIMEOUT}, --cron-interval 10m"
   echo "  stop   [name]                        Stop a SubTurtle gracefully"
+  echo "  stopall                              Stop all active SubTurtles gracefully"
   echo "  status [name]                        Check if running + time remaining"
   echo "  logs   [name]                        Tail a SubTurtle's log"
   echo "  list   [--archived]                 List active SubTurtles (default) or archived SubTurtles"
@@ -108,6 +109,7 @@ case "$CMD" in
     do_spawn "$NAME" "$@"
     ;;
   stop)   do_stop "${1:-default}" ;;
+  stopall) do_stopall ;;
   status) do_status "${1:-default}" ;;
   logs)   do_logs "${1:-default}" ;;
   list)   do_list "$@" ;;

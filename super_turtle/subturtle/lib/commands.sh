@@ -697,7 +697,7 @@ do_stop() {
   if ! is_running "$name"; then
     echo "[subturtle:${name}] not running"
     finalize_stop_and_archive "$name" "not_running" "not_running"
-    exit 0
+    return 0
   fi
 
   local pid
@@ -720,6 +720,36 @@ do_stop() {
   kill -9 "$pid" 2>/dev/null || true
   echo "[subturtle:${name}] killed"
   finalize_stop_and_archive "$name" "killed" "killed"
+}
+
+do_stopall() {
+  if [[ ! -d "$SUBTURTLES_DIR" ]]; then
+    echo "No SubTurtles found."
+    return 0
+  fi
+
+  local -a names=()
+  local ws name
+  for ws in "$SUBTURTLES_DIR"/*/; do
+    [[ -d "$ws" ]] || continue
+    name="$(basename "$ws")"
+    [[ "$name" == ".archive" ]] && continue
+    names+=("$name")
+  done
+
+  if (( ${#names[@]} == 0 )); then
+    echo "No SubTurtles found."
+    return 0
+  fi
+
+  local had_error=0
+  for name in "${names[@]}"; do
+    if ! do_stop "$name"; then
+      had_error=1
+    fi
+  done
+
+  return "$had_error"
 }
 
 do_status() {

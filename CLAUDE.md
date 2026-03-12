@@ -178,6 +178,14 @@ bun --eval 'import { addJob } from "./super_turtle/claude-telegram-bot/src/cron.
 - Add managed `/teleport` target resolution
 - Add hosted provider setup flow and basic operator/admin tooling
 
+## Manual Teleport Status
+
+- Manual operator-run teleport is implemented via `super_turtle/scripts/teleport-manual.sh`
+- The validated direction is local macOS repo -> remote Linux VM over SSH
+- Successful cutover keeps the same Telegram bot identity and resumes via semantic handoff on the next turn
+- Reverse teleport back to local is not automated yet; current operator flow is: stop remote bot, ensure work is committed and pushed, `git pull --ff-only` locally, then start the local bot
+- Remote stop/restart steps and auth notes live in `super_turtle/docs/MANUAL_TELEPORT_RUNBOOK.md`
+
 ## Backlog
 - [ ] Write the production-ready hosted auth + provisioning PRD, including CLI browser OAuth and post-login VM lifecycle <- current
 - [ ] Decide billing semantics: always-on VM vs suspend-on-idle
