@@ -124,6 +124,17 @@ const server = http.createServer((req, res) => {
         }));
         return;
       }
+      if (loginStartMode === "invalid-content-type") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: "USER-123",
+          verification_uri: `${requestOrigin}/verify`,
+          verification_uri_complete: `${requestOrigin}/verify?code=USER-123`,
+          interval_ms: 10,
+        }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         device_code: "dev-code-123",
@@ -160,6 +171,15 @@ const server = http.createServer((req, res) => {
       if (loginPollMode === "missing-access-token") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
+          refresh_token: "refresh-def",
+          expires_at: "2000-03-12T10:00:00Z",
+        }));
+        return;
+      }
+      if (loginPollMode === "invalid-content-type") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end(JSON.stringify({
+          access_token: "expired-access",
           refresh_token: "refresh-def",
           expires_at: "2000-03-12T10:00:00Z",
         }));
@@ -203,6 +223,15 @@ const server = http.createServer((req, res) => {
       if (refreshMode === "http-401") {
         res.writeHead(401, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "refresh token revoked" }));
+        return;
+      }
+      if (refreshMode === "invalid-content-type") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end(JSON.stringify({
+          access_token: "access-abc",
+          refresh_token: "refresh-ghi",
+          expires_at: "2999-03-12T10:00:00Z",
+        }));
         return;
       }
       if (refreshMode === "missing-access-token") {
@@ -270,6 +299,15 @@ const server = http.createServer((req, res) => {
         }));
         return;
       }
+      if (sessionMode === "invalid-content-type") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end(JSON.stringify({
+          user: { id: "user_123", email: "user@example.com" },
+          workspace: { slug: "acme" },
+          entitlement: { plan: "managed", state: "active" },
+        }));
+        return;
+      }
       if (sessionMode === "oversized-response") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -307,6 +345,22 @@ const server = http.createServer((req, res) => {
       if (statusMode === "http-503") {
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "service unavailable" }));
+        return;
+      }
+      if (statusMode === "invalid-content-type") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end(JSON.stringify({
+          instance: {
+            id: "inst_123",
+            state: "provisioning",
+            region: "us-central1",
+            hostname: "managed-123.internal",
+          },
+          provisioning_job: {
+            state: "running",
+            updated_at: "2026-03-12T09:59:00Z",
+          },
+        }));
         return;
       }
       if (statusMode === "invalid-provisioning-updated-at") {
@@ -434,6 +488,15 @@ server.listen(0, "127.0.0.1", async () => {
       !fs.existsSync(sessionPath),
       "expected oversized login-start responses to avoid writing a session file"
     );
+    loginStartMode = "invalid-content-type";
+    const invalidLoginStartContentType = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginStartContentType.code, 1);
+    assert.match(invalidLoginStartContentType.stderr, /unsupported content-type/i);
+    assert.match(invalidLoginStartContentType.stderr, /application\/json/i);
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected non-JSON login-start responses to avoid writing a session file"
+    );
     loginStartMode = "redirect";
     const redirectedLoginStart = await runCli(["login", "--no-browser"], env);
     assert.strictEqual(redirectedLoginStart.code, 1);
@@ -463,6 +526,19 @@ server.listen(0, "127.0.0.1", async () => {
     assert.ok(
       !fs.existsSync(sessionPath),
       "expected malformed login completion snapshot fields to avoid writing a session file"
+    );
+    loginPollMode = "normal";
+    pollCount = 0;
+
+    loginPollMode = "invalid-content-type";
+    pollCount = 0;
+    const invalidLoginPollContentType = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginPollContentType.code, 1);
+    assert.match(invalidLoginPollContentType.stderr, /unsupported content-type/i);
+    assert.match(invalidLoginPollContentType.stderr, /application\/json/i);
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected non-JSON login-poll responses to avoid writing a session file"
     );
     loginPollMode = "normal";
     pollCount = 0;
@@ -1041,6 +1117,81 @@ server.listen(0, "127.0.0.1", async () => {
     assert.match(revokedRefreshWhoami.stderr, /superturtle login/i);
     assert.ok(!fs.existsSync(sessionPath), "expected revoked refresh token to clear the local session");
     refreshMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "expired-access",
+        refresh_token: "refresh-def",
+        expires_at: "2000-03-12T10:00:00Z",
+        control_plane: baseUrl,
+      }, null, 2)}\n`
+    );
+    refreshMode = "invalid-content-type";
+    const invalidRefreshContentTypeWhoami = await runCli(["whoami"], env);
+    assert.strictEqual(invalidRefreshContentTypeWhoami.code, 1);
+    assert.match(invalidRefreshContentTypeWhoami.stderr, /unsupported content-type/i);
+    assert.match(invalidRefreshContentTypeWhoami.stderr, /application\/json/i);
+    const invalidRefreshContentTypeSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.strictEqual(
+      invalidRefreshContentTypeSession.access_token,
+      "expired-access",
+      "expected non-JSON refresh responses to leave the previous local session untouched"
+    );
+    refreshMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        user: { id: "user_123", email: "user@example.com" },
+      }, null, 2)}\n`
+    );
+    sessionMode = "invalid-content-type";
+    const invalidWhoamiContentType = await runCli(["whoami"], env);
+    assert.strictEqual(invalidWhoamiContentType.code, 1);
+    assert.match(invalidWhoamiContentType.stderr, /unsupported content-type/i);
+    assert.match(invalidWhoamiContentType.stderr, /application\/json/i);
+    const invalidWhoamiContentTypeSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(invalidWhoamiContentTypeSession.user, {
+      id: "user_123",
+      email: "user@example.com",
+    });
+    sessionMode = "normal";
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({
+        access_token: "access-abc",
+        refresh_token: "refresh-ghi",
+        expires_at: "2999-03-12T10:00:00Z",
+        control_plane: baseUrl,
+        instance: {
+          id: "inst_123",
+          state: "running",
+          region: "us-central1",
+          hostname: "managed-123.internal",
+        },
+        provisioning_job: {
+          state: "succeeded",
+          updated_at: "2026-03-12T10:10:00Z",
+        },
+      }, null, 2)}\n`
+    );
+    statusMode = "invalid-content-type";
+    const invalidCloudStatusContentType = await runCli(["cloud", "status"], env);
+    assert.strictEqual(invalidCloudStatusContentType.code, 1);
+    assert.match(invalidCloudStatusContentType.stderr, /unsupported content-type/i);
+    assert.match(invalidCloudStatusContentType.stderr, /application\/json/i);
+    const invalidCloudStatusContentTypeSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
+    assert.deepStrictEqual(invalidCloudStatusContentTypeSession.provisioning_job, {
+      state: "succeeded",
+      updated_at: "2026-03-12T10:10:00Z",
+    });
+    statusMode = "normal";
 
     fs.writeFileSync(
       sessionPath,

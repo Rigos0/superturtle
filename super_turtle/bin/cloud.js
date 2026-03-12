@@ -787,6 +787,15 @@ function invalidateSession(env = process.env, message = "is no longer valid") {
   return error;
 }
 
+function isJsonContentType(value) {
+  if (!isNonEmptyString(value)) {
+    return false;
+  }
+
+  const normalized = value.split(";", 1)[0].trim().toLowerCase();
+  return normalized === "application/json" || normalized.endsWith("+json");
+}
+
 async function requestJson(url, options = {}, env = process.env) {
   const timeoutMs = getRequestTimeoutMs(env);
   const maxBytes = getResponseMaxBytes(env);
@@ -816,6 +825,13 @@ async function requestJson(url, options = {}, env = process.env) {
       if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
         throw new Error(`Response from ${url} exceeded configured size limit of ${maxBytes} bytes.`);
       }
+    }
+
+    const contentType = response.headers.get("content-type");
+    if (!isJsonContentType(contentType)) {
+      throw new Error(
+        `Response from ${url} returned unsupported content-type ${contentType || "(missing)"}. Expected application/json.`
+      );
     }
 
     const text = await readResponseText(response, url, maxBytes);
