@@ -857,7 +857,7 @@ async function pollLogin(started, options = {}, env = process.env) {
   const baseUrl = getControlPlaneBaseUrl(env);
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const startedAt = Date.now();
-  const intervalMs = Math.max(
+  let intervalMs = Math.max(
     1000,
     Number(started.interval_ms || options.intervalMs || DEFAULT_POLL_INTERVAL_MS)
   );
@@ -881,6 +881,23 @@ async function pollLogin(started, options = {}, env = process.env) {
       const status = error && typeof error === "object" ? error.status : undefined;
       const message = error instanceof Error ? error.message : String(error);
       if (status === 428 || status === 404 || /authorization pending/i.test(message)) {
+        continue;
+      }
+      if (status === 429 || /slow[_ ]?down/i.test(message)) {
+        const payloadIntervalMs =
+          error &&
+          typeof error === "object" &&
+          error.payload &&
+          typeof error.payload === "object" &&
+          !Array.isArray(error.payload)
+            ? Number(error.payload.interval_ms)
+            : Number.NaN;
+        intervalMs = Math.max(
+          intervalMs + 1000,
+          Number.isFinite(payloadIntervalMs) && payloadIntervalMs > 0
+            ? payloadIntervalMs
+            : 0
+        );
         continue;
       }
       throw error;

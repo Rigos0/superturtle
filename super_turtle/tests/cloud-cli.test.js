@@ -116,6 +116,11 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: "authorization pending" }));
         return;
       }
+      if (loginPollMode === "slow-down" && pollCount === 2) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "slow_down", interval_ms: 25 }));
+        return;
+      }
       if (loginPollMode === "missing-access-token") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -361,6 +366,16 @@ server.listen(0, "127.0.0.1", async () => {
       !fs.existsSync(sessionPath),
       "expected malformed login completion snapshot fields to avoid writing a session file"
     );
+    loginPollMode = "normal";
+    pollCount = 0;
+
+    loginPollMode = "slow-down";
+    pollCount = 0;
+    const slowDownLogin = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(slowDownLogin.code, 0, slowDownLogin.stderr);
+    assert.match(slowDownLogin.stdout, /Logged in\./);
+    assert.strictEqual(pollCount, 3, "expected login polling to continue after a slow_down response");
+    fs.rmSync(sessionPath, { force: true });
     loginPollMode = "normal";
     pollCount = 0;
 
