@@ -381,10 +381,28 @@ server.listen(0, "127.0.0.1", async () => {
       "expected invalid configured control plane URL to avoid writing a session file"
     );
 
+    const legacyPredictableTempPath = `${sessionPath}.${process.pid}.tmp`;
+    const legacyPredictableTempTargetPath = resolve(tmpDir, "legacy-predictable-temp-target.json");
+    fs.writeFileSync(
+      legacyPredictableTempTargetPath,
+      `${JSON.stringify({ preserved: true }, null, 2)}\n`
+    );
+    fs.symlinkSync(legacyPredictableTempTargetPath, legacyPredictableTempPath);
+
     const login = await runCli(["login", "--no-browser"], env);
     assert.strictEqual(login.code, 0, login.stderr);
     assert.match(login.stdout, /Logged in\./);
     assert.ok(fs.existsSync(sessionPath), "expected cloud session file to exist");
+    assert.deepStrictEqual(
+      JSON.parse(fs.readFileSync(legacyPredictableTempTargetPath, "utf-8")),
+      { preserved: true },
+      "expected login writes to avoid the legacy predictable temp-path symlink target"
+    );
+    assert.ok(
+      fs.lstatSync(legacyPredictableTempPath).isSymbolicLink(),
+      "expected the legacy predictable temp-path symlink to remain untouched"
+    );
+    fs.rmSync(legacyPredictableTempPath, { force: true });
 
     const savedSession = JSON.parse(fs.readFileSync(sessionPath, "utf-8"));
     assert.strictEqual(savedSession.schema_version, 1);

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const os = require("os");
+const crypto = require("crypto");
 const { resolve, dirname, parse, sep } = require("path");
 const { spawnSync } = require("child_process");
 
@@ -621,10 +622,44 @@ function writeSession(session, env = process.env) {
     schema_version: CLOUD_SESSION_SCHEMA_VERSION,
     ...session,
   };
-  const tempPath = `${path}.${process.pid}.tmp`;
-  fs.writeFileSync(tempPath, `${JSON.stringify(normalized, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(tempPath, path);
-  fs.chmodSync(path, 0o600);
+  const serialized = `${JSON.stringify(normalized, null, 2)}\n`;
+  let tempPath = null;
+  let tempFd = null;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = crypto.randomBytes(8).toString("hex");
+    const candidatePath = `${path}.${process.pid}.${suffix}.tmp`;
+    try {
+      tempFd = fs.openSync(candidatePath, "wx", 0o600);
+      tempPath = candidatePath;
+      break;
+    } catch (error) {
+      if (error && typeof error === "object" && error.code === "EEXIST") {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (tempFd == null || !tempPath) {
+    throw new Error(`Failed to create a temporary hosted session file next to ${path}.`);
+  }
+
+  try {
+    fs.writeFileSync(tempFd, serialized, { encoding: "utf-8" });
+    fs.closeSync(tempFd);
+    tempFd = null;
+    fs.renameSync(tempPath, path);
+    fs.chmodSync(path, 0o600);
+  } catch (error) {
+    if (tempFd != null) {
+      fs.closeSync(tempFd);
+    }
+    if (tempPath) {
+      fs.rmSync(tempPath, { force: true });
+    }
+    throw error;
+  }
   return path;
 }
 
