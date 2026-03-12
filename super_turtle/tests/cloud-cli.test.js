@@ -103,6 +103,38 @@ assert.throws(
   "expected hosted login verification_uri_complete links with URL fragments to fail closed"
 );
 
+assert.throws(
+  () =>
+    validateLoginStartResponse(
+      {
+        device_code: "dev-code-user-code-control",
+        user_code: "USER-\u001b[31m123",
+        verification_uri: "https://api.superturtle.dev/verify",
+        interval_ms: 10,
+      },
+      "Hosted login start",
+      "https://api.superturtle.dev"
+    ),
+  /Hosted login start returned an invalid user_code/i,
+  "expected hosted login user codes with terminal control bytes to fail closed"
+);
+
+assert.throws(
+  () =>
+    validateLoginStartResponse(
+      {
+        device_code: "dev-code-user-code-trim",
+        user_code: " USER-123 ",
+        verification_uri: "https://api.superturtle.dev/verify",
+        interval_ms: 10,
+      },
+      "Hosted login start",
+      "https://api.superturtle.dev"
+    ),
+  /Hosted login start returned an invalid user_code/i,
+  "expected hosted login user codes with leading or trailing whitespace to fail closed"
+);
+
 function runCli(args, env) {
   return new Promise((resolveRun, rejectRun) => {
     const child = spawn("node", [CLI_PATH, ...args], {
@@ -211,6 +243,28 @@ const server = http.createServer((req, res) => {
           user_code: "USER-123",
           verification_uri: "https://example.com/verify",
           verification_uri_complete: "https://example.com/verify?code=USER-123",
+          interval_ms: 10,
+        }));
+        return;
+      }
+      if (loginStartMode === "invalid-user-code-control") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: "USER-\u001b[31m123",
+          verification_uri: `${requestOrigin}/verify`,
+          verification_uri_complete: `${requestOrigin}/verify?code=USER-123`,
+          interval_ms: 10,
+        }));
+        return;
+      }
+      if (loginStartMode === "invalid-user-code-trim") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          device_code: "dev-code-123",
+          user_code: " USER-123 ",
+          verification_uri: `${requestOrigin}/verify`,
+          verification_uri_complete: `${requestOrigin}/verify?code=USER-123`,
           interval_ms: 10,
         }));
         return;
@@ -624,6 +678,30 @@ server.listen(0, "127.0.0.1", async () => {
     assert.ok(
       !fs.existsSync(sessionPath),
       "expected mismatched login verification origin to avoid writing a session file"
+    );
+
+    loginStartMode = "invalid-user-code-control";
+    const invalidLoginStartUserCodeControl = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginStartUserCodeControl.code, 1);
+    assert.match(
+      invalidLoginStartUserCodeControl.stderr,
+      /Hosted login start returned an invalid user_code/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected login user_code control bytes to be rejected before writing a session file"
+    );
+
+    loginStartMode = "invalid-user-code-trim";
+    const invalidLoginStartUserCodeTrim = await runCli(["login", "--no-browser"], env);
+    assert.strictEqual(invalidLoginStartUserCodeTrim.code, 1);
+    assert.match(
+      invalidLoginStartUserCodeTrim.stderr,
+      /Hosted login start returned an invalid user_code/i
+    );
+    assert.ok(
+      !fs.existsSync(sessionPath),
+      "expected login user_code surrounding whitespace to be rejected before writing a session file"
     );
 
     loginStartMode = "oversized-response";

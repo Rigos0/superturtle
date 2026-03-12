@@ -12,6 +12,7 @@ const DEFAULT_BROWSER_OPEN_TIMEOUT_MS = 5 * 1000;
 const DEFAULT_RESPONSE_MAX_BYTES = 256 * 1024;
 const DEFAULT_SESSION_FILE_MAX_BYTES = 256 * 1024;
 const MAX_OPAQUE_TOKEN_BYTES = 4096;
+const MAX_USER_CODE_BYTES = 256;
 const SESSION_EXPIRY_SKEW_MS = 30 * 1000;
 const CLOUD_SESSION_SCHEMA_VERSION = 1;
 
@@ -422,6 +423,16 @@ function isOpaqueTokenString(value) {
   );
 }
 
+function isDisplayCodeString(value) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_USER_CODE_BYTES &&
+    value.trim() === value &&
+    /^[\x20-\x7E]+$/.test(value)
+  );
+}
+
 function validateTimestamp(value, fieldName, context) {
   if (value == null) {
     return null;
@@ -557,12 +568,20 @@ function validateLoginStartResponse(payload, context, controlPlaneBaseUrl = null
     }
   }
 
+  let userCode = null;
+  if (Object.prototype.hasOwnProperty.call(payload, "user_code") && payload.user_code != null) {
+    if (!isDisplayCodeString(payload.user_code)) {
+      throw new Error(`${context} returned an invalid user_code.`);
+    }
+    userCode = payload.user_code;
+  }
+
   return {
     ...payload,
     device_code: payload.device_code,
     verification_uri: verificationUri,
     verification_uri_complete: verificationUriComplete,
-    user_code: isNonEmptyString(payload.user_code) ? payload.user_code : null,
+    user_code: userCode,
     interval_ms: intervalMs,
   };
 }
