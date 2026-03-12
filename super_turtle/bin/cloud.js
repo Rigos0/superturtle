@@ -1063,8 +1063,29 @@ async function requestJson(url, options = {}, env = process.env) {
     }
     const contentLength = response.headers.get("content-length");
     if (isNonEmptyString(contentLength)) {
-      const parsedLength = Number(contentLength);
-      if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+      const trimmedContentLength = contentLength.trim();
+      if (!/^\d+$/.test(trimmedContentLength)) {
+        await cancelResponseBody(response);
+        const error = new Error(
+          `Response from ${url} returned invalid content-length ${contentLength}.`
+        );
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.contentLength = contentLength;
+        throw error;
+      }
+      const parsedLength = Number(trimmedContentLength);
+      if (!Number.isSafeInteger(parsedLength)) {
+        await cancelResponseBody(response);
+        const error = new Error(
+          `Response from ${url} returned invalid content-length ${contentLength}.`
+        );
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.contentLength = contentLength;
+        throw error;
+      }
+      if (parsedLength > maxBytes) {
         await cancelResponseBody(response);
         throw new Error(`Response from ${url} exceeded configured size limit of ${maxBytes} bytes.`);
       }

@@ -108,6 +108,33 @@ function createResponse({ status, headers, ok = status >= 200 && status < 300, c
       1,
       "expected oversized control-plane responses to cancel the unread response body before failing closed"
     );
+
+    const invalidLengthCancel = { count: 0 };
+    global.fetch = async () =>
+      createResponse({
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "content-length": "64, 32",
+        },
+        cancel: invalidLengthCancel,
+      });
+    await assert.rejects(
+      () =>
+        fetchWhoAmI(
+          {
+            access_token: "access-abc",
+            control_plane: "https://api.superturtle.dev",
+          },
+          env
+        ),
+      /invalid content-length/i
+    );
+    assert.strictEqual(
+      invalidLengthCancel.count,
+      1,
+      "expected malformed content-length headers to cancel the unread response body before failing closed"
+    );
   } finally {
     global.fetch = originalFetch;
   }
