@@ -10,6 +10,7 @@ const {
   createRuntime,
   handleHttpRequest,
   readState,
+  requestSession,
   requestInstanceResume,
   runNextProvisioningJob,
   writeState,
@@ -21,6 +22,15 @@ function createSeedState() {
     id: "user_123",
     email: "user@example.com",
     created_at: "2026-03-12T10:00:00Z",
+  });
+  state.identities.push({
+    id: "ident_123",
+    user_id: "user_123",
+    provider: "github",
+    provider_user_id: "github_123",
+    email: "user@example.com",
+    created_at: "2026-03-12T10:00:00Z",
+    last_used_at: null,
   });
   state.sessions.push({
     id: "sess_123",
@@ -71,6 +81,23 @@ async function run() {
       return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
     },
   });
+
+  const whoami = requestSession(runtime, "access_123");
+  assert.strictEqual(whoami.status, 200);
+  assert.strictEqual(whoami.data.user.email, "user@example.com");
+  assert.strictEqual(whoami.data.identities.length, 1);
+  assert.strictEqual(whoami.data.identities[0].provider, "github");
+  assert.strictEqual(whoami.data.session.id, "sess_123");
+  assert.strictEqual(whoami.data.session.last_authenticated_at, "2026-03-12T10:00:00Z");
+
+  const persistedAfterWhoAmI = readState(statePath);
+  assert.strictEqual(persistedAfterWhoAmI.sessions[0].last_authenticated_at, "2026-03-12T10:00:00Z");
+  assert.strictEqual(persistedAfterWhoAmI.identities[0].last_used_at, "2026-03-12T10:00:00Z");
+  assert.match(
+    JSON.stringify(persistedAfterWhoAmI.audit_log),
+    /session\.lookup/,
+    "expected session lookups to be written to the durable audit log"
+  );
 
   const created = requestInstanceResume(runtime, "access_123");
   assert.strictEqual(created.status, 200);
@@ -132,6 +159,17 @@ async function run() {
   const payload = await response.json();
   assert.strictEqual(payload.instance.state, "provisioning");
   assert.strictEqual(payload.provisioning_job.state, "queued");
+
+  const whoamiResponse = await fetch(`http://127.0.0.1:${address.port}/v1/cli/session`, {
+    headers: {
+      authorization: "Bearer access_123",
+    },
+  });
+  assert.strictEqual(whoamiResponse.status, 200);
+  const whoamiPayload = await whoamiResponse.json();
+  assert.strictEqual(whoamiPayload.user.email, "user@example.com");
+  assert.strictEqual(whoamiPayload.session.id, "sess_123");
+  assert.strictEqual(whoamiPayload.identities[0].provider, "github");
 
   server.close();
 }

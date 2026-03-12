@@ -5,6 +5,7 @@ const {
   assertManagedInstanceTransition,
   assertProvisioningJobTransition,
   validateCliCloudStatusResponse,
+  validateCliWhoAmIResponse,
 } = require("./cloud-control-plane-contract.js");
 
 const STATE_SCHEMA_VERSION = 1;
@@ -15,6 +16,7 @@ function createDefaultState() {
   return {
     schema_version: STATE_SCHEMA_VERSION,
     users: [],
+    identities: [],
     sessions: [],
     entitlements: [],
     managed_instances: [],
@@ -43,6 +45,7 @@ function ensureStateShape(state, statePath) {
 
   for (const field of [
     "users",
+    "identities",
     "sessions",
     "entitlements",
     "managed_instances",
@@ -127,6 +130,20 @@ function getUserSession(state, accessToken) {
   );
 }
 
+function getAuthenticatedSession(state, accessToken) {
+  return state.sessions.find(
+    (session) => session && session.access_token === accessToken && session.state === "active"
+  );
+}
+
+function getUser(state, userId) {
+  return state.users.find((user) => user && user.id === userId) || null;
+}
+
+function getIdentities(state, userId) {
+  return state.identities.filter((identity) => identity && identity.user_id === userId);
+}
+
 function getEntitlement(state, userId) {
   return state.entitlements.find((entitlement) => entitlement && entitlement.user_id === userId) || null;
 }
@@ -195,6 +212,51 @@ function buildCloudStatusPayload(state, instance) {
         }
       : null,
     audit_log: instance ? getRecentAuditLog(state, instance.id) : [],
+  });
+}
+
+function buildWhoAmIPayload(state, session) {
+  const user = getUser(state, session.user_id);
+  if (!user) {
+    throw new Error(`Session ${session.id} references missing user ${session.user_id}.`);
+  }
+
+  const entitlement = getEntitlement(state, session.user_id);
+  const identities = getIdentities(state, session.user_id).map((identity) => ({
+    id: identity.id,
+    provider: identity.provider,
+    provider_user_id: identity.provider_user_id,
+    email: identity.email || null,
+    created_at: identity.created_at || null,
+    last_used_at: identity.last_used_at || null,
+  }));
+
+  return validateCliWhoAmIResponse({
+    user: {
+      id: user.id,
+      email: user.email || null,
+      created_at: user.created_at || null,
+    },
+    workspace: null,
+    identities,
+    session: {
+      id: session.id,
+      state: session.state,
+      scopes: Array.isArray(session.scopes) ? session.scopes : [],
+      created_at: session.created_at || null,
+      expires_at: session.expires_at || null,
+      last_authenticated_at: session.last_authenticated_at || null,
+    },
+    entitlement: entitlement
+      ? {
+          plan: entitlement.plan,
+          state: entitlement.state,
+          subscription_id: entitlement.subscription_id || null,
+          current_period_end: entitlement.current_period_end || null,
+          cancel_at_period_end:
+            typeof entitlement.cancel_at_period_end === "boolean" ? entitlement.cancel_at_period_end : null,
+        }
+      : null,
   });
 }
 
@@ -325,6 +387,32 @@ function requestInstanceResume(runtime, accessToken) {
   return { status: 200, data: buildCloudStatusPayload(state, instance) };
 }
 
+function requestSession(runtime, accessToken) {
+  const state = readState(runtime.statePath);
+  const session = getAuthenticatedSession(state, accessToken);
+  if (!session) {
+    return { status: 401, data: { error: "invalid_session" } };
+  }
+
+  const timestamp = runtime.now();
+  session.last_authenticated_at = timestamp;
+  const identities = getIdentities(state, session.user_id);
+  for (const identity of identities) {
+    identity.last_used_at = timestamp;
+  }
+
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: session.user_id,
+    action: "session.lookup",
+    target_type: "session",
+    target_id: session.id,
+    metadata: { surface: "cli_session" },
+  });
+  writeState(runtime.statePath, state);
+  return { status: 200, data: buildWhoAmIPayload(state, session) };
+}
+
 async function runNextProvisioningJob(runtime) {
   const state = readState(runtime.statePath);
   const job = state.provisioning_jobs.find((candidate) => candidate && candidate.state === "queued");
@@ -431,6 +519,23 @@ function extractBearerToken(request) {
 }
 
 async function handleHttpRequest(runtime, request) {
+  if (request.method === "GET" && request.url === "/v1/cli/session") {
+    const accessToken = extractBearerToken(request);
+    if (!accessToken) {
+      return {
+        status: 401,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: "missing_bearer_token" }),
+      };
+    }
+    const result = requestSession(runtime, accessToken);
+    return {
+      status: result.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      body: JSON.stringify(result.data),
+    };
+  }
+
   if (request.method === "POST" && request.url === "/v1/cli/cloud/instance/resume") {
     const accessToken = extractBearerToken(request);
     if (!accessToken) {
@@ -477,6 +582,7 @@ module.exports = {
   createRuntime,
   handleHttpRequest,
   readState,
+  requestSession,
   requestInstanceResume,
   runNextProvisioningJob,
   writeState,
