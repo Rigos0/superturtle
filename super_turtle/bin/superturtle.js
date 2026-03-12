@@ -861,15 +861,19 @@ async function login() {
 
   console.log("Waiting for login completion...");
   const completed = await pollLogin(started);
+  const createdAt = new Date().toISOString();
   const session = {
     access_token: completed.access_token,
     refresh_token: completed.refresh_token || null,
     expires_at: completed.expires_at || null,
     user: completed.user || null,
     workspace: completed.workspace || null,
+    entitlement: completed.entitlement || null,
     instance: completed.instance || null,
+    provisioning_job: completed.provisioning_job || null,
     control_plane: getControlPlaneBaseUrl(),
-    created_at: new Date().toISOString(),
+    created_at: createdAt,
+    last_sync_at: createdAt,
   };
   const path = writeSession(session);
   console.log(`Logged in. Session saved to ${path}`);

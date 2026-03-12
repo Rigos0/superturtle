@@ -68,7 +68,12 @@ const server = http.createServer((req, res) => {
         expires_at: "2000-03-12T10:00:00Z",
         user: { id: "user_123", email: "user@example.com" },
         workspace: { slug: "acme" },
+        entitlement: { plan: "managed", state: "active" },
         instance: { id: "inst_123" },
+        provisioning_job: {
+          state: "queued",
+          updated_at: "2026-03-12T09:58:00Z",
+        },
       }));
       return;
     }
@@ -147,8 +152,33 @@ server.listen(0, "127.0.0.1", async () => {
     assert.strictEqual(savedSession.schema_version, 1);
     assert.strictEqual(savedSession.control_plane, baseUrl);
     assert.strictEqual(savedSession.access_token, "expired-access");
+    assert.deepStrictEqual(savedSession.entitlement, { plan: "managed", state: "active" });
+    assert.deepStrictEqual(savedSession.provisioning_job, {
+      state: "queued",
+      updated_at: "2026-03-12T09:58:00Z",
+    });
+    assert.ok(savedSession.last_sync_at, "expected login to persist an initial sync timestamp");
     const mode = fs.statSync(sessionPath).mode & 0o777;
     assert.strictEqual(mode, 0o600);
+
+    fs.writeFileSync(
+      sessionPath,
+      `${JSON.stringify({ ...savedSession, control_plane: "http://127.0.0.1:1" }, null, 2)}\n`
+    );
+
+    const cachedWhoamiFromLogin = await runCli(["whoami"], env);
+    assert.strictEqual(cachedWhoamiFromLogin.code, 0, cachedWhoamiFromLogin.stderr);
+    assert.match(cachedWhoamiFromLogin.stderr, /using cached identity snapshot/i);
+    assert.match(cachedWhoamiFromLogin.stdout, /User: user@example.com/);
+    assert.match(cachedWhoamiFromLogin.stdout, /Plan: managed/);
+
+    const cachedStatusFromLogin = await runCli(["cloud", "status"], env);
+    assert.strictEqual(cachedStatusFromLogin.code, 0, cachedStatusFromLogin.stderr);
+    assert.match(cachedStatusFromLogin.stderr, /using cached cloud status snapshot/i);
+    assert.match(cachedStatusFromLogin.stdout, /Instance: inst_123/);
+    assert.match(cachedStatusFromLogin.stdout, /Provisioning: queued/);
+
+    fs.writeFileSync(sessionPath, `${JSON.stringify(savedSession, null, 2)}\n`);
 
     const whoami = await runCli(["whoami"], postLoginEnv);
     assert.strictEqual(whoami.code, 0, whoami.stderr);
