@@ -1,0 +1,43 @@
+# Current task
+
+Continue the hosted auth foundation by wiring the new `superturtle login` / `whoami` / `cloud status` CLI contract into real control-plane endpoints, browser callback completion, and durable hosted session semantics.
+
+# End goal with specs
+
+- A user can sign in on the site with GitHub or Google
+- A user can pay for managed hosting with Stripe
+- A paid user gets one managed Linux VM on GCP infrastructure
+- A local SuperTurtle install can link to the hosted account with a browser OAuth login flow
+- `/teleport` can target the managed VM without manual SSH host setup
+- Teleport preserves the existing semantic handoff model and same Telegram bot identity
+- The control plane tracks users, subscriptions, managed instances, cloud links, and teleport sessions
+- Hosted provider credentials remain user-scoped and are never shared between users
+- The hosted product is production-ready rather than demo-only: durable state, idempotent jobs, auditable actions, and clean cutover boundaries for real Stripe/GCP credentials
+- Infra posture is concrete in v1: one GCP project, one primary region, one Linux VM template/image, one managed VM per paid account
+- Missing live Stripe or GCP accounts are implementation constraints, not excuses for fake architecture: build production-shaped adapters, state machines, APIs, and cutover hooks now
+- Implementation order matters: auth and CLI login first, then managed-instance provisioning, then entitlement/billing integration, then `/teleport` target resolution
+
+# Roadmap (Completed)
+- Existing Telegram bot runtime, Claude/Codex routing, MCP tools, queueing, and session management are shipped
+- Manual teleport exists already and remains the baseline semantic handoff path to reuse
+- Runtime isolation for logs, temp dirs, IPC dirs, and tmux sessions is already in place
+- Current operator ergonomics exist: `/status`, `/debug`, `/looplogs`, `superturtle status`, and `superturtle logs`
+- Managed teleport product framing, constraints, and execution priorities have been written into the root `CLAUDE.md`
+
+# Roadmap (Upcoming)
+- Build hosted auth, CLI browser login, device/callback completion, and control-plane identity/session foundations
+- Build GCP managed-instance provisioning, bootstrap, machine registration, and cloud status paths
+- Build billing and entitlement enforcement behind production-shaped interfaces without coupling core auth/provisioning to Stripe
+- Extend `/teleport` to resolve managed targets from the control plane and reuse the current semantic handoff path
+- Add provider setup, admin tooling, telemetry, and production hardening
+
+# Backlog
+- [ ] Design and implement the hosted auth foundation and `superturtle login` browser OAuth flow, including browser launch, callback completion, local session storage, and `whoami`/cloud status semantics <- current
+  Progress: the CLI now has production-shaped `login`, `whoami`, `cloud status`, and `logout` commands backed by a durable local cloud session file and stubbed control-plane login/session/status APIs.
+- [ ] Define and implement the control-plane schema, APIs, and durable state transitions for users, identities, sessions, entitlements, managed instances, provisioning jobs, and audit log
+- [ ] Build GCP managed VM provisioning, bootstrap, registration, health reporting, and idempotent reprovision behavior for one VM per paid account
+- [ ] Add Stripe checkout, subscriptions, webhook processing, and entitlement enforcement behind production-shaped adapters and verified webhook handling
+- [ ] Extend `/teleport` to resolve and use SuperTurtle-managed VM targets from the control plane
+- [ ] Add hosted Claude auth setup and validation flow with user-scoped credential boundaries
+- [ ] Add basic admin and support tooling for reprovision, suspend, instance inspection, and teleport audit
+- [ ] Add production telemetry for provisioning failures, login failures, teleport failures, and unhealthy VMs

@@ -16,6 +16,18 @@ const { execSync, spawnSync } = require("child_process");
 const { resolve, dirname, basename } = require("path");
 const fs = require("fs");
 const readline = require("readline");
+const {
+  clearSession,
+  fetchCloudStatus,
+  fetchWhoAmI,
+  getControlPlaneBaseUrl,
+  getSessionPath,
+  openBrowser,
+  pollLogin,
+  readSession,
+  startLogin,
+  writeSession,
+} = require("./cloud");
 
 const PACKAGE_ROOT = resolve(__dirname, "..");
 const BOT_DIR = resolve(PACKAGE_ROOT, "claude-telegram-bot");
@@ -793,6 +805,112 @@ function logs() {
   exitFromSpawn(proc, "tail");
 }
 
+function parseCloudArgs(args) {
+  const options = {
+    openBrowser: true,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--no-browser") {
+      options.openBrowser = false;
+      continue;
+    }
+    if (arg === "--browser") {
+      options.openBrowser = true;
+      continue;
+    }
+    throw new Error(`Unknown cloud argument: ${arg}`);
+  }
+
+  return options;
+}
+
+async function login() {
+  let options;
+  try {
+    options = parseCloudArgs(process.argv.slice(3));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error("Usage: superturtle login [--browser|--no-browser]");
+    process.exit(1);
+  }
+
+  const started = await startLogin();
+  const verificationUrl = started.verification_uri_complete || started.verification_uri;
+  if (!verificationUrl || !started.device_code) {
+    throw new Error("Control plane login response is missing verification URL or device code.");
+  }
+
+  console.log(`Control plane: ${getControlPlaneBaseUrl()}`);
+  console.log(`Session file: ${getSessionPath()}`);
+  console.log(`Open this URL to sign in: ${verificationUrl}`);
+  if (started.user_code) {
+    console.log(`Verification code: ${started.user_code}`);
+  }
+
+  if (options.openBrowser) {
+    const opened = openBrowser(verificationUrl);
+    console.log(opened ? "Browser opened." : "Browser open failed; continue in any browser.");
+  }
+
+  console.log("Waiting for login completion...");
+  const completed = await pollLogin(started);
+  const session = {
+    access_token: completed.access_token,
+    refresh_token: completed.refresh_token || null,
+    expires_at: completed.expires_at || null,
+    user: completed.user || null,
+    workspace: completed.workspace || null,
+    instance: completed.instance || null,
+    control_plane: getControlPlaneBaseUrl(),
+    created_at: new Date().toISOString(),
+  };
+  const path = writeSession(session);
+  console.log(`Logged in. Session saved to ${path}`);
+  if (session.user?.email) {
+    console.log(`Signed in as ${session.user.email}`);
+  }
+}
+
+async function whoami() {
+  const session = readSession();
+  if (!session?.access_token) {
+    console.error(`Not logged in. Run 'superturtle login'. Expected session file at ${getSessionPath()}`);
+    process.exit(1);
+  }
+
+  const identity = await fetchWhoAmI(session);
+  console.log(`Control plane: ${getControlPlaneBaseUrl()}`);
+  if (identity.user?.email) console.log(`User: ${identity.user.email}`);
+  if (identity.user?.id) console.log(`User ID: ${identity.user.id}`);
+  if (identity.workspace?.slug) console.log(`Workspace: ${identity.workspace.slug}`);
+  if (identity.entitlement?.plan) console.log(`Plan: ${identity.entitlement.plan}`);
+  if (identity.entitlement?.state) console.log(`Entitlement: ${identity.entitlement.state}`);
+}
+
+async function cloudStatus() {
+  const session = readSession();
+  if (!session?.access_token) {
+    console.error(`Not logged in. Run 'superturtle login'. Expected session file at ${getSessionPath()}`);
+    process.exit(1);
+  }
+
+  const status = await fetchCloudStatus(session);
+  console.log(`Control plane: ${getControlPlaneBaseUrl()}`);
+  if (status.instance?.id) console.log(`Instance: ${status.instance.id}`);
+  if (status.instance?.state) console.log(`State: ${status.instance.state}`);
+  if (status.instance?.region) console.log(`Region: ${status.instance.region}`);
+  if (status.instance?.hostname) console.log(`Hostname: ${status.instance.hostname}`);
+  if (status.provisioning_job?.state) console.log(`Provisioning: ${status.provisioning_job.state}`);
+  if (status.provisioning_job?.updated_at) console.log(`Provisioning updated: ${status.provisioning_job.updated_at}`);
+}
+
+function logout() {
+  const path = clearSession();
+  console.log(`Removed local cloud session at ${path}`);
+}
+
 // Dispatch command
 const command = process.argv[2];
 
@@ -815,6 +933,23 @@ switch (command) {
   case "logs":
     logs();
     break;
+  case "login":
+    login().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+    break;
+  case "whoami":
+    whoami().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+    break;
+  case "cloud":
+    if (process.argv[3] === "status") {
+      cloudStatus().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+      break;
+    }
+    console.error("Usage: superturtle cloud status");
+    process.exit(1);
+    break;
+  case "logout":
+    logout();
+    break;
   case "--version":
   case "-v":
     try {
@@ -831,6 +966,10 @@ Usage: superturtle <command>
 
 Commands:
   init      Set up superturtle in the current project
+  login     Sign in to the hosted SuperTurtle control plane
+  whoami    Show the current hosted account identity
+  cloud     Hosted cloud commands (status)
+  logout    Remove the local hosted account session
   start     Launch the bot
   stop      Stop the bot and all SubTurtles
   status    Show bot and SubTurtle status
@@ -848,7 +987,12 @@ Options:
 Logs:
   superturtle logs loop
   superturtle logs pino --pretty
-  superturtle logs audit --no-follow -n 200`);
+  superturtle logs audit --no-follow -n 200
+
+Cloud:
+  superturtle login
+  superturtle whoami
+  superturtle cloud status`);
     if (command && command !== "help" && command !== "--help" && command !== "-h") {
       process.exit(1);
     }
