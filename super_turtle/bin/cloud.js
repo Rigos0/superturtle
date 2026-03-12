@@ -739,6 +739,7 @@ async function requestJson(url, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.payload = data;
+    error.retryAfterMs = getRetryAfterMs(response.headers.get("retry-after"));
     throw error;
   }
   return data;
@@ -746,6 +747,25 @@ async function requestJson(url, options = {}) {
 
 function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
+
+function getRetryAfterMs(value) {
+  if (!isNonEmptyString(value)) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+  }
+
+  const retryAt = Date.parse(trimmed);
+  if (!Number.isFinite(retryAt)) {
+    return null;
+  }
+
+  return Math.max(0, retryAt - Date.now());
 }
 
 function openBrowser(url) {
@@ -924,8 +944,13 @@ async function pollLogin(started, options = {}, env = process.env) {
           !Array.isArray(error.payload)
             ? Number(error.payload.interval_ms)
             : Number.NaN;
+        const retryAfterMs =
+          error && typeof error === "object" && Number.isFinite(error.retryAfterMs)
+            ? error.retryAfterMs
+            : 0;
         intervalMs = Math.max(
           intervalMs + 1000,
+          retryAfterMs,
           Number.isFinite(payloadIntervalMs) && payloadIntervalMs > 0
             ? payloadIntervalMs
             : 0
