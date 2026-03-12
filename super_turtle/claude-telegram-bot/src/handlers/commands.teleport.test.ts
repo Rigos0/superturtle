@@ -164,10 +164,13 @@ describe("/teleport", () => {
     expect(result.payload?.spawnCmd).toEqual([
       "bash",
       "-lc",
-      expect.stringContaining('exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1'),
+      expect.stringContaining('mkdir "$SUPERTURTLE_TELEPORT_CLAIM_DIR" 2>/dev/null'),
       "teleport-managed",
       "--dry-run",
     ]);
+    expect(result.payload?.spawnCmd[2]).toContain(
+      '"$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1'
+    );
     expect(result.payload?.spawnOpts?.detached).toBe(true);
     expect(result.payload?.spawnOpts?.stdin).toBe("ignore");
     expect(result.payload?.spawnOpts?.stdout).toBe("ignore");
@@ -180,6 +183,9 @@ describe("/teleport", () => {
     );
     expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_LOCK_PATH).toMatch(
       /\/\.superturtle\/teleport\/managed-active\.lock$/
+    );
+    expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_CLAIM_DIR).toMatch(
+      /\/\.superturtle\/teleport\/managed-active\.lock\.d$/
     );
     expect(result.payload?.unrefCalled).toBe(true);
   });
