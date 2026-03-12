@@ -198,6 +198,22 @@ function ensureRegularSessionFile(path) {
   return stats;
 }
 
+function openSessionFileForRead(path) {
+  const openFlags =
+    process.platform !== "win32" && typeof fs.constants?.O_NOFOLLOW === "number"
+      ? fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+      : fs.constants.O_RDONLY;
+
+  try {
+    return fs.openSync(path, openFlags);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ELOOP") {
+      throw invalidSessionFile(path, "must be a regular file");
+    }
+    throw error;
+  }
+}
+
 function hardenSessionFilePermissions(path) {
   if (process.platform === "win32") {
     return;
@@ -643,14 +659,20 @@ function readSession(env = process.env) {
   if (!lstatIfExists(path)) return null;
   ensureSafeSessionDirectory(dirname(path));
   let raw;
+  let fd;
   let stats;
   try {
-    stats = ensureRegularSessionFile(path);
+    ensureRegularSessionFile(path);
+    fd = openSessionFileForRead(path);
+    stats = fs.fstatSync(fd);
+    if (!stats.isFile()) {
+      throw invalidSessionFile(path, "must be a regular file");
+    }
     const maxBytes = getSessionFileMaxBytes(env);
     if (stats.size > maxBytes) {
       throw invalidSessionFile(path, `exceeds the configured size limit of ${maxBytes} bytes`);
     }
-    raw = fs.readFileSync(path, "utf-8");
+    raw = fs.readFileSync(fd, "utf-8");
   } catch (error) {
     if (error instanceof Error && /^Hosted session file at .* must be a regular file\./.test(error.message)) {
       throw error;
@@ -658,6 +680,10 @@ function readSession(env = process.env) {
     throw new Error(
       `Failed to read hosted session file at ${path}: ${error instanceof Error ? error.message : String(error)}`
     );
+  } finally {
+    if (fd != null) {
+      fs.closeSync(fd);
+    }
   }
 
   let parsed;
