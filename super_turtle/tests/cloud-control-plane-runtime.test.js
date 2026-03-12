@@ -21,6 +21,7 @@ const {
   requestSession,
   requestSessionRefresh,
   requestInstanceResume,
+  requestStripeCustomerPortalSession,
   requestStripeCheckoutSession,
   requestStripeWebhook,
   runNextProvisioningJob,
@@ -387,6 +388,74 @@ async function run() {
   );
   assert.strictEqual(checkoutActiveDenied.status, 409);
 
+  const portalPath = resolve(tmpDir, "portal-state.json");
+  const portalState = createSeedState();
+  portalState.subscriptions.push({
+    id: "subrec_portal_123",
+    provider: "stripe",
+    user_id: "user_123",
+    provider_customer_id: "cus_portal_123",
+    provider_subscription_id: "sub_portal_123",
+    checkout_session_id: "cs_portal_123",
+    plan: "managed",
+    state: "active",
+    current_period_end: "2026-04-12T10:00:00Z",
+    cancel_at_period_end: false,
+    latest_event_id: "evt_portal_seed",
+    latest_event_type: "customer.subscription.created",
+    created_at: "2026-03-12T10:00:00Z",
+    updated_at: "2026-03-12T10:00:00Z",
+  });
+  writeState(portalPath, portalState);
+  const portalRuntime = createRuntime({
+    statePath: portalPath,
+    now: createClock(),
+    stripe: {
+      billingAdapter: {
+        async createCustomerPortalSession({ customerId, userId }) {
+          assert.strictEqual(customerId, "cus_portal_123");
+          assert.strictEqual(userId, "user_123");
+          return {
+            id: "bps_created_123",
+            url: "https://billing.stripe.test/session/bps_created_123",
+          };
+        },
+      },
+    },
+  });
+  const portalCreated = await requestStripeCustomerPortalSession(portalRuntime, "access_123");
+  assert.strictEqual(portalCreated.status, 200);
+  assert.strictEqual(portalCreated.data.customer_id, "cus_portal_123");
+  assert.strictEqual(portalCreated.data.portal_session_id, "bps_created_123");
+  assert.match(portalCreated.data.portal_url, /^https:\/\/billing\.stripe\.test\//);
+  assert.match(
+    JSON.stringify(readState(portalPath).audit_log),
+    /billing\.customer_portal_session_created/,
+    "expected customer-portal session creation to be written to the durable audit log"
+  );
+
+  const portalMissingCustomer = await requestStripeCustomerPortalSession(portalRuntime, "access_123_missing");
+  assert.strictEqual(portalMissingCustomer.status, 401);
+
+  const portalCustomerMissingPath = resolve(tmpDir, "portal-missing-customer-state.json");
+  writeState(portalCustomerMissingPath, createSeedState());
+  const portalCustomerMissingRuntime = createRuntime({
+    statePath: portalCustomerMissingPath,
+    now: createClock(),
+    stripe: {
+      billingAdapter: {
+        async createCustomerPortalSession() {
+          throw new Error("should not be called without a persisted customer");
+        },
+      },
+    },
+  });
+  const portalCustomerMissing = await requestStripeCustomerPortalSession(
+    portalCustomerMissingRuntime,
+    "access_123"
+  );
+  assert.strictEqual(portalCustomerMissing.status, 409);
+
   const checkoutEventPayload = JSON.stringify({
     id: "evt_checkout_123",
     type: "checkout.session.completed",
@@ -700,6 +769,61 @@ async function run() {
   assert.strictEqual(httpCheckoutPayload.checkout_session_id, "cs_http_checkout_123");
   assert.strictEqual(readState(httpCheckoutPath).subscriptions[0].checkout_session_id, "cs_http_checkout_123");
   checkoutServer.close();
+
+  const httpPortalPath = resolve(tmpDir, "http-portal-state.json");
+  const httpPortalState = createSeedState();
+  httpPortalState.subscriptions.push({
+    id: "subrec_http_portal_123",
+    provider: "stripe",
+    user_id: "user_123",
+    provider_customer_id: "cus_http_portal_123",
+    provider_subscription_id: "sub_http_portal_123",
+    checkout_session_id: "cs_http_portal_123",
+    plan: "managed",
+    state: "active",
+    current_period_end: "2026-04-12T10:00:00Z",
+    cancel_at_period_end: false,
+    latest_event_id: "evt_http_portal_seed",
+    latest_event_type: "customer.subscription.created",
+    created_at: "2026-03-12T10:00:00Z",
+    updated_at: "2026-03-12T10:00:00Z",
+  });
+  writeState(httpPortalPath, httpPortalState);
+  const httpPortalRuntime = createRuntime({
+    statePath: httpPortalPath,
+    now: createClock(),
+    stripe: {
+      billingAdapter: {
+        async createCustomerPortalSession() {
+          return {
+            id: "bps_http_portal_123",
+            url: "https://billing.stripe.test/session/bps_http_portal_123",
+          };
+        },
+      },
+    },
+  });
+  const portalServer = http.createServer(async (req, res) => {
+    const response = await handleHttpRequest(httpPortalRuntime, req);
+    res.writeHead(response.status, response.headers);
+    res.end(response.body);
+  });
+  await new Promise((resolveListen) => portalServer.listen(0, "127.0.0.1", resolveListen));
+  const portalAddress = portalServer.address();
+  const httpPortalResponse = await fetch(
+    `http://127.0.0.1:${portalAddress.port}/v1/billing/stripe/customer-portal-session`,
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer access_123",
+      },
+    }
+  );
+  assert.strictEqual(httpPortalResponse.status, 200);
+  const httpPortalPayload = await httpPortalResponse.json();
+  assert.strictEqual(httpPortalPayload.customer_id, "cus_http_portal_123");
+  assert.strictEqual(httpPortalPayload.portal_session_id, "bps_http_portal_123");
+  portalServer.close();
 }
 
 run().catch((error) => {

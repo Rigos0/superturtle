@@ -426,6 +426,14 @@ function isStripeCheckoutConfigured(runtime) {
   );
 }
 
+function isStripeCustomerPortalConfigured(runtime) {
+  return Boolean(
+    runtime.stripe &&
+      runtime.stripe.billingAdapter &&
+      typeof runtime.stripe.billingAdapter.createCustomerPortalSession === "function"
+  );
+}
+
 function recordBillingEvent(state, runtime, event) {
   state.billing_events.push({
     id: runtime.createId("bill"),
@@ -1056,6 +1064,66 @@ async function requestStripeCheckoutSession(runtime, accessToken, payload = {}) 
   };
 }
 
+async function requestStripeCustomerPortalSession(runtime, accessToken) {
+  if (!isStripeCustomerPortalConfigured(runtime)) {
+    return { status: 503, data: { error: "stripe_customer_portal_not_configured" } };
+  }
+
+  const state = readState(runtime.statePath);
+  const session = getUserSession(state, accessToken);
+  if (!session) {
+    return { status: 401, data: { error: "invalid_session" } };
+  }
+
+  const subscription =
+    state.subscriptions
+      .filter((record) => record && record.user_id === session.user_id)
+      .sort((left, right) =>
+        String(right.updated_at || right.created_at || "").localeCompare(String(left.updated_at || left.created_at || ""))
+      )[0] || null;
+
+  const customerId = subscription?.provider_customer_id || null;
+  if (!customerId) {
+    return { status: 409, data: { error: "billing_customer_not_found" } };
+  }
+
+  let portalSession;
+  try {
+    portalSession = await runtime.stripe.billingAdapter.createCustomerPortalSession({
+      customerId,
+      userId: session.user_id,
+    });
+  } catch (error) {
+    return {
+      status: 502,
+      data: { error: error && typeof error.code === "string" ? error.code : "stripe_portal_failed" },
+    };
+  }
+
+  appendAudit(state, runtime, {
+    actor_type: "user",
+    actor_id: session.user_id,
+    action: "billing.customer_portal_session_created",
+    target_type: "user",
+    target_id: session.user_id,
+    metadata: {
+      customer_id: customerId,
+      subscription_id: subscription?.provider_subscription_id || null,
+      portal_session_id: portalSession.id,
+    },
+  });
+  writeState(runtime.statePath, state);
+
+  return {
+    status: 200,
+    data: {
+      customer_id: customerId,
+      portal_session_id: portalSession.id,
+      portal_url: portalSession.url,
+    },
+  };
+}
+
 function requestLoginStart(runtime, payload = {}) {
   const state = readState(runtime.statePath);
   const requestPayload =
@@ -1410,6 +1478,23 @@ async function handleHttpRequest(runtime, request) {
     };
   }
 
+  if (request.method === "POST" && request.url === "/v1/billing/stripe/customer-portal-session") {
+    const accessToken = extractBearerToken(request);
+    if (!accessToken) {
+      return {
+        status: 401,
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        body: JSON.stringify({ error: "missing_bearer_token" }),
+      };
+    }
+    const result = await requestStripeCustomerPortalSession(runtime, accessToken);
+    return {
+      status: result.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      body: JSON.stringify(result.data),
+    };
+  }
+
   if (request.method === "POST" && request.url === "/v1/billing/stripe/webhook") {
     let rawBody;
     try {
@@ -1711,7 +1796,8 @@ function createConfiguredStripeBillingAdapter(options) {
   if (
     stripeOptions &&
     stripeOptions.billingAdapter &&
-    typeof stripeOptions.billingAdapter.createCheckoutSession === "function"
+    (typeof stripeOptions.billingAdapter.createCheckoutSession === "function" ||
+      typeof stripeOptions.billingAdapter.createCustomerPortalSession === "function")
   ) {
     return stripeOptions.billingAdapter;
   }
@@ -1747,6 +1833,7 @@ module.exports = {
   requestMachineRegister,
   requestInstanceReprovision,
   requestStripeCheckoutSession,
+  requestStripeCustomerPortalSession,
   requestStripeWebhook,
   requestLoginPoll,
   requestLoginStart,

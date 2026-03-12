@@ -189,6 +189,21 @@ function validateCheckoutSessionResponse(response) {
   };
 }
 
+function validatePortalSessionResponse(response) {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    fail("Stripe billing portal adapter returned an invalid response.", "invalid_portal_response");
+  }
+  if (typeof response.url !== "string" || response.url.trim().length === 0) {
+    fail("Stripe billing portal adapter response is missing url.", "invalid_portal_response");
+  }
+
+  return {
+    id:
+      typeof response.id === "string" && response.id.trim().length > 0 ? response.id.trim() : null,
+    url: response.url.trim(),
+  };
+}
+
 function encodeStripeForm(data) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(data)) {
@@ -210,6 +225,10 @@ function createStripeBillingAdapter(options = {}) {
   const mode = typeof options.mode === "string" && options.mode.trim().length > 0 ? options.mode.trim() : "subscription";
   const successUrl = validateReturnUrl(options.successUrl, "successUrl");
   const cancelUrl = validateReturnUrl(options.cancelUrl, "cancelUrl");
+  const portalReturnUrl = validateReturnUrl(
+    options.portalReturnUrl || options.successUrl,
+    "portalReturnUrl"
+  );
 
   if (!secretKey) {
     fail("Stripe secret key is not configured.", "missing_api_key");
@@ -298,6 +317,70 @@ function createStripeBillingAdapter(options = {}) {
         subscriptionId: response.subscription,
       });
     },
+
+    async createCustomerPortalSession({ customerId }) {
+      if (typeof customerId !== "string" || customerId.trim().length === 0) {
+        fail("Stripe billing portal requires a customerId.", "invalid_portal_request");
+      }
+
+      const requestBody = encodeStripeForm({
+        customer: customerId.trim(),
+        return_url: portalReturnUrl,
+      });
+
+      const target = new URL(`${apiBaseUrl}/v1/billing_portal/sessions`);
+      const requestImpl = target.protocol === "http:" ? http : https;
+      const response = await new Promise((resolvePromise, rejectPromise) => {
+        const request = requestImpl.request(
+          {
+            protocol: target.protocol,
+            hostname: target.hostname,
+            port: target.port || undefined,
+            path: `${target.pathname}${target.search}`,
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${secretKey}`,
+              "content-type": "application/x-www-form-urlencoded",
+              "content-length": Buffer.byteLength(requestBody),
+            },
+          },
+          (res) => {
+            const chunks = [];
+            res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+            res.on("end", () => {
+              const body = Buffer.concat(chunks).toString("utf-8");
+              if (res.statusCode !== 200) {
+                const error = new Error(`Stripe billing portal session creation failed with status ${res.statusCode}.`);
+                error.code = "stripe_portal_failed";
+                error.statusCode = res.statusCode;
+                error.responseBody = body;
+                rejectPromise(error);
+                return;
+              }
+
+              let parsed;
+              try {
+                parsed = JSON.parse(body);
+              } catch {
+                const error = new Error("Stripe billing portal session creation returned invalid JSON.");
+                error.code = "stripe_portal_failed";
+                rejectPromise(error);
+                return;
+              }
+              resolvePromise(parsed);
+            });
+          }
+        );
+        request.on("error", rejectPromise);
+        request.write(requestBody);
+        request.end();
+      });
+
+      return validatePortalSessionResponse({
+        id: response.id,
+        url: response.url,
+      });
+    },
   };
 }
 
@@ -353,5 +436,6 @@ module.exports = {
   normalizeStripeWebhookEvent,
   parseStripeWebhookEvent,
   validateCheckoutSessionResponse,
+  validatePortalSessionResponse,
   verifyStripeWebhookSignature,
 };
