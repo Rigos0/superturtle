@@ -30,6 +30,12 @@ type TeleportProbeResult = {
 async function runTeleportProbe(messageText: string, options?: {
   running?: boolean;
   queuedItems?: number;
+  activeLock?: {
+    pid: number;
+    logPath: string;
+    launchedAt: string;
+    mode: "dry-run" | "live";
+  };
 }): Promise<TeleportProbeResult> {
   const env: Record<string, string> = {
     ...process.env,
@@ -46,6 +52,7 @@ async function runTeleportProbe(messageText: string, options?: {
     const deferredQueuePath = ${JSON.stringify(deferredQueuePath)};
     const queuedItems = ${JSON.stringify(options?.queuedItems ?? 0)};
     const running = ${JSON.stringify(options?.running ?? false)};
+    const activeLock = ${JSON.stringify(options?.activeLock ?? null)};
 
     const replies = [];
     let spawnCmd = [];
@@ -65,6 +72,25 @@ async function runTeleportProbe(messageText: string, options?: {
     const { beginBackgroundRun, endBackgroundRun } = await import(driverRoutingPath);
     const { enqueueDeferredMessage } = await import(deferredQueuePath);
     const { handleTeleportCommand } = await import(modulePath);
+    const { mkdirSync, rmSync, writeFileSync } = await import("fs");
+    const { join } = await import("path");
+
+    const teleportStateDir = join(process.cwd(), ".superturtle", "teleport");
+    const teleportLockPath = join(teleportStateDir, "managed-active.lock");
+    rmSync(teleportStateDir, { recursive: true, force: true });
+    if (activeLock) {
+      mkdirSync(teleportStateDir, { recursive: true });
+      writeFileSync(
+        teleportLockPath,
+        [
+          "pid=" + String(activeLock.pid),
+          "log=" + activeLock.logPath,
+          "launched_at=" + activeLock.launchedAt,
+          "mode=" + activeLock.mode,
+          "",
+        ].join("\\n")
+      );
+    }
 
     if (running) {
       beginBackgroundRun();
@@ -92,6 +118,7 @@ async function runTeleportProbe(messageText: string, options?: {
     if (running) {
       endBackgroundRun();
     }
+    rmSync(teleportStateDir, { recursive: true, force: true });
     console.log(marker + JSON.stringify({ replies, spawnCmd, spawnOpts, unrefCalled }));
   `;
 
@@ -137,7 +164,7 @@ describe("/teleport", () => {
     expect(result.payload?.spawnCmd).toEqual([
       "bash",
       "-lc",
-      'exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1',
+      expect.stringContaining('exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1'),
       "teleport-managed",
       "--dry-run",
     ]);
@@ -150,6 +177,9 @@ describe("/teleport", () => {
     );
     expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_LOG_PATH).toMatch(
       /\/\.superturtle\/logs\/teleport\/.+-dry-run\.log$/
+    );
+    expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_LOCK_PATH).toMatch(
+      /\/\.superturtle\/teleport\/managed-active\.lock$/
     );
     expect(result.payload?.unrefCalled).toBe(true);
   });
@@ -189,6 +219,26 @@ describe("/teleport", () => {
 
     expect(result.payload?.replies).toEqual([
       "❌ Usage: /teleport [managed] [dry-run]",
+    ]);
+    expect(result.payload?.spawnCmd).toEqual([]);
+  });
+
+  it("refuses to start while another teleport process holds the lock", async () => {
+    const result = await runTeleportProbe("/teleport", {
+      activeLock: {
+        pid: process.pid,
+        logPath: "/tmp/existing-teleport.log",
+        launchedAt: "2026-03-12T10:30:00Z",
+        mode: "live",
+      },
+    });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Teleport lock probe failed:\n${result.stderr || result.stdout}`);
+    }
+
+    expect(result.payload?.replies).toEqual([
+      "❌ A managed teleport live is already running. Started: 2026-03-12T10:30:00Z Log: /tmp/existing-teleport.log",
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });

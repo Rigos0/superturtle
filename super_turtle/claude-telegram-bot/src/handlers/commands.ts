@@ -3,7 +3,7 @@
  */
 
 import { InlineKeyboard, type Context } from "grammy";
-import { appendFileSync, mkdirSync } from "fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { session, getAvailableModels, EFFORT_DISPLAY, type EffortLevel } from "../session";
 import { codexSession } from "../codex-session";
@@ -41,6 +41,8 @@ export const MAIN_LOOP_LOG_PATH = `/tmp/claude-telegram-${TOKEN_PREFIX}-bot-ts.l
 const LEGACY_MAIN_LOOP_LOG_PATH = "/tmp/claude-telegram-bot-ts.log";
 const TELEPORT_SCRIPT_PATH = `${WORKING_DIR}/super_turtle/scripts/teleport-manual.sh`;
 const TELEPORT_LOG_DIR = join(WORKING_DIR, ".superturtle", "logs", "teleport");
+const TELEPORT_STATE_DIR = join(WORKING_DIR, ".superturtle", "teleport");
+const TELEPORT_LOCK_PATH = join(TELEPORT_STATE_DIR, "managed-active.lock");
 const LOOPLOGS_LINE_COUNT = 50;
 const RESUME_SESSIONS_LIMIT = 5;
 const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
@@ -145,6 +147,65 @@ function createTeleportLogFile(dryRun: boolean): string {
   return logPath;
 }
 
+type TeleportLockState = {
+  pid: number | null;
+  logPath: string | null;
+  launchedAt: string | null;
+  mode: "dry-run" | "live" | null;
+};
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readTeleportLockState(): TeleportLockState | null {
+  let raw = "";
+  try {
+    raw = readFileSync(TELEPORT_LOCK_PATH, "utf-8");
+  } catch {
+    return null;
+  }
+
+  const entries = new Map<string, string>();
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) continue;
+    entries.set(trimmed.slice(0, separatorIndex), trimmed.slice(separatorIndex + 1));
+  }
+
+  const pidValue = entries.get("pid");
+  const pid = pidValue && /^\d+$/.test(pidValue) ? Number(pidValue) : null;
+  return {
+    pid: Number.isSafeInteger(pid) && (pid ?? 0) > 0 ? pid : null,
+    logPath: entries.get("log") || null,
+    launchedAt: entries.get("launched_at") || null,
+    mode: entries.get("mode") === "dry-run" || entries.get("mode") === "live"
+      ? entries.get("mode") as "dry-run" | "live"
+      : null,
+  };
+}
+
+function getActiveTeleportLockState(): TeleportLockState | null {
+  const state = readTeleportLockState();
+  if (!state) return null;
+  if (state.pid && isPidAlive(state.pid)) {
+    return state;
+  }
+  try {
+    rmSync(TELEPORT_LOCK_PATH);
+  } catch {
+    // Ignore stale-lock cleanup failures; the launcher still treats the run as inactive.
+  }
+  return null;
+}
+
 function countDeferredQueueItems(): number {
   return Array.from(getAllDeferredQueues().values()).reduce(
     (count, queue) => count + queue.length,
@@ -179,13 +240,45 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
     return;
   }
 
+  const activeTeleport = getActiveTeleportLockState();
+  if (activeTeleport) {
+    const modeLabel = activeTeleport.mode === "dry-run" ? "dry-run" : "live";
+    const launchedAtSuffix = activeTeleport.launchedAt ? ` Started: ${activeTeleport.launchedAt}` : "";
+    const logSuffix = activeTeleport.logPath ? ` Log: ${activeTeleport.logPath}` : "";
+    await ctx.reply(
+      `❌ A managed teleport ${modeLabel} is already running.${launchedAtSuffix}${logSuffix}`
+    );
+    return;
+  }
+
   try {
     const teleportLogPath = createTeleportLogFile(options.dryRun);
+    mkdirSync(TELEPORT_STATE_DIR, { recursive: true, mode: 0o700 });
     const child = Bun.spawn(
       [
         "bash",
         "-lc",
-        'exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1',
+        [
+          'set -euo pipefail',
+          'mkdir -p "$SUPERTURTLE_TELEPORT_STATE_DIR"',
+          'cleanup() {',
+          '  if [ -f "$SUPERTURTLE_TELEPORT_LOCK_PATH" ] && grep -qx "pid=$$" "$SUPERTURTLE_TELEPORT_LOCK_PATH"; then',
+          '    rm -f "$SUPERTURTLE_TELEPORT_LOCK_PATH"',
+          "  fi",
+          "}",
+          'if [ -f "$SUPERTURTLE_TELEPORT_LOCK_PATH" ]; then',
+          '  existing_pid="$(sed -n \'s/^pid=//p\' "$SUPERTURTLE_TELEPORT_LOCK_PATH" | head -n 1)"',
+          '  if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then',
+          '    printf \'[teleport] refused duplicate launch while PID %s is active\\n\' "$existing_pid" >>"$SUPERTURTLE_TELEPORT_LOG_PATH"',
+          "    exit 1",
+          "  fi",
+          '  rm -f "$SUPERTURTLE_TELEPORT_LOCK_PATH"',
+          "fi",
+          'umask 077',
+          'printf \'pid=%s\\nlog=%s\\nlaunched_at=%s\\nmode=%s\\n\' "$$" "$SUPERTURTLE_TELEPORT_LOG_PATH" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SUPERTURTLE_TELEPORT_MODE" >"$SUPERTURTLE_TELEPORT_LOCK_PATH"',
+          'trap cleanup EXIT INT TERM',
+          'exec "$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1',
+        ].join("; "),
         "teleport-managed",
         ...(options.dryRun ? ["--dry-run"] : []),
       ],
@@ -196,7 +289,10 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
           SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
           CLAUDE_WORKING_DIR: WORKING_DIR,
           TELEPORT_SCRIPT_PATH,
+          SUPERTURTLE_TELEPORT_LOCK_PATH: TELEPORT_LOCK_PATH,
           SUPERTURTLE_TELEPORT_LOG_PATH: teleportLogPath,
+          SUPERTURTLE_TELEPORT_MODE: options.dryRun ? "dry-run" : "live",
+          SUPERTURTLE_TELEPORT_STATE_DIR: TELEPORT_STATE_DIR,
         },
         stdin: "ignore",
         stdout: "ignore",
