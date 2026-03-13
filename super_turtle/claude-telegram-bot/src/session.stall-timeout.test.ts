@@ -5,9 +5,11 @@ process.env.TELEGRAM_ALLOWED_USERS ||= "123";
 process.env.CLAUDE_WORKING_DIR ||= process.cwd();
 
 const originalSpawn = Bun.spawn;
+const originalSpawnSync = Bun.spawnSync;
 
 afterEach(() => {
   Bun.spawn = originalSpawn;
+  Bun.spawnSync = originalSpawnSync;
 });
 
 describe("ClaudeSession stall timeout", () => {
@@ -63,6 +65,14 @@ describe("ClaudeSession stall timeout", () => {
         exited: Promise.resolve(0),
       } as unknown as ReturnType<typeof Bun.spawn>;
     }) as typeof Bun.spawn;
+
+    Bun.spawnSync = ((_cmd: unknown, _opts?: unknown) => ({
+      stdout: new Uint8Array(),
+      stderr: new Uint8Array(),
+      exitCode: 1,
+      success: false,
+      signalCode: null,
+    })) as typeof Bun.spawnSync;
 
     const { ClaudeSession } = await import("./session");
     const session = new ClaudeSession();

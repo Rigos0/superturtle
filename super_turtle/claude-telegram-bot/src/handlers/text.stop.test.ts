@@ -123,14 +123,10 @@ beforeEach(async () => {
     unsuppressDrain: () => {},
   }));
 
-  mock.module("./stop", async () => {
-    const actualStop = await import(`./stop.ts?actual=${actualImportSuffix}`);
-    return {
-      ...actualStop,
-      handleStop: async () => {},
-      consumeHandledStopReply: () => true,
-    };
-  });
+  mock.module("./stop", () => ({
+    handleStop: async () => {},
+    consumeHandledStopReply: () => true,
+  }));
 });
 
 afterEach(() => {
