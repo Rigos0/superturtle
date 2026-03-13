@@ -1,5 +1,5 @@
 # Current task
-Simplify `src/app/layout.tsx`: remove Footer entirely, keep header (logo + nav), main content, Toaster, Analytics.
+Simplify `src/app/navigation.tsx`: remove Overview/Pricing nav links and mobile Sheet drawer; just AccountMenu when logged in or sign-in button when logged out. Then delete `src/components/ui/sheet.tsx` if orphaned.
 
 # End goal with specs
 A clean, minimal app with only the pages and components needed for:
@@ -26,8 +26,8 @@ The repo is at the cwd (superturtle-web). Some deletions may already be done fro
 # Backlog
 - [x] Delete unnecessary files: `delete-me/`, `src/features/emails/`, `src/libs/resend/`, `src/app/pricing/`, `src/app/privacy/`, `src/app/terms/`, `src/app/design-system/`, unused UI components (`collapsible.tsx`, `tabs.tsx`), unused images (`public/example*.png`, `public/hero-shape.png`, `public/section-bg.png`), `src/components/container.tsx`, `src/features/pricing/components/`, `src/features/pricing/models/`. Skip any already deleted.
 - [x] Replace `src/app/page.tsx` with minimal landing: just title, one-liner, and "Sign in with GitHub" button linking to /login
-- [ ] Simplify `src/app/layout.tsx`: remove Footer entirely, keep header (logo + nav), main content, Toaster, Analytics <- current
-- [ ] Simplify `src/app/navigation.tsx`: remove Overview/Pricing nav links and mobile Sheet drawer; just AccountMenu when logged in or sign-in button when logged out. Then delete `src/components/ui/sheet.tsx` if orphaned.
+- [x] Simplify `src/app/layout.tsx`: remove Footer entirely, keep header (logo + nav), main content, Toaster, Analytics
+- [ ] Simplify `src/app/navigation.tsx`: remove Overview/Pricing nav links and mobile Sheet drawer; just AccountMenu when logged in or sign-in button when logged out. Then delete `src/components/ui/sheet.tsx` if orphaned. <- current
 - [ ] Simplify `src/app/(auth)/auth-ui.tsx`: remove two-column layout, Terms/Privacy links, AuthFact cards; single-column sign-in card with GitHub button
 - [ ] Simplify `src/app/(account)/account/page.tsx`: remove dark gradient summary panel and SectionHeading import; use clean simple cards for identity, billing, CLI, machine. Fix the /pricing link since pricing page is deleted.
 - [ ] Grep entire src/ tree for dangling imports to deleted files and fix them all
