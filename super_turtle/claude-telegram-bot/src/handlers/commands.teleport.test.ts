@@ -551,7 +551,7 @@ describe("/teleport", () => {
           "[teleport-status] phase=waiting_for_destination\n" +
           "[teleport-status] active_owner=local\n" +
           "[teleport-status] destination_state=provisioning\n" +
-          "[teleport-status] failure_reason=Timed out waiting for the managed SuperTurtle VM to become ready after 600000ms.\n",
+          "[teleport-status] failure_reason=Timed out waiting for the managed instance to become ready after 600000ms.\n",
       },
     });
 
@@ -563,7 +563,7 @@ describe("/teleport", () => {
       {
         text: expect.stringMatching(
           new RegExp(
-            `No managed teleport is running\\.\\nPhase: waiting for destination\\nActive owner: local\\nDestination runtime: provisioning\\nLatest failure: Timed out waiting for the managed SuperTurtle VM to become ready after 600000ms\\.\\nLast log: ${process.cwd().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.superturtle/logs/teleport/2026-03-12T10-00-00\\.000Z-dry-run\\.log$`
+            `No managed teleport is running\\.\\nPhase: waiting for destination\\nActive owner: local\\nDestination runtime: provisioning\\nLatest failure: Timed out waiting for the managed instance to become ready after 600000ms\\.\\nLast log: ${process.cwd().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.superturtle/logs/teleport/2026-03-12T10-00-00\\.000Z-dry-run\\.log$`
           )
         ),
       },

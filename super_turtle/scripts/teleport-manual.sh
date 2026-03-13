@@ -17,7 +17,7 @@ Runbook:
   super_turtle/docs/MANUAL_TELEPORT_RUNBOOK.md
 
 Options:
-  --managed          Resolve the target VM from the hosted control plane
+  --managed          Resolve the linked managed runtime from the hosted control plane
   --port <N>         SSH port
   --identity <PATH>  SSH identity file
   --dry-run          Run preflight, export, and rsync dry-run only
@@ -237,6 +237,23 @@ function formatProvisioningContext(status) {
   return details.join(", ");
 }
 
+function getManagedRuntimeLabel(provider) {
+  if (provider === "e2b") {
+    return "managed sandbox";
+  }
+  if (provider === "gcp") {
+    return "managed instance";
+  }
+  return "managed runtime";
+}
+
+function capitalizeLabel(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return "";
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 (async () => {
   let session = readSession();
   if (!session) {
@@ -253,6 +270,9 @@ function formatProvisioningContext(status) {
   const deadline = Date.now() + timeoutMs;
   let resumeRequested = false;
   let lastProvisioningContext = "instance state unknown";
+  let currentProvider = null;
+  const managedRuntimeLabel = () => getManagedRuntimeLabel(currentProvider);
+  const managedRuntimeLabelTitle = () => capitalizeLabel(managedRuntimeLabel());
   const waitForRetryWindow = async (phase, error) => {
     if (!isTransientControlPlaneError(error)) {
       return false;
@@ -279,6 +299,7 @@ function formatProvisioningContext(status) {
     try {
       const target = await fetchTeleportTarget(session);
       session = persistSessionIfChanged(session, target.session);
+      currentProvider = target?.data?.instance?.provider || currentProvider;
       process.stderr.write("[teleport-status] phase=target_ready\n");
       process.stderr.write(
         `[teleport-status] destination_state=${target?.data?.instance?.state || "running"}\n`
@@ -302,11 +323,12 @@ function formatProvisioningContext(status) {
     }
 
     if (!resumeRequested) {
-      process.stderr.write("[teleport] managed instance is not ready; requesting resume\n");
+      process.stderr.write(`[teleport] ${managedRuntimeLabel()} is not ready; requesting resume\n`);
       process.stderr.write("[teleport-status] phase=resuming_destination\n");
       try {
         const resumed = await resumeManagedInstance(session);
         session = persistSessionIfChanged(session, resumed.session);
+        currentProvider = resumed?.data?.instance?.provider || currentProvider;
         process.stderr.write(
           `[teleport-status] destination_state=${resumed?.data?.instance?.state || "provisioning"}\n`
         );
@@ -316,7 +338,7 @@ function formatProvisioningContext(status) {
         if (error && typeof error === "object" && error.session) {
           session = persistSessionIfChanged(session, error.session);
         }
-        if (await waitForRetryWindow("managed instance resume", error)) {
+        if (await waitForRetryWindow("managed runtime resume", error)) {
           continue;
         }
         throw error;
@@ -325,11 +347,11 @@ function formatProvisioningContext(status) {
 
     if (Date.now() >= deadline) {
       throw new Error(
-        `Timed out waiting for the managed SuperTurtle VM to become ready after ${timeoutMs}ms.`
+        `Timed out waiting for the ${managedRuntimeLabel()} to become ready after ${timeoutMs}ms.`
       );
     }
 
-    process.stderr.write("[teleport] waiting for managed instance to become ready\n");
+    process.stderr.write(`[teleport] waiting for ${managedRuntimeLabel()} to become ready\n`);
     process.stderr.write("[teleport-status] phase=waiting_for_destination\n");
     let lastInstanceState = "";
     while (Date.now() < deadline) {
@@ -340,12 +362,13 @@ function formatProvisioningContext(status) {
         if (error && typeof error === "object" && error.session) {
           session = persistSessionIfChanged(session, error.session);
         }
-        if (await waitForRetryWindow("managed instance status polling", error)) {
+        if (await waitForRetryWindow("managed runtime status polling", error)) {
           continue;
         }
         throw error;
       }
       session = persistSessionIfChanged(session, status.session);
+      currentProvider = status?.data?.instance?.provider || currentProvider;
       const instanceState = status?.data?.instance?.state || "unknown";
       lastProvisioningContext = formatProvisioningContext(status);
       if (instanceState !== lastInstanceState) {
@@ -358,19 +381,21 @@ function formatProvisioningContext(status) {
       }
       if (["failed", "deleted", "deleting"].includes(instanceState)) {
         process.stderr.write(
-          `[teleport-status] failure_reason=Managed instance became unavailable while waiting for teleport readiness: ${lastProvisioningContext}.\n`
+          `[teleport-status] failure_reason=${managedRuntimeLabelTitle()} became unavailable while waiting for teleport readiness: ${lastProvisioningContext}.\n`
         );
-        throw new Error(`Managed instance became unavailable while waiting for teleport readiness: ${lastProvisioningContext}.`);
+        throw new Error(
+          `${managedRuntimeLabelTitle()} became unavailable while waiting for teleport readiness: ${lastProvisioningContext}.`
+        );
       }
       await sleep(Math.min(intervalMs, Math.max(1, deadline - Date.now())));
     }
 
     if (Date.now() >= deadline) {
       process.stderr.write(
-        `[teleport-status] failure_reason=Timed out waiting for the managed SuperTurtle VM to become ready after ${timeoutMs}ms (${lastProvisioningContext}).\n`
+        `[teleport-status] failure_reason=Timed out waiting for the ${managedRuntimeLabel()} to become ready after ${timeoutMs}ms (${lastProvisioningContext}).\n`
       );
       throw new Error(
-        `Timed out waiting for the managed SuperTurtle VM to become ready after ${timeoutMs}ms (${lastProvisioningContext}).`
+        `Timed out waiting for the ${managedRuntimeLabel()} to become ready after ${timeoutMs}ms (${lastProvisioningContext}).`
       );
     }
   }

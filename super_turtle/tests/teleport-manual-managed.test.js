@@ -9,6 +9,22 @@ const { spawn } = require("child_process");
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const SCRIPT_PATH = resolve(REPO_ROOT, "super_turtle", "scripts", "teleport-manual.sh");
+const TELEPORT_CONTEXT_PATH = resolve(REPO_ROOT, ".superturtle", "teleport", "context.json");
+
+function seedTeleportContext() {
+  fs.mkdirSync(resolve(REPO_ROOT, ".superturtle", "teleport"), { recursive: true });
+  fs.writeFileSync(
+    TELEPORT_CONTEXT_PATH,
+    `${JSON.stringify(
+      {
+        token_prefix: "test-token",
+        active_driver: "claude",
+      },
+      null,
+      2
+    )}\n`
+  );
+}
 
 function runScript(env) {
   return new Promise((resolveRun, rejectRun) => {
@@ -39,6 +55,7 @@ function writeExecutable(path, body) {
 
 function createBaseEnvironment(tmpDir) {
   fs.mkdirSync(tmpDir, { recursive: true });
+  seedTeleportContext();
   const realTmpDir = fs.realpathSync(tmpDir);
   const fakeBinDir = resolve(realTmpDir, "bin");
   fs.mkdirSync(fakeBinDir, { recursive: true });
@@ -228,7 +245,7 @@ async function testManagedTeleportWaitsForResume(tmpDir) {
     assert.match(result.stdout, /\[teleport\] ssh target: superturtle@vm-ready\.managed\.superturtle\.internal/);
     assert.match(result.stdout, /\[teleport\] remote root: \/srv\/superturtle/);
     assert.match(result.stdout, /\[teleport\] dry-run complete/);
-    assert.match(result.stderr, /managed instance is not ready; requesting resume/i);
+    assert.match(result.stderr, /managed runtime is not ready; requesting resume/i);
     assert.match(result.stderr, /waiting for managed instance to become ready/i);
     assert.strictEqual(resumeCalls, 1);
     assert.ok(statusCalls >= 2, `expected at least two status polls but saw ${statusCalls}`);
@@ -379,7 +396,7 @@ async function testManagedTeleportRetriesTransientStatusFailure(tmpDir) {
     assert.strictEqual(result.code, 0, result.stderr);
     assert.match(
       result.stderr,
-      /transient control-plane error during managed instance status polling; retrying: status 503, control_plane_temporarily_unavailable/
+      /transient control-plane error during managed runtime status polling; retrying: status 503, control_plane_temporarily_unavailable/
     );
     assert.match(result.stdout, /\[teleport\] ssh target: superturtle@vm-retry\.managed\.superturtle\.internal/);
     assert.match(result.stdout, /\[teleport\] dry-run complete/);
@@ -509,6 +526,120 @@ async function testManagedTeleportSurfacesProvisioningFailure(tmpDir) {
   }
 }
 
+async function testManagedTeleportTimesOutWithSandboxWordingForE2BRuntime(tmpDir) {
+  const { fakeBinDir, sessionPath } = createBaseEnvironment(tmpDir);
+
+  let resumeCalls = 0;
+  let statusCalls = 0;
+
+  const server = http.createServer((req, res) => {
+    const authorize = req.headers.authorization;
+    assert.strictEqual(authorize, "Bearer access-abc");
+
+    if (req.method === "GET" && req.url === "/v1/cli/teleport/target") {
+      res.writeHead(409, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "managed_instance_not_running" }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/v1/cli/cloud/instance/resume") {
+      resumeCalls += 1;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          instance: {
+            id: "inst_e2b_wait",
+            provider: "e2b",
+            state: "provisioning",
+            sandbox_id: "sandbox_waiting",
+            template_id: "template_teleport_v1",
+            machine_token_id: null,
+            last_seen_at: null,
+            resume_requested_at: "2026-03-12T09:58:00Z",
+          },
+          provisioning_job: {
+            id: "job_e2b_wait",
+            kind: "resume",
+            state: "queued",
+            attempt: 1,
+            created_at: "2026-03-12T09:58:00Z",
+            started_at: null,
+            updated_at: "2026-03-12T09:58:00Z",
+            completed_at: null,
+            error_code: null,
+            error_message: null,
+          },
+          audit_log: [],
+        })
+      );
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/v1/cli/cloud/status") {
+      statusCalls += 1;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          instance: {
+            id: "inst_e2b_wait",
+            provider: "e2b",
+            state: "provisioning",
+            sandbox_id: "sandbox_waiting",
+            template_id: "template_teleport_v1",
+            machine_token_id: null,
+            last_seen_at: null,
+            resume_requested_at: "2026-03-12T09:58:00Z",
+          },
+          provisioning_job: {
+            id: "job_e2b_wait",
+            kind: "resume",
+            state: "running",
+            attempt: 1,
+            created_at: "2026-03-12T09:58:00Z",
+            started_at: "2026-03-12T09:58:10Z",
+            updated_at: "2026-03-12T09:58:20Z",
+            completed_at: null,
+            error_code: null,
+            error_message: null,
+          },
+          audit_log: [],
+        })
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  pointSessionAtBaseUrl(sessionPath, `http://127.0.0.1:${address.port}`);
+
+  try {
+    const result = await runScript({
+      ...process.env,
+      PATH: `${fakeBinDir}:${process.env.PATH}`,
+      SUPERTURTLE_CLOUD_SESSION_PATH: sessionPath,
+      SUPERTURTLE_TELEPORT_INSTANCE_READY_TIMEOUT_MS: "100",
+      SUPERTURTLE_TELEPORT_INSTANCE_READY_POLL_INTERVAL_MS: "10",
+    });
+
+    assert.strictEqual(result.code, 1, `expected failure, got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    assert.strictEqual(resumeCalls, 1);
+    assert.ok(statusCalls >= 1, `expected at least one status poll but saw ${statusCalls}`);
+    assert.match(result.stderr, /managed runtime is not ready; requesting resume/i);
+    assert.match(result.stderr, /waiting for managed sandbox to become ready/i);
+    assert.match(
+      result.stderr,
+      /Timed out waiting for the managed sandbox to become ready after 100ms \(instance state provisioning, job resume running\)\./
+    );
+  } finally {
+    server.close();
+  }
+}
+
 async function testManagedTeleportRejectsE2BTargetUntilSandboxCutoverExists(tmpDir) {
   const { fakeBinDir, sshLogPath, rsyncLogPath, sessionPath } = createBaseEnvironment(tmpDir);
 
@@ -580,6 +711,7 @@ async function main() {
     await testManagedTeleportWaitsForResume(resolve(tmpDir, "resume"));
     await testManagedTeleportRetriesTransientStatusFailure(resolve(tmpDir, "retry-status"));
     await testManagedTeleportSurfacesProvisioningFailure(resolve(tmpDir, "failure"));
+    await testManagedTeleportTimesOutWithSandboxWordingForE2BRuntime(resolve(tmpDir, "e2b-timeout"));
     await testManagedTeleportRejectsE2BTargetUntilSandboxCutoverExists(resolve(tmpDir, "e2b-target"));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
