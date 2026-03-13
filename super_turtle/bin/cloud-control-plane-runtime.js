@@ -149,13 +149,20 @@ function createRuntime(options) {
       authAdapter: createConfiguredClaudeAuthAdapter(options),
     },
     config: {
-      provider: "gcp",
+      provider: options.provider === "e2b" ? "e2b" : "gcp",
       region: options.region || "us-central1",
       zone: options.zone || "us-central1-a",
       hostnameDomain: options.hostnameDomain || "managed.superturtle.internal",
       publicOrigin: String(options.publicOrigin || "https://api.superturtle.dev").replace(/\/+$/, ""),
       managedSshUser: options.managedSshUser || "superturtle",
       managedProjectRoot: options.managedProjectRoot || "/srv/superturtle",
+      managedSandboxTemplateId:
+        (options.e2b &&
+          typeof options.e2b === "object" &&
+          typeof options.e2b.templateId === "string" &&
+          options.e2b.templateId.trim().length > 0
+          ? options.e2b.templateId.trim()
+          : null) || options.managedSandboxTemplateId || "superturtle-teleport",
     },
     sessionTtlMs: Number.isFinite(options.sessionTtlMs) && options.sessionTtlMs > 0
       ? options.sessionTtlMs
@@ -331,23 +338,31 @@ function appendAudit(state, runtime, entry) {
   });
 }
 
+function buildManagedInstancePayload(instance) {
+  if (!instance) {
+    return null;
+  }
+
+  return {
+    id: instance.id,
+    provider: instance.provider,
+    state: instance.state,
+    region: instance.region || null,
+    zone: instance.zone || null,
+    hostname: instance.hostname || null,
+    vm_name: instance.vm_name || null,
+    sandbox_id: instance.sandbox_id || null,
+    template_id: instance.template_id || null,
+    machine_token_id: instance.machine_token_id || null,
+    last_seen_at: instance.last_seen_at || null,
+    resume_requested_at: instance.resume_requested_at || null,
+  };
+}
+
 function buildCloudStatusPayload(state, instance) {
   const latestJob = instance ? getLatestProvisioningJob(state, instance.id) : null;
   return validateCliCloudStatusResponse({
-    instance: instance
-      ? {
-          id: instance.id,
-          provider: instance.provider,
-          state: instance.state,
-          region: instance.region || null,
-          zone: instance.zone || null,
-          hostname: instance.hostname || null,
-          vm_name: instance.vm_name || null,
-          machine_token_id: instance.machine_token_id || null,
-          last_seen_at: instance.last_seen_at || null,
-          resume_requested_at: instance.resume_requested_at || null,
-        }
-      : null,
+    instance: buildManagedInstancePayload(instance),
     provisioning_job: latestJob
       ? {
           id: latestJob.id,
@@ -367,25 +382,21 @@ function buildCloudStatusPayload(state, instance) {
 }
 
 function buildTeleportTargetPayload(state, instance, config) {
+  const isE2bTarget = instance.provider === "e2b";
   return validateCliTeleportTargetResponse({
-    instance: instance
+    instance: buildManagedInstancePayload(instance),
+    transport: isE2bTarget ? "e2b" : "ssh",
+    ssh_target: isE2bTarget ? null : `${config.managedSshUser}@${instance.hostname}`,
+    remote_root: config.managedProjectRoot,
+    sandbox_id: isE2bTarget ? instance.sandbox_id || null : null,
+    template_id: isE2bTarget ? instance.template_id || null : null,
+    project_root: config.managedProjectRoot,
+    sandbox_metadata: isE2bTarget
       ? {
-          id: instance.id,
-          provider: instance.provider,
-          state: instance.state,
-          region: instance.region || null,
-          zone: instance.zone || null,
-          hostname: instance.hostname || null,
-          vm_name: instance.vm_name || null,
-          machine_token_id: instance.machine_token_id || null,
-          last_seen_at: instance.last_seen_at || null,
-          resume_requested_at: instance.resume_requested_at || null,
+          user_id: instance.user_id,
+          instance_id: instance.id,
         }
       : null,
-    transport: "ssh",
-    ssh_target: `${config.managedSshUser}@${instance.hostname}`,
-    remote_root: config.managedProjectRoot,
-    project_root: config.managedProjectRoot,
     audit_log: getRecentAuditLog(state, instance.id),
   });
 }
@@ -436,20 +447,7 @@ function buildMachineClaudeAuthPayload(state, credential) {
 
 function buildMachineStatusPayload(instance) {
   return {
-    instance: instance
-      ? {
-          id: instance.id,
-          provider: instance.provider,
-          state: instance.state,
-          region: instance.region || null,
-          zone: instance.zone || null,
-          hostname: instance.hostname || null,
-          vm_name: instance.vm_name || null,
-          machine_token_id: instance.machine_token_id || null,
-          last_seen_at: instance.last_seen_at || null,
-          resume_requested_at: instance.resume_requested_at || null,
-        }
-      : null,
+    instance: buildManagedInstancePayload(instance),
   };
 }
 
@@ -726,6 +724,8 @@ function createManagedInstance(state, runtime, session) {
     zone: runtime.config.zone,
     hostname: null,
     vm_name: null,
+    sandbox_id: null,
+    template_id: runtime.config.provider === "e2b" ? runtime.config.managedSandboxTemplateId : null,
     machine_token_id: null,
     last_seen_at: null,
     resume_requested_at: timestamp,
@@ -799,6 +799,12 @@ function requestMachineRegister(runtime, machineToken, payload = {}) {
   if (typeof registerPayload.vm_name === "string" && registerPayload.vm_name.trim().length > 0) {
     instance.vm_name = registerPayload.vm_name.trim();
   }
+  if (typeof registerPayload.sandbox_id === "string" && registerPayload.sandbox_id.trim().length > 0) {
+    instance.sandbox_id = registerPayload.sandbox_id.trim();
+  }
+  if (typeof registerPayload.template_id === "string" && registerPayload.template_id.trim().length > 0) {
+    instance.template_id = registerPayload.template_id.trim();
+  }
   if (typeof registerPayload.region === "string" && registerPayload.region.trim().length > 0) {
     instance.region = registerPayload.region.trim();
   }
@@ -820,6 +826,8 @@ function requestMachineRegister(runtime, machineToken, payload = {}) {
     metadata: {
       hostname: instance.hostname,
       vm_name: instance.vm_name,
+      sandbox_id: instance.sandbox_id || null,
+      template_id: instance.template_id || null,
     },
   });
   writeState(runtime.statePath, state);
@@ -843,6 +851,12 @@ function requestMachineHeartbeat(runtime, machineToken, payload = {}) {
   if (typeof heartbeatPayload.vm_name === "string" && heartbeatPayload.vm_name.trim().length > 0) {
     instance.vm_name = heartbeatPayload.vm_name.trim();
   }
+  if (typeof heartbeatPayload.sandbox_id === "string" && heartbeatPayload.sandbox_id.trim().length > 0) {
+    instance.sandbox_id = heartbeatPayload.sandbox_id.trim();
+  }
+  if (typeof heartbeatPayload.template_id === "string" && heartbeatPayload.template_id.trim().length > 0) {
+    instance.template_id = heartbeatPayload.template_id.trim();
+  }
   if (typeof heartbeatPayload.region === "string" && heartbeatPayload.region.trim().length > 0) {
     instance.region = heartbeatPayload.region.trim();
   }
@@ -864,6 +878,8 @@ function requestMachineHeartbeat(runtime, machineToken, payload = {}) {
     target_id: instance.id,
     metadata: {
       health_status: instance.health_status || null,
+      sandbox_id: instance.sandbox_id || null,
+      template_id: instance.template_id || null,
     },
   });
   writeState(runtime.statePath, state);
@@ -994,7 +1010,16 @@ function requestTeleportTarget(runtime, accessToken) {
   if (instance.state !== "running") {
     return { status: 409, data: { error: "managed_instance_not_running" } };
   }
-  if (typeof instance.hostname !== "string" || instance.hostname.trim().length === 0) {
+
+  const isE2bTarget = instance.provider === "e2b";
+  if (isE2bTarget) {
+    if (typeof instance.sandbox_id !== "string" || instance.sandbox_id.trim().length === 0) {
+      return { status: 409, data: { error: "managed_instance_missing_sandbox_id" } };
+    }
+    if (typeof instance.template_id !== "string" || instance.template_id.trim().length === 0) {
+      return { status: 409, data: { error: "managed_instance_missing_template_id" } };
+    }
+  } else if (typeof instance.hostname !== "string" || instance.hostname.trim().length === 0) {
     return { status: 409, data: { error: "managed_instance_missing_hostname" } };
   }
 
@@ -1010,10 +1035,18 @@ function requestTeleportTarget(runtime, accessToken) {
     action: "teleport_target.lookup",
     target_type: "managed_instance",
     target_id: instance.id,
-    metadata: {
-      ssh_target: `${runtime.config.managedSshUser}@${instance.hostname}`,
-      remote_root: runtime.config.managedProjectRoot,
-    },
+    metadata: isE2bTarget
+      ? {
+          transport: "e2b",
+          sandbox_id: instance.sandbox_id,
+          template_id: instance.template_id,
+          project_root: runtime.config.managedProjectRoot,
+        }
+      : {
+          transport: "ssh",
+          ssh_target: `${runtime.config.managedSshUser}@${instance.hostname}`,
+          remote_root: runtime.config.managedProjectRoot,
+        },
   });
   writeState(runtime.statePath, state);
   return { status: 200, data: buildTeleportTargetPayload(state, instance, runtime.config) };
@@ -1062,6 +1095,8 @@ function requestInstanceReprovision(runtime, accessToken) {
   instance.resume_requested_at = runtime.now();
   instance.machine_token_id = null;
   instance.machine_auth_token = null;
+  instance.sandbox_id = null;
+  instance.template_id = runtime.config.provider === "e2b" ? runtime.config.managedSandboxTemplateId : null;
   instance.last_seen_at = null;
   instance.registered_at = null;
   instance.health_checked_at = null;
@@ -1803,6 +1838,8 @@ async function runNextProvisioningJob(runtime) {
     instance.vm_name = result.vm_name || instance.vm_name;
     instance.zone = result.zone || instance.zone;
     instance.region = result.region || instance.region;
+    instance.sandbox_id = result.sandbox_id || instance.sandbox_id;
+    instance.template_id = result.template_id || instance.template_id;
     instance.machine_token_id = result.machine_token_id || instance.machine_token_id;
     instance.machine_auth_token = result.machine_auth_token || instance.machine_auth_token || runtime.createId("machine");
     instance.last_seen_at = job.completed_at;
@@ -2273,6 +2310,17 @@ async function readRawRequestBody(request, maxBytes, options = {}) {
 function createNoopProvisioner() {
   return {
     async runJob({ instance, config }) {
+      if (config.provider === "e2b") {
+        return {
+          region: config.region,
+          zone: config.zone,
+          sandbox_id: `sandbox-${instance.id}`,
+          template_id: config.managedSandboxTemplateId,
+          machine_token_id: `machine-${instance.id}`,
+          machine_auth_token: `machine-auth-${instance.id}`,
+        };
+      }
+
       return {
         region: config.region,
         zone: config.zone,

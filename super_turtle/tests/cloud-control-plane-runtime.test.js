@@ -322,6 +322,54 @@ async function run() {
     "expected teleport target lookups to be written to the durable audit log"
   );
 
+  const e2bPath = resolve(tmpDir, "e2b-state.json");
+  writeState(e2bPath, createSeedState());
+  const e2bRuntime = createRuntime({
+    statePath: e2bPath,
+    now: createClock(),
+    provider: "e2b",
+    e2b: { templateId: "template_teleport_v1" },
+    provisioner: {
+      async runJob({ instance, config }) {
+        return {
+          region: config.region,
+          zone: config.zone,
+          sandbox_id: `sandbox-${instance.id}`,
+          template_id: config.managedSandboxTemplateId,
+          machine_token_id: `machine-${instance.id}`,
+          machine_auth_token: `machine-auth-${instance.id}`,
+        };
+      },
+    },
+  });
+  const e2bResume = requestInstanceResume(e2bRuntime, "access_123");
+  assert.strictEqual(e2bResume.status, 200);
+  assert.strictEqual(e2bResume.data.instance.provider, "e2b");
+  assert.strictEqual(e2bResume.data.instance.template_id, "template_teleport_v1");
+
+  const e2bCompleted = await runNextProvisioningJob(e2bRuntime);
+  assert.strictEqual(e2bCompleted.instance.provider, "e2b");
+  assert.strictEqual(e2bCompleted.instance.sandbox_id, `sandbox-${e2bCompleted.instance.id}`);
+  assert.strictEqual(e2bCompleted.instance.template_id, "template_teleport_v1");
+
+  const e2bStatus = requestCloudStatus(e2bRuntime, "access_123");
+  assert.strictEqual(e2bStatus.status, 200);
+  assert.strictEqual(e2bStatus.data.instance.provider, "e2b");
+  assert.strictEqual(e2bStatus.data.instance.sandbox_id, `sandbox-${e2bCompleted.instance.id}`);
+  assert.strictEqual(e2bStatus.data.instance.template_id, "template_teleport_v1");
+
+  const e2bTeleportTarget = requestTeleportTarget(e2bRuntime, "access_123");
+  assert.strictEqual(e2bTeleportTarget.status, 200);
+  assert.strictEqual(e2bTeleportTarget.data.transport, "e2b");
+  assert.strictEqual(e2bTeleportTarget.data.ssh_target, null);
+  assert.strictEqual(e2bTeleportTarget.data.sandbox_id, `sandbox-${e2bCompleted.instance.id}`);
+  assert.strictEqual(e2bTeleportTarget.data.template_id, "template_teleport_v1");
+  assert.strictEqual(e2bTeleportTarget.data.project_root, "/srv/superturtle");
+  assert.deepStrictEqual(e2bTeleportTarget.data.sandbox_metadata, {
+    user_id: "user_123",
+    instance_id: e2bCompleted.instance.id,
+  });
+
   const reprovisionRequested = requestInstanceReprovision(runtime, refreshed.data.access_token);
   assert.strictEqual(reprovisionRequested.status, 200);
   assert.strictEqual(reprovisionRequested.data.instance.id, created.data.instance.id);
