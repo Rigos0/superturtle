@@ -1,5 +1,5 @@
 # Current task
-Continue replacing managed VM assumptions with one persistent E2B sandbox per user, now that `/teleport` preflight failures use provider-aware destination wording for GCP versus E2B and the remaining work is in the deeper transport/runtime contract.
+Continue replacing managed VM assumptions with one persistent E2B sandbox per user, now that the teleport handoff bundle records destination transport/label metadata for SSH and future E2B cutovers and the remaining work is in the actual E2B file/PTY runtime path.
 
 # End goal with specs
 A fully working /teleport feature where:
@@ -44,6 +44,7 @@ A fully working /teleport feature where:
   - Progress: `superturtle cloud status` / `cloud resume` now print provider, `sandbox_id`, and `template_id` for E2B-backed managed instances, and `/teleport` now labels E2B destinations as managed sandboxes instead of managed VMs in operator-facing Telegram copy.
   - Progress: `teleport-manual.sh --managed` now labels hosted readiness polling as `managed runtime`/`managed instance`/`managed sandbox` based on the control-plane provider signal, so timeout and unavailability failures stop hard-coding `managed SuperTurtle VM` when the destination is E2B-backed.
   - Progress: `/teleport` hosted preflight failures now say `destination managed instance` for GCP-backed runtimes and keep `destination sandbox` for E2B-backed runtimes instead of hard-coding `destination sandbox` for every provider.
+  - Progress: `super_turtle/state/teleport_handoff.py export` now accepts `--transport` and `--destination-label`, persists `destination_transport` / `destination_label` in the handoff bundle, and keeps the current SSH export path explicit so future E2B file-upload/PTY cutovers can reuse the same semantic handoff text without pretending the destination is an SSH host.
 - Define managed-runtime lifecycle and idempotent sandbox create/connect-resume/pause/reprovision/delete behavior
 - Build the production superturtle-teleport E2B template with pinned toolchain, startup scripts, health checks, log paths, and provider config directories
 - Store hosted runtime identity as sandbox_id + template_id in the control plane instead of SSH coordinates

@@ -211,7 +211,35 @@ def resolve_runtime_paths(project_root: Path, teleport_dir: Path | None = None) 
     )
 
 
-def build_context(paths: RuntimePaths, tmp_dir: Path, remote_root: str | None, ssh_target: str | None) -> dict[str, Any]:
+def normalize_destination_transport(value: str | None) -> str:
+    transport = str(value or "ssh").strip().lower()
+    if transport not in {"ssh", "e2b"}:
+        raise SystemExit(f"Unsupported teleport destination transport: {transport}")
+    return transport
+
+
+def resolve_destination_label(
+    destination_transport: str, destination_label: str | None, ssh_target: str | None
+) -> str:
+    explicit_label = str(destination_label or "").strip()
+    if explicit_label:
+        return explicit_label
+    ssh_label = str(ssh_target or "").strip()
+    if ssh_label:
+        return ssh_label
+    if destination_transport == "e2b":
+        return "managed-sandbox"
+    raise SystemExit("SSH teleport exports require --ssh-target or --destination-label.")
+
+
+def build_context(
+    paths: RuntimePaths,
+    tmp_dir: Path,
+    remote_root: str | None,
+    ssh_target: str | None,
+    destination_transport: str | None = None,
+    destination_label: str | None = None,
+) -> dict[str, Any]:
     env = read_env_file(paths.env_file)
     token = env.get("TELEGRAM_BOT_TOKEN", "")
     allowed_users = env.get("TELEGRAM_ALLOWED_USERS", "")
@@ -239,11 +267,16 @@ def build_context(paths: RuntimePaths, tmp_dir: Path, remote_root: str | None, s
         model = str(codex_prefs.get("model") or model)
         effort = str(codex_prefs.get("reasoningEffort") or effort)
 
+    resolved_transport = normalize_destination_transport(destination_transport)
+    resolved_label = resolve_destination_label(resolved_transport, destination_label, ssh_target)
+
     return {
         "created_at": utc_now_iso(),
         "source_host": socket.gethostname(),
         "source_project_root": str(paths.project_root),
         "remote_root": remote_root or "",
+        "destination_transport": resolved_transport,
+        "destination_label": resolved_label,
         "ssh_target": ssh_target or "",
         "token_prefix": token_prefix,
         "chat_id": chat_id,
@@ -309,10 +342,17 @@ def is_git_dirty(project_root: Path) -> bool:
 
 
 def build_handoff_text(payload: dict[str, Any]) -> str:
+    destination_transport = normalize_destination_transport(str(payload.get("destination_transport") or "ssh"))
+    destination_label = resolve_destination_label(
+        destination_transport,
+        str(payload.get("destination_label") or ""),
+        str(payload.get("ssh_target") or ""),
+    )
     lines = [
-        f"Teleport handoff from {payload.get('source_host') or 'unknown-host'} to {payload.get('ssh_target') or 'remote-host'}.",
+        f"Teleport handoff from {payload.get('source_host') or 'unknown-host'} to {destination_label}.",
         f"Previous project root: {payload.get('source_project_root') or '(unknown)'}",
-        f"Current remote root: {payload.get('remote_root') or '(unknown)'}",
+        f"Destination project root: {payload.get('remote_root') or '(unknown)'}",
+        f"Destination transport: {destination_transport}",
         f"Active driver: {payload.get('active_driver') or 'claude'}",
     ]
     model = str(payload.get("model") or "").strip()
@@ -375,6 +415,9 @@ def build_inbox_item(payload: dict[str, Any]) -> dict[str, Any]:
             "source_host": payload.get("source_host"),
             "source_project_root": payload.get("source_project_root"),
             "remote_root": payload.get("remote_root"),
+            "destination_transport": payload.get("destination_transport") or "ssh",
+            "destination_label": payload.get("destination_label") or payload.get("ssh_target"),
+            "ssh_target": payload.get("ssh_target"),
             "active_driver": payload.get("active_driver"),
         },
     }
@@ -398,7 +441,14 @@ def cmd_export(args: argparse.Namespace) -> int:
     project_root = Path(args.project_root).resolve()
     tmp_dir = Path(args.tmp_dir).resolve()
     paths = resolve_runtime_paths(project_root, Path(args.teleport_dir).resolve() if args.teleport_dir else None)
-    context = build_context(paths, tmp_dir, args.remote_root, args.ssh_target)
+    context = build_context(
+        paths,
+        tmp_dir,
+        args.remote_root,
+        args.ssh_target,
+        args.transport,
+        args.destination_label,
+    )
     payload = build_handoff_payload(paths, tmp_dir, context)
     inbox_item = build_inbox_item(payload)
     exported_files = export_runtime_imports(paths, tmp_dir, context["token_prefix"])
@@ -489,7 +539,9 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser = subparsers.add_parser("export", help="Build the local teleport handoff bundle.")
     export_parser.add_argument("--project-root", required=True)
     export_parser.add_argument("--remote-root", required=True)
-    export_parser.add_argument("--ssh-target", required=True)
+    export_parser.add_argument("--ssh-target")
+    export_parser.add_argument("--transport", default="ssh")
+    export_parser.add_argument("--destination-label")
     export_parser.add_argument("--tmp-dir", default="/tmp")
     export_parser.add_argument("--teleport-dir")
     export_parser.set_defaults(func=cmd_export)

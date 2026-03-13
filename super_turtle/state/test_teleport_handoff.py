@@ -14,6 +14,8 @@ class TeleportHandoffTests(unittest.TestCase):
         text = build_handoff_text(
             {
                 "source_host": "macbook",
+                "destination_transport": "ssh",
+                "destination_label": "azure-box",
                 "ssh_target": "azure-box",
                 "source_project_root": "/Users/richard/project",
                 "remote_root": "/home/richard/project",
@@ -31,6 +33,7 @@ class TeleportHandoffTests(unittest.TestCase):
         )
 
         self.assertIn("Teleport handoff from macbook", text)
+        self.assertIn("Destination transport: ssh", text)
         self.assertIn("Active driver: claude", text)
         self.assertIn("Workers:", text)
         self.assertIn("Finish the dashboard.", text)
@@ -129,10 +132,14 @@ class TeleportHandoffTests(unittest.TestCase):
             inbox = json.loads((teleport_dir / "teleport-inbox.json").read_text(encoding="utf-8"))
 
             self.assertEqual(context["active_driver"], "claude")
+            self.assertEqual(context["destination_transport"], "ssh")
+            self.assertEqual(context["destination_label"], "richard@azure")
             self.assertEqual(handoff["recent_messages"][0]["text"], "Ship the teleport script.")
             self.assertEqual(handoff["workers"][0], "writer | completed | yolo-codex | run-1 | task=Write the teleport summary")
             self.assertEqual(inbox["delivery_state"], "pending")
             self.assertIn("Teleport handoff from", inbox["title"])
+            self.assertEqual(inbox["metadata"]["destination_transport"], "ssh")
+            self.assertEqual(inbox["metadata"]["destination_label"], "richard@azure")
             self.assertTrue((teleport_dir / "runtime-import" / "claude-prefs.json").exists())
             self.assertTrue((teleport_dir / "runtime-import" / "turn-log.jsonl").exists())
 
@@ -174,6 +181,55 @@ class TeleportHandoffTests(unittest.TestCase):
             imported_inbox = json.loads(inbox_files[0].read_text(encoding="utf-8"))
             self.assertEqual(imported_inbox["delivery_state"], "pending")
             self.assertIn("Ship the teleport script.", imported_inbox["text"])
+
+    def test_export_supports_e2b_destinations_without_ssh_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            project_root = base / "project"
+            project_root.mkdir(parents=True)
+            (project_root / ".superturtle").mkdir()
+            (project_root / ".superturtle" / "state" / "workers").mkdir(parents=True)
+            (project_root / ".git").mkdir()
+            (project_root / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            (project_root / ".superturtle" / ".env").write_text(
+                "TELEGRAM_BOT_TOKEN=test-token\nTELEGRAM_ALLOWED_USERS=123\n",
+                encoding="utf-8",
+            )
+
+            tmp_state = base / "tmp-runtime"
+            tmp_state.mkdir()
+            (tmp_state / "claude-telegram-test-token-prefs.json").write_text(
+                json.dumps({"model": "claude-opus-4-6", "effort": "high", "activeDriver": "claude"}),
+                encoding="utf-8",
+            )
+
+            exit_code = main(
+                [
+                    "export",
+                    "--project-root",
+                    str(project_root),
+                    "--remote-root",
+                    "/home/user/agentic",
+                    "--transport",
+                    "e2b",
+                    "--destination-label",
+                    "sandbox_123",
+                    "--tmp-dir",
+                    str(tmp_state),
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+
+            teleport_dir = project_root / ".superturtle" / "teleport"
+            context = json.loads((teleport_dir / "context.json").read_text(encoding="utf-8"))
+            inbox = json.loads((teleport_dir / "teleport-inbox.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(context["destination_transport"], "e2b")
+            self.assertEqual(context["destination_label"], "sandbox_123")
+            self.assertEqual(context["ssh_target"], "")
+            self.assertIn("Teleport handoff from", inbox["text"])
+            self.assertIn("to sandbox_123.", inbox["text"])
+            self.assertIn("Destination transport: e2b", inbox["text"])
 
 
 if __name__ == "__main__":

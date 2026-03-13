@@ -768,7 +768,7 @@ echo "[teleport] remote root: ${REMOTE_ROOT}"
 set_phase "local_preflight"
 local_preflight
 
-run_python export --project-root "$REPO_ROOT" --remote-root "$REMOTE_ROOT" --ssh-target "$SSH_TARGET" >/dev/null
+run_python export --project-root "$REPO_ROOT" --remote-root "$REMOTE_ROOT" --transport ssh --destination-label "$SSH_TARGET" --ssh-target "$SSH_TARGET" >/dev/null
 CONTEXT_FILE="${REPO_ROOT}/.superturtle/teleport/context.json"
 TOKEN_PREFIX="$(read_json_field "$CONTEXT_FILE" "token_prefix")"
 ACTIVE_DRIVER="$(read_json_field "$CONTEXT_FILE" "active_driver")"
@@ -797,7 +797,7 @@ stop_local_subturtles
 
 echo "[teleport] exporting final handoff state"
 set_phase "exporting_final_handoff"
-run_python export --project-root "$REPO_ROOT" --remote-root "$REMOTE_ROOT" --ssh-target "$SSH_TARGET" >/dev/null
+run_python export --project-root "$REPO_ROOT" --remote-root "$REMOTE_ROOT" --transport ssh --destination-label "$SSH_TARGET" --ssh-target "$SSH_TARGET" >/dev/null
 
 stop_local_bot
 
