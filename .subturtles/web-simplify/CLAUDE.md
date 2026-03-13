@@ -1,5 +1,5 @@
 # Current task
-Commit the pending simplification changes in the `../superturtle-web` git repo with a clear message.
+All backlog items are complete. Stop this loop.
 
 # End goal with specs
 A clean, minimal app with only the pages and components needed for:
@@ -34,4 +34,7 @@ The repo is at the cwd (superturtle-web). Some deletions may already be done fro
 - [x] Run npm run build and fix all errors until it passes
 - [x] Run npm run lint and fix all errors until it passes
 - [x] Commit this `.subturtles/web-simplify/CLAUDE.md` state update in the `agentic` git repo
-- [ ] Commit pending `../superturtle-web` simplification changes in the `superturtle-web` git repo with a clear message <- current
+- [x] Commit pending `../superturtle-web` simplification changes in the `superturtle-web` git repo with a clear message
+
+## Loop Control
+STOP
