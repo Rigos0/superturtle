@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 
 function usage() {
   console.error(
@@ -76,18 +77,30 @@ function normalizeChunk(chunk) {
 }
 
 async function loadSandboxClass() {
+  const explicitSdkPath = process.env.SUPERTURTLE_TELEPORT_E2B_SDK_PATH;
+  const sdkSpecifier =
+    typeof explicitSdkPath === "string" && explicitSdkPath.trim().length > 0
+      ? pathToFileURL(path.resolve(explicitSdkPath.trim())).href
+      : "e2b";
+
   try {
-    const module = await import("e2b");
+    const module = await import(sdkSpecifier);
     if (module && typeof module.Sandbox === "function") {
       return module.Sandbox;
+    }
+    if (module && typeof module.default === "function") {
+      return module.default;
+    }
+    if (module && module.default && typeof module.default.Sandbox === "function") {
+      return module.default.Sandbox;
     }
   } catch (error) {
     fail(
       `Failed to load the E2B SDK: ${error instanceof Error ? error.message : String(error)}. ` +
-        "Run 'cd super_turtle && bun install' to install the 'e2b' package."
+        `Run 'cd super_turtle && bun install' to install the 'e2b' package${sdkSpecifier === "e2b" ? "" : ", or fix SUPERTURTLE_TELEPORT_E2B_SDK_PATH"}.`
     );
   }
-  fail("Failed to load the E2B SDK: missing Sandbox export from the 'e2b' package.");
+  fail("Failed to load the E2B SDK: missing Sandbox export from the configured module.");
 }
 
 async function connectSandbox(sandboxId) {
