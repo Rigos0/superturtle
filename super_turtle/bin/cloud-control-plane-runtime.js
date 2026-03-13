@@ -207,6 +207,33 @@ function getEntitlement(state, userId) {
   return state.entitlements.find((entitlement) => entitlement && entitlement.user_id === userId) || null;
 }
 
+function getEntitlementStatus(state, userId) {
+  const entitlement = getEntitlement(state, userId);
+  return {
+    entitlement,
+    entitled: Boolean(entitlement && ACTIVE_ENTITLEMENT_STATES.has(entitlement.state)),
+    status: entitlement?.state || "inactive",
+    plan: entitlement?.plan || "managed",
+    periodEnd: entitlement?.current_period_end || null,
+  };
+}
+
+function noActiveSubscriptionResponse(state, userId) {
+  const entitlementStatus = getEntitlementStatus(state, userId);
+  return {
+    status: 403,
+    data: {
+      error: "forbidden",
+      reason: "no_active_subscription",
+      entitlement: {
+        plan: entitlementStatus.plan,
+        status: entitlementStatus.status,
+        period_end: entitlementStatus.periodEnd,
+      },
+    },
+  };
+}
+
 function getSubscription(state, { subscriptionId = null, customerId = null, checkoutSessionId = null } = {}) {
   return (
     state.subscriptions.find(
@@ -881,9 +908,9 @@ function requestInstanceResume(runtime, accessToken) {
     return { status: 401, data: { error: "invalid_session" } };
   }
 
-  const entitlement = getEntitlement(state, session.user_id);
-  if (!entitlement || !ACTIVE_ENTITLEMENT_STATES.has(entitlement.state)) {
-    return { status: 403, data: { error: "managed_hosting_inactive" } };
+  const entitlementStatus = getEntitlementStatus(state, session.user_id);
+  if (!entitlementStatus.entitled) {
+    return noActiveSubscriptionResponse(state, session.user_id);
   }
 
   let instance = getManagedInstance(state, session.user_id);
@@ -953,9 +980,9 @@ function requestTeleportTarget(runtime, accessToken) {
     return { status: 401, data: { error: "invalid_session" } };
   }
 
-  const entitlement = getEntitlement(state, session.user_id);
-  if (!entitlement || !ACTIVE_ENTITLEMENT_STATES.has(entitlement.state)) {
-    return { status: 403, data: { error: "managed_hosting_inactive" } };
+  const entitlementStatus = getEntitlementStatus(state, session.user_id);
+  if (!entitlementStatus.entitled) {
+    return noActiveSubscriptionResponse(state, session.user_id);
   }
 
   const instance = getManagedInstance(state, session.user_id);
@@ -997,9 +1024,9 @@ function requestInstanceReprovision(runtime, accessToken) {
     return { status: 401, data: { error: "invalid_session" } };
   }
 
-  const entitlement = getEntitlement(state, session.user_id);
-  if (!entitlement || !ACTIVE_ENTITLEMENT_STATES.has(entitlement.state)) {
-    return { status: 403, data: { error: "managed_hosting_inactive" } };
+  const entitlementStatus = getEntitlementStatus(state, session.user_id);
+  if (!entitlementStatus.entitled) {
+    return noActiveSubscriptionResponse(state, session.user_id);
   }
 
   const instance = getManagedInstance(state, session.user_id);
@@ -1668,6 +1695,11 @@ function requestCloudStatus(runtime, accessToken) {
   const session = getAuthenticatedSession(state, accessToken);
   if (!session) {
     return { status: 401, data: { error: "invalid_session" } };
+  }
+
+  const entitlementStatus = getEntitlementStatus(state, session.user_id);
+  if (!entitlementStatus.entitled) {
+    return noActiveSubscriptionResponse(state, session.user_id);
   }
 
   const timestamp = runtime.now();

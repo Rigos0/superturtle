@@ -367,7 +367,19 @@ async function run() {
   const forbiddenRuntime = createRuntime({ statePath: forbiddenPath, now: createClock() });
   const forbidden = requestInstanceResume(forbiddenRuntime, "access_123");
   assert.strictEqual(forbidden.status, 403);
+  assert.deepStrictEqual(forbidden.data, {
+    error: "forbidden",
+    reason: "no_active_subscription",
+    entitlement: {
+      plan: "managed",
+      status: "inactive",
+      period_end: "2026-04-12T10:00:00Z",
+    },
+  });
   assert.deepStrictEqual(readState(forbiddenPath).managed_instances, []);
+  const forbiddenStatus = requestCloudStatus(forbiddenRuntime, "access_123");
+  assert.strictEqual(forbiddenStatus.status, 403);
+  assert.deepStrictEqual(forbiddenStatus.data, forbidden.data);
 
   const checkoutPath = resolve(tmpDir, "checkout-state.json");
   const checkoutState = createSeedState();
