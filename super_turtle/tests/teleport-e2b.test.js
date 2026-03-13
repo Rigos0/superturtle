@@ -255,6 +255,69 @@ async function testSyncArchiveUploadsAndExtractsRepoArchive(tmpDir) {
   assert.strictEqual(logEntries[7].command, "rm -f '/tmp/custom-sync.tar.gz'");
 }
 
+async function testExtractArchiveMergesIntoExistingDestination(tmpDir) {
+  const sandboxRoot = resolve(tmpDir, "sandbox-extract");
+  const logPath = resolve(tmpDir, "extract.log.jsonl");
+  const sdkPath = createFakeSdkModule(tmpDir, "named");
+  const archiveSourceDir = resolve(tmpDir, "extract-source");
+  const archivePath = resolve(tmpDir, "auth.tar.gz");
+
+  fs.mkdirSync(resolve(archiveSourceDir, ".codex"), { recursive: true });
+  fs.mkdirSync(resolve(sandboxRoot, "home", "user", ".codex"), { recursive: true });
+  fs.writeFileSync(resolve(archiveSourceDir, ".codex", "auth.json"), '{"token":"codex-local"}\n');
+  fs.writeFileSync(resolve(sandboxRoot, "home", "user", ".codex", "config.toml"), 'model = "gpt-5"\n');
+
+  const archiveResult = spawnSync("tar", ["-czf", archivePath, "-C", archiveSourceDir, "."], {
+    cwd: REPO_ROOT,
+    stdio: "pipe",
+  });
+  assert.strictEqual(archiveResult.status, 0, archiveResult.stderr.toString("utf-8"));
+
+  const result = await runHelper(
+    [
+      "extract-archive",
+      "--sandbox-id",
+      "sandbox_extract",
+      "--source",
+      archivePath,
+      "--destination-root",
+      "/home/user",
+      "--archive-path",
+      "/tmp/codex-auth.tar.gz",
+    ],
+    {
+      env: {
+        ...process.env,
+        SUPERTURTLE_TELEPORT_E2B_SDK_PATH: sdkPath,
+        FAKE_E2B_SANDBOX_ROOT: sandboxRoot,
+        FAKE_E2B_LOG_PATH: logPath,
+      },
+    }
+  );
+
+  assert.strictEqual(result.code, 0, result.stderr);
+  assert.strictEqual(
+    fs.readFileSync(resolve(sandboxRoot, "home", "user", ".codex", "auth.json"), "utf-8"),
+    '{"token":"codex-local"}\n'
+  );
+  assert.strictEqual(
+    fs.readFileSync(resolve(sandboxRoot, "home", "user", ".codex", "config.toml"), "utf-8"),
+    'model = "gpt-5"\n'
+  );
+  assert.ok(!fs.existsSync(resolve(sandboxRoot, "tmp", "codex-auth.tar.gz")), "expected temporary archive cleanup");
+
+  const logEntries = readLog(logPath);
+  assert.deepStrictEqual(
+    logEntries.map((entry) => entry.type),
+    ["connect", "run", "write", "run", "run", "run"]
+  );
+  assert.match(logEntries[1].command, /^mkdir -p '\/tmp'$/);
+  assert.strictEqual(logEntries[2].destinationPath, "/tmp/codex-auth.tar.gz");
+  assert.strictEqual(logEntries[3].command, "mkdir -p '/home/user'");
+  assert.strictEqual(logEntries[4].command, "tar -xzf '/tmp/codex-auth.tar.gz' -C '/home/user'");
+  assert.strictEqual(logEntries[5].command, "rm -f '/tmp/codex-auth.tar.gz'");
+}
+
 async function testRunScriptUsesDefaultExportAndCleansUpTempScript(tmpDir) {
   const sandboxRoot = resolve(tmpDir, "sandbox-run");
   const logPath = resolve(tmpDir, "run.log.jsonl");
@@ -334,6 +397,7 @@ async function main() {
   try {
     await testUploadFileUsesSandboxSdk(resolve(tmpDir, "upload"));
     await testSyncArchiveUploadsAndExtractsRepoArchive(resolve(tmpDir, "sync"));
+    await testExtractArchiveMergesIntoExistingDestination(resolve(tmpDir, "extract"));
     await testRunScriptUsesDefaultExportAndCleansUpTempScript(resolve(tmpDir, "run"));
     await testRunScriptSurfacesCommandFailure(resolve(tmpDir, "failure"));
   } finally {

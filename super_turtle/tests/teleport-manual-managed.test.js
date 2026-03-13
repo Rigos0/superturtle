@@ -10,15 +10,68 @@ const { spawn } = require("child_process");
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const SCRIPT_PATH = resolve(REPO_ROOT, "super_turtle", "scripts", "teleport-manual.sh");
 const TELEPORT_CONTEXT_PATH = resolve(REPO_ROOT, ".superturtle", "teleport", "context.json");
+const ENV_FILE_PATH = resolve(REPO_ROOT, ".superturtle", ".env");
 
-function seedTeleportContext() {
+function readEnvValue(path, key) {
+  if (!fs.existsSync(path)) {
+    return "";
+  }
+  for (const rawLine of fs.readFileSync(path, "utf-8").split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const prefix = `${key}=`;
+    if (line.startsWith(prefix)) {
+      return line.slice(prefix.length);
+    }
+  }
+  return "";
+}
+
+function sanitizeTokenPrefix(token) {
+  const prefix = (token.split(":", 1)[0] || "default").toLowerCase();
+  return prefix.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "default";
+}
+
+function seedDriverPrefs(activeDriver = "claude") {
+  const token = readEnvValue(ENV_FILE_PATH, "TELEGRAM_BOT_TOKEN");
+  const tokenPrefix = sanitizeTokenPrefix(token);
+  const claudePrefsPath = resolve(os.tmpdir(), `claude-telegram-${tokenPrefix}-prefs.json`);
+  const codexPrefsPath = resolve(os.tmpdir(), `codex-telegram-${tokenPrefix}-prefs.json`);
+  fs.writeFileSync(
+    claudePrefsPath,
+    `${JSON.stringify(
+      {
+        activeDriver,
+        model: activeDriver === "codex" ? "gpt-5" : "sonnet",
+        effort: activeDriver === "codex" ? "medium" : "normal",
+      },
+      null,
+      2
+    )}\n`
+  );
+  fs.writeFileSync(
+    codexPrefsPath,
+    `${JSON.stringify(
+      {
+        model: "gpt-5",
+        reasoningEffort: "medium",
+      },
+      null,
+      2
+    )}\n`
+  );
+}
+
+function seedTeleportContext(activeDriver = "claude") {
   fs.mkdirSync(resolve(REPO_ROOT, ".superturtle", "teleport"), { recursive: true });
   fs.writeFileSync(
     TELEPORT_CONTEXT_PATH,
     `${JSON.stringify(
       {
         token_prefix: "test-token",
-        active_driver: "claude",
+        active_driver: activeDriver,
       },
       null,
       2
@@ -57,9 +110,11 @@ function writeExecutable(path, body) {
   fs.writeFileSync(path, body, { mode: 0o755 });
 }
 
-function createBaseEnvironment(tmpDir) {
+function createBaseEnvironment(tmpDir, options = {}) {
   fs.mkdirSync(tmpDir, { recursive: true });
-  seedTeleportContext();
+  const activeDriver = options.activeDriver || "claude";
+  seedTeleportContext(activeDriver);
+  seedDriverPrefs(activeDriver);
   const realTmpDir = fs.realpathSync(tmpDir);
   const fakeBinDir = resolve(realTmpDir, "bin");
   fs.mkdirSync(fakeBinDir, { recursive: true });
@@ -103,11 +158,16 @@ exit 1
     `#!/usr/bin/env bash
 set -euo pipefail
 if [[ "\${1:-}" == "-czf" ]]; then
-  archive_path="\${2:?missing archive path}"
-  tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
-  /usr/bin/tar -czf "$archive_path" -C "$tmp_dir" .
-  exit 0
+  args=("$@")
+  for ((index = 0; index < \${#args[@]}; index += 1)); do
+    if [[ "\${args[$index]}" == "-C" && $((index + 1)) -lt \${#args[@]} && "\${args[$((index + 1))]}" == ${JSON.stringify(REPO_ROOT)} ]]; then
+      archive_path="\${2:?missing archive path}"
+      tmp_dir="$(mktemp -d)"
+      trap 'rm -rf "$tmp_dir"' EXIT
+      /usr/bin/tar -czf "$archive_path" -C "$tmp_dir" .
+      exit 0
+    fi
+  done
 fi
 exec /usr/bin/tar "$@"
 `
@@ -714,7 +774,7 @@ function runUpload(args) {
   log({ subcommand: "upload-file", sandboxId, source, destination });
 }
 
-function runSyncArchive(args) {
+	function runSyncArchive(args) {
   const sandboxId = readOption(args, "--sandbox-id");
   const source = readOption(args, "--source");
   const remoteRoot = readOption(args, "--remote-root");
@@ -732,10 +792,29 @@ function runSyncArchive(args) {
     process.exit(result.status || 1);
   }
   fs.rmSync(sandboxArchivePath, { force: true });
-  log({ subcommand: "sync-archive", sandboxId, source, remoteRoot, archivePath });
-}
+	  log({ subcommand: "sync-archive", sandboxId, source, remoteRoot, archivePath });
+	}
 
-function runScript(args) {
+	function runExtractArchive(args) {
+	  const sandboxId = readOption(args, "--sandbox-id");
+	  const source = readOption(args, "--source");
+	  const destinationRoot = readOption(args, "--destination-root");
+	  const archivePath = readOption(args, "--archive-path");
+	  const sandboxArchivePath = sandboxPath(archivePath);
+	  const sandboxDestinationRoot = sandboxPath(destinationRoot);
+	  fs.mkdirSync(dirname(sandboxArchivePath), { recursive: true });
+	  fs.copyFileSync(source, sandboxArchivePath);
+	  fs.mkdirSync(sandboxDestinationRoot, { recursive: true });
+	  const result = spawnSync("tar", ["-xzf", sandboxArchivePath, "-C", sandboxDestinationRoot], { stdio: "pipe" });
+	  if (result.status !== 0) {
+	    process.stderr.write(result.stderr);
+	    process.exit(result.status || 1);
+	  }
+	  fs.rmSync(sandboxArchivePath, { force: true });
+	  log({ subcommand: "extract-archive", sandboxId, source, destinationRoot, archivePath });
+	}
+
+	function runScript(args) {
   const sandboxId = readOption(args, "--sandbox-id");
   const cwdIndex = args.indexOf("--cwd");
   const cwd = cwdIndex !== -1 ? args[cwdIndex + 1] : "/";
@@ -769,11 +848,12 @@ function runScript(args) {
     return;
   }
 
-  if (
-    script.includes('bun install') ||
-    script.includes('teleport_handoff.py" import') ||
-    script.includes('bun super_turtle/bin/superturtle.js start') ||
-    script.includes('teleport_handoff.py" notify')
+	  if (
+	    script.includes('bun install') ||
+	    script.includes('chmod 600 "$remote_home/.codex/auth.json"') ||
+	    script.includes('teleport_handoff.py" import') ||
+	    script.includes('bun super_turtle/bin/superturtle.js start') ||
+	    script.includes('teleport_handoff.py" notify')
   ) {
     return;
   }
@@ -782,14 +862,16 @@ function runScript(args) {
 }
 
 const [subcommand, ...args] = process.argv.slice(2);
-try {
-  if (subcommand === "upload-file") {
-    runUpload(args);
-  } else if (subcommand === "sync-archive") {
-    runSyncArchive(args);
-  } else if (subcommand === "run-script") {
-    runScript(args);
-  } else {
+	try {
+	  if (subcommand === "upload-file") {
+	    runUpload(args);
+	  } else if (subcommand === "sync-archive") {
+	    runSyncArchive(args);
+	  } else if (subcommand === "extract-archive") {
+	    runExtractArchive(args);
+	  } else if (subcommand === "run-script") {
+	    runScript(args);
+	  } else {
     throw new Error("Unknown subcommand " + subcommand);
   }
 } catch (error) {
@@ -887,6 +969,91 @@ async function testManagedTeleportUsesE2BHelperForSandboxCutover(tmpDir) {
   }
 }
 
+async function testManagedTeleportBootstrapsLocalCodexAuthIntoSandbox(tmpDir) {
+  const { fakeBinDir, sshLogPath, rsyncLogPath, sessionPath, ctlPath, e2bHelperLogPath } = createBaseEnvironment(tmpDir);
+  const helperPath = resolve(tmpDir, "fake-e2b-helper");
+  const sandboxRoot = resolve(tmpDir, "sandbox-root");
+  const localCodexDir = resolve(tmpDir, "local-codex");
+  const localCodexAuthPath = resolve(localCodexDir, "auth.json");
+  fs.mkdirSync(localCodexDir, { recursive: true });
+  fs.writeFileSync(localCodexAuthPath, '{"token":"local-codex"}\n');
+  createFakeE2BHelper(helperPath, e2bHelperLogPath, sandboxRoot);
+
+  const server = http.createServer((req, res) => {
+    const authorize = req.headers.authorization;
+    assert.strictEqual(authorize, "Bearer access-abc");
+
+    if (req.method === "GET" && req.url === "/v1/cli/teleport/target") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          instance: {
+            id: "inst_e2b_codex",
+            provider: "e2b",
+            state: "running",
+            sandbox_id: "sandbox_codex",
+            template_id: "template_teleport_v1",
+            machine_token_id: "machine-token-123",
+            last_seen_at: "2026-03-12T10:00:00Z",
+            resume_requested_at: "2026-03-12T09:58:00Z",
+          },
+          transport: "e2b",
+          sandbox_id: "sandbox_codex",
+          template_id: "template_teleport_v1",
+          project_root: "/home/user/agentic",
+          sandbox_metadata: {
+            account_id: "acct_123",
+            sandbox_role: "managed_runtime",
+          },
+          audit_log: [],
+        })
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  pointSessionAtBaseUrl(sessionPath, `http://127.0.0.1:${address.port}`);
+
+  try {
+    const result = await runTeleport(["--managed"], {
+      ...process.env,
+      PATH: `${fakeBinDir}:${process.env.PATH}`,
+      SUPERTURTLE_CLOUD_SESSION_PATH: sessionPath,
+      SUPERTURTLE_TELEPORT_E2B_HELPER_PATH: helperPath,
+      SUPERTURTLE_TELEPORT_CTL_PATH: ctlPath,
+      SUPERTURTLE_TELEPORT_CODEX_AUTH_PATH: localCodexAuthPath,
+    });
+
+    assert.strictEqual(result.code, 0, `expected success, got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    assert.match(result.stdout, /\[teleport\] bootstrapping local Codex auth into managed sandbox/);
+    assert.ok(!fs.existsSync(sshLogPath), "expected SSH not to run for an E2B target");
+    assert.ok(!fs.existsSync(rsyncLogPath), "expected rsync not to run for an E2B target");
+    assert.strictEqual(
+      fs.readFileSync(resolve(sandboxRoot, "home", "user", ".codex", "auth.json"), "utf-8"),
+      '{"token":"local-codex"}\n'
+    );
+
+    const helperLog = readHelperLog(e2bHelperLogPath);
+    assert.ok(helperLog.some((entry) => entry.subcommand === "extract-archive"), "expected Codex auth archive extraction");
+    assert.ok(
+      helperLog.some(
+        (entry) =>
+          entry.subcommand === "run-script" &&
+          /chmod 600 "\$remote_home\/\.codex\/auth\.json"/.test(entry.script)
+      ),
+      "expected Codex auth permission fixup"
+    );
+  } finally {
+    server.close();
+  }
+}
+
 async function main() {
   const tmpDir = fs.mkdtempSync(resolve(os.tmpdir(), "superturtle-teleport-managed-"));
   try {
@@ -895,6 +1062,7 @@ async function main() {
     await testManagedTeleportSurfacesProvisioningFailure(resolve(tmpDir, "failure"));
     await testManagedTeleportTimesOutWithSandboxWordingForE2BRuntime(resolve(tmpDir, "e2b-timeout"));
     await testManagedTeleportUsesE2BHelperForSandboxCutover(resolve(tmpDir, "e2b-target"));
+    await testManagedTeleportBootstrapsLocalCodexAuthIntoSandbox(resolve(tmpDir, "e2b-codex-auth"));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

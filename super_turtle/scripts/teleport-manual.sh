@@ -31,6 +31,8 @@ HELPER_PY="${REPO_ROOT}/super_turtle/state/teleport_handoff.py"
 CTL_PATH="${SUPERTURTLE_TELEPORT_CTL_PATH:-${REPO_ROOT}/super_turtle/subturtle/ctl}"
 E2B_HELPER_PATH="${SUPERTURTLE_TELEPORT_E2B_HELPER_PATH:-${REPO_ROOT}/super_turtle/bin/teleport-e2b.js}"
 ENV_FILE="${REPO_ROOT}/.superturtle/.env"
+E2B_REMOTE_HOME="${SUPERTURTLE_TELEPORT_E2B_HOME:-/home/user}"
+CODEX_AUTH_SOURCE_PATH="${SUPERTURTLE_TELEPORT_CODEX_AUTH_PATH:-$HOME/.codex/auth.json}"
 
 SSH_TARGET=""
 REMOTE_ROOT=""
@@ -636,6 +638,22 @@ create_repo_archive() {
   printf '%s\n' "$archive_path"
 }
 
+create_relative_file_archive() {
+  local source_path="$1"
+  local relative_path="$2"
+  local archive_base archive_path staging_dir target_dir
+  archive_base="$(mktemp "${TMPDIR:-/tmp}/superturtle-teleport-auth.XXXXXX")"
+  rm -f "$archive_base"
+  archive_path="${archive_base}.tar.gz"
+  staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/superturtle-teleport-auth-dir.XXXXXX")"
+  target_dir="$(dirname "$relative_path")"
+  mkdir -p "$staging_dir/$target_dir"
+  cp "$source_path" "$staging_dir/$relative_path"
+  tar -czf "$archive_path" -C "$staging_dir" .
+  rm -rf "$staging_dir"
+  printf '%s\n' "$archive_path"
+}
+
 e2b_sync_repo() {
   if (( DRY_RUN == 1 )); then
     echo "[teleport] dry-run: skipping sandbox archive upload"
@@ -655,6 +673,42 @@ e2b_sync_repo() {
   if (( status != 0 )); then
     return "$status"
   fi
+}
+
+bootstrap_e2b_codex_auth() {
+  if [[ "$TELEPORT_TRANSPORT" != "e2b" ]]; then
+    return
+  fi
+
+  if [[ ! -f "$CODEX_AUTH_SOURCE_PATH" ]]; then
+    echo "[teleport] local Codex auth cache not found at ${CODEX_AUTH_SOURCE_PATH}; reusing any existing sandbox auth"
+    return
+  fi
+
+  local archive_path
+  archive_path="$(create_relative_file_archive "$CODEX_AUTH_SOURCE_PATH" ".codex/auth.json")"
+  local remote_archive="/tmp/superturtle-codex-auth-${E2B_SANDBOX_ID}.tar.gz"
+  local status=0
+
+  echo "[teleport] bootstrapping local Codex auth into managed sandbox"
+  set_phase "bootstrapping_remote_auth"
+  if ! e2b_helper extract-archive --sandbox-id "$E2B_SANDBOX_ID" --source "$archive_path" --destination-root "$E2B_REMOTE_HOME" --archive-path "$remote_archive"; then
+    status=$?
+  fi
+  rm -f "$archive_path"
+  if (( status != 0 )); then
+    return "$status"
+  fi
+
+  remote_bash "$E2B_REMOTE_HOME" <<'EOF'
+set -euo pipefail
+remote_home="$1"
+mkdir -p "$remote_home/.codex"
+chmod 700 "$remote_home/.codex"
+if [[ -f "$remote_home/.codex/auth.json" ]]; then
+  chmod 600 "$remote_home/.codex/auth.json"
+fi
+EOF
 }
 
 remote_preflight() {
@@ -923,6 +977,7 @@ ACTIVE_DRIVER="${ACTIVE_DRIVER:-claude}"
 echo "[teleport] active driver: ${ACTIVE_DRIVER}"
 set_phase "remote_preflight"
 remote_preflight "$ACTIVE_DRIVER" "$TELEPORT_TRANSPORT"
+bootstrap_e2b_codex_auth
 
 echo "[teleport] initial sync"
 set_phase "initial_sync"
