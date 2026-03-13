@@ -1458,6 +1458,12 @@ echo "[teleport] final sync"
 set_phase "final_sync"
 run_transport_sync
 
+if [[ "$TELEPORT_TRANSPORT" == "e2b" ]]; then
+  echo "[teleport] restoring remote dependencies after final sandbox sync"
+  set_phase "restoring_remote_dependencies"
+  remote_install_dependencies
+fi
+
 bootstrap_e2b_claude_auth
 
 bootstrap_e2b_runtime

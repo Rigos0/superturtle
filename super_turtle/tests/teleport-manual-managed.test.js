@@ -1001,7 +1001,11 @@ async function testManagedTeleportUsesE2BHelperForSandboxCutover(tmpDir) {
       ),
       "expected sandbox runtime bootstrap"
     );
-    assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /bun install/.test(entry.script)), "expected remote dependency install");
+    const dependencyInstallIndices = helperLog
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.subcommand === "run-script" && /bun install/.test(entry.script))
+      .map(({ index }) => index);
+    assert.ok(dependencyInstallIndices.length >= 2, "expected remote dependency install before and after final sync");
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /teleport_handoff\.py" import/.test(entry.script)), "expected runtime import");
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /bun super_turtle\/bin\/superturtle\.js start/.test(entry.script)), "expected remote start");
     assert.ok(
@@ -1015,6 +1019,19 @@ async function testManagedTeleportUsesE2BHelperForSandboxCutover(tmpDir) {
       "expected remote start config rewrite to preserve the sandbox .codex path"
     );
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /status_output="\$\(bun super_turtle\/bin\/superturtle\.js status\)"/.test(entry.script)), "expected remote status verification");
+    const syncArchiveIndices = helperLog
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.subcommand === "sync-archive")
+      .map(({ index }) => index);
+    const startIndex = helperLog.findIndex(
+      (entry) => entry.subcommand === "run-script" && /bun super_turtle\/bin\/superturtle\.js start/.test(entry.script)
+    );
+    assert.ok(syncArchiveIndices.length >= 2, "expected initial and final archive syncs");
+    assert.ok(startIndex >= 0, "expected remote start script to run");
+    assert.ok(
+      dependencyInstallIndices.some((index) => index > syncArchiveIndices[1] && index < startIndex),
+      "expected a dependency reinstall after final sync and before remote start"
+    );
     assert.strictEqual(machineRegisterPayloads.length, 1, "expected a machine register call");
     assert.strictEqual(machineHeartbeatPayloads.length, 1, "expected a machine heartbeat call");
     assert.strictEqual(machineRegisterPayloads[0].sandbox_id, "sandbox_123");
