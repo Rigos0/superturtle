@@ -284,7 +284,7 @@ describe("/teleport", () => {
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replies).toHaveLength(1);
     expect(result.payload?.replies[0]?.text).toBe(
-      "❓ Teleport preflight:\nMode: dry-run\nDestination: linked managed SuperTurtle runtime\nChecks passed: bot idle, queue empty, no active teleport\nHosted checks: cloud login ready, managed Claude auth ready, destination runtime running\nContinue?"
+      "❓ Teleport preflight:\nMode: dry-run\nDestination: linked managed SuperTurtle cloud runtime\nChecks passed: bot idle, queue empty, no active teleport\nHosted checks: cloud login ready, managed Claude auth ready, destination runtime running\nContinue?"
     );
     const keyboardRows = (result.payload?.replies[0]?.extra?.reply_markup?.inline_keyboard || [])
       .filter((row) => row.length > 0);
@@ -293,7 +293,7 @@ describe("/teleport", () => {
       [{ text: "Cancel", callback_data: expect.stringMatching(/^askuser:[A-Za-z0-9._-]+:1$/) }],
     ]);
     expect(result.payload?.askUserRequest).toMatchObject({
-      question: "Teleport preflight:\nMode: dry-run\nDestination: linked managed SuperTurtle runtime\nChecks passed: bot idle, queue empty, no active teleport\nHosted checks: cloud login ready, managed Claude auth ready, destination runtime running\nContinue?",
+      question: "Teleport preflight:\nMode: dry-run\nDestination: linked managed SuperTurtle cloud runtime\nChecks passed: bot idle, queue empty, no active teleport\nHosted checks: cloud login ready, managed Claude auth ready, destination runtime running\nContinue?",
       options: ["Start dry-run", "Cancel"],
       status: "sent",
       chat_id: "123",
@@ -302,6 +302,60 @@ describe("/teleport", () => {
     });
     expect(result.payload?.spawnCmd).toEqual([]);
     expect(result.payload?.unrefCalled).toBe(false);
+  });
+
+  it("labels an E2B-backed destination as a managed sandbox in the preflight prompt", async () => {
+    const result = await runTeleportProbe("/teleport", {
+      cloudStatusResponse: {
+        status: 200,
+        body: {
+          response: {
+            instance: {
+              id: "inst_123",
+              provider: "e2b",
+              state: "running",
+            },
+            provisioning_job: null,
+            audit_log: [],
+          },
+        },
+      },
+    });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Teleport e2b preflight probe failed:\n${result.stderr || result.stdout}`);
+    }
+
+    expect(result.payload?.replies).toHaveLength(1);
+    expect(result.payload?.replies[0]?.text).toBe(
+      "❓ Teleport preflight:\n" +
+      "Mode: live cutover\n" +
+      "Destination: linked managed SuperTurtle sandbox\n" +
+      "Checks passed: bot idle, queue empty, no active teleport\n" +
+      "Hosted checks: cloud login ready, managed Claude auth ready, destination runtime running\n" +
+      "Continue?"
+    );
+    const keyboardRows = (result.payload?.replies[0]?.extra?.reply_markup?.inline_keyboard || [])
+      .filter((row) => row.length > 0);
+    expect(keyboardRows).toEqual([
+      [{ text: "Start teleport", callback_data: expect.stringMatching(/^askuser:[A-Za-z0-9._-]+:0$/) }],
+      [{ text: "Cancel", callback_data: expect.stringMatching(/^askuser:[A-Za-z0-9._-]+:1$/) }],
+    ]);
+    expect(result.payload?.askUserRequest).toMatchObject({
+      question:
+        "Teleport preflight:\n" +
+        "Mode: live cutover\n" +
+        "Destination: linked managed SuperTurtle sandbox\n" +
+        "Checks passed: bot idle, queue empty, no active teleport\n" +
+        "Hosted checks: cloud login ready, managed Claude auth ready, destination runtime running\n" +
+        "Continue?",
+      options: ["Start teleport", "Cancel"],
+      status: "sent",
+      chat_id: "123",
+      command_kind: "teleport_preflight",
+      dry_run: false,
+    });
+    expect(result.payload?.spawnCmd).toEqual([]);
   });
 
   it("surfaces a missing cloud login before opening teleport confirmation", async () => {

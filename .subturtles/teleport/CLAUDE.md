@@ -1,5 +1,5 @@
 # Current task
-Continue replacing managed VM assumptions with one persistent E2B sandbox per user, now that the local control-plane runtime can emit sandbox-native managed instance identity and teleport targets.
+Continue replacing managed VM assumptions with one persistent E2B sandbox per user, now that the CLI cloud-status output and /teleport preflight messaging expose sandbox-native runtime identity instead of VM-only wording.
 
 # End goal with specs
 A fully working /teleport feature where:
@@ -41,6 +41,7 @@ A fully working /teleport feature where:
 - Replace managed VM assumptions with one persistent E2B sandbox per user <- current
   - Progress: the local control-plane contract now accepts either legacy SSH teleport targets or E2B sandbox targets (`transport`, `sandbox_id`, `template_id`, `project_root`) without breaking the current SSH path, and the manual teleport script now fails explicitly if the hosted API switches to `transport=e2b` before the file/PTY cutover lands.
   - Progress: the local control-plane runtime now supports `provider=e2b`, persists `sandbox_id` and `template_id` on managed instances and machine registration/heartbeat, returns `transport=e2b` teleport targets for E2B-backed instances, and keeps the SSH path unchanged for legacy GCP-backed instances.
+  - Progress: `superturtle cloud status` / `cloud resume` now print provider, `sandbox_id`, and `template_id` for E2B-backed managed instances, and `/teleport` now labels E2B destinations as managed sandboxes instead of managed VMs in operator-facing Telegram copy.
 - Define managed-runtime lifecycle and idempotent sandbox create/connect-resume/pause/reprovision/delete behavior
 - Build the production superturtle-teleport E2B template with pinned toolchain, startup scripts, health checks, log paths, and provider config directories
 - Store hosted runtime identity as sandbox_id + template_id in the control plane instead of SSH coordinates

@@ -57,7 +57,7 @@ const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
 export const TELEGRAM_COMMANDS: readonly BotCommand[] = [
   { command: "new", description: "Start a fresh session" },
   { command: "stop", description: "Stop current work" },
-  { command: "teleport", description: "Teleport to managed VM" },
+  { command: "teleport", description: "Teleport to managed cloud runtime" },
   { command: "model", description: "Switch model or effort" },
   { command: "switch", description: "Switch between Claude and Codex" },
   { command: "usage", description: "Show subscription usage" },
@@ -82,7 +82,7 @@ export function getCommandLines(): string[] {
   return [
     `/new - Fresh session`,
     `/stop - Stop current work`,
-    `/teleport - Move to managed VM`,
+    `/teleport - Move to managed cloud runtime`,
     `/model - Switch model/effort`,
     switchLine,
     `/usage - Subscription usage`,
@@ -124,6 +124,7 @@ type HostedCloudSession = Record<string, unknown>;
 
 type HostedCloudStatusResult = {
   instance: {
+    provider: string | null;
     state: string | null;
   } | null;
   provisioning_job: {
@@ -441,6 +442,13 @@ function describeManagedTeleportDestinationState(state: string | null): string {
   }
 }
 
+function describeManagedTeleportDestinationLabel(provider: string | null): string {
+  if (provider === "e2b") {
+    return "linked managed SuperTurtle sandbox";
+  }
+  return "linked managed SuperTurtle cloud runtime";
+}
+
 function formatTeleportPreflightFailureList(failures: string[]): string {
   return [
     "❌ Teleport preflight failed:",
@@ -570,7 +578,7 @@ async function requestHostedTeleportPreflight<T>(
 }
 
 async function getManagedTeleportHostedPreflight():
-  Promise<{ destinationSummary: string } | { blocker: string }> {
+  Promise<{ destinationLabel: string; destinationSummary: string } | { blocker: string }> {
   const cloud = getHostedCloudModule();
   const sessionPath = cloud.getSessionPath(process.env);
 
@@ -666,15 +674,20 @@ async function getManagedTeleportHostedPreflight():
   }
 
   return {
+    destinationLabel: describeManagedTeleportDestinationLabel(instance?.provider || null),
     destinationSummary: describeManagedTeleportDestinationState(instance?.state || null),
   };
 }
 
-function buildTeleportPreflightQuestion(dryRun: boolean, destinationSummary: string): string {
+function buildTeleportPreflightQuestion(
+  dryRun: boolean,
+  destinationLabel: string,
+  destinationSummary: string
+): string {
   return [
     "Teleport preflight:",
     `Mode: ${dryRun ? "dry-run" : "live cutover"}`,
-    "Destination: linked managed SuperTurtle runtime",
+    `Destination: ${destinationLabel}`,
     "Checks passed: bot idle, queue empty, no active teleport",
     `Hosted checks: cloud login ready, managed Claude auth ready, ${destinationSummary}`,
     "Continue?",
@@ -683,7 +696,7 @@ function buildTeleportPreflightQuestion(dryRun: boolean, destinationSummary: str
 
 async function sendTeleportPreflightPrompt(
   ctx: Context,
-  options: { dryRun: boolean; destinationSummary: string }
+  options: { dryRun: boolean; destinationLabel: string; destinationSummary: string }
 ): Promise<void> {
   const chatId = ctx.chat?.id;
   if (!chatId) {
@@ -700,7 +713,11 @@ async function sendTeleportPreflightPrompt(
     JSON.stringify(
       {
         request_id: requestId,
-        question: buildTeleportPreflightQuestion(options.dryRun, options.destinationSummary),
+        question: buildTeleportPreflightQuestion(
+          options.dryRun,
+          options.destinationLabel,
+          options.destinationSummary
+        ),
         options: [options.dryRun ? "Start dry-run" : "Start teleport", "Cancel"],
         status: "pending",
         chat_id: String(chatId),
@@ -806,7 +823,7 @@ export async function launchManagedTeleport(
     await ctx.reply(
       `${options.dryRun
         ? "🛰️ Starting managed teleport dry-run in the background."
-        : "🛰️ Starting managed teleport to the linked SuperTurtle VM."}\n` +
+        : "🛰️ Starting managed teleport to the linked SuperTurtle cloud runtime."}\n` +
       `Log: ${teleportLogPath}`
     );
   } catch (error) {
@@ -876,6 +893,7 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
 
   await sendTeleportPreflightPrompt(ctx, {
     dryRun: options.dryRun,
+    destinationLabel: hostedPreflight.destinationLabel,
     destinationSummary: hostedPreflight.destinationSummary,
   });
 }

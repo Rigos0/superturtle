@@ -112,6 +112,23 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 ** 3)).toFixed(1)} GB`;
 }
 
+function printManagedInstanceSummary(instance) {
+  if (!instance) {
+    return;
+  }
+
+  if (instance.id) console.log(`Instance: ${instance.id}`);
+  if (instance.provider) console.log(`Provider: ${instance.provider}`);
+  if (instance.provider === "e2b") {
+    if (instance.sandbox_id) console.log(`Sandbox: ${instance.sandbox_id}`);
+    if (instance.template_id) console.log(`Template: ${instance.template_id}`);
+  }
+  if (instance.state) console.log(`State: ${instance.state}`);
+  if (instance.region) console.log(`Region: ${instance.region}`);
+  if (instance.hostname) console.log(`Hostname: ${instance.hostname}`);
+  if (instance.resume_requested_at) console.log(`Resume requested: ${instance.resume_requested_at}`);
+}
+
 function describeFile(path) {
   try {
     const stats = fs.statSync(path);
@@ -1113,10 +1130,7 @@ async function cloudStatus() {
   }
 
   console.log(`Control plane: ${getSessionControlPlaneBaseUrl(session)}`);
-  if (status.instance?.id) console.log(`Instance: ${status.instance.id}`);
-  if (status.instance?.state) console.log(`State: ${status.instance.state}`);
-  if (status.instance?.region) console.log(`Region: ${status.instance.region}`);
-  if (status.instance?.hostname) console.log(`Hostname: ${status.instance.hostname}`);
+  printManagedInstanceSummary(status.instance);
   if (status.provisioning_job?.state) console.log(`Provisioning: ${status.provisioning_job.state}`);
   if (status.provisioning_job?.updated_at) console.log(`Provisioning updated: ${status.provisioning_job.updated_at}`);
 }
@@ -1137,8 +1151,7 @@ async function cloudResume() {
   session = persistSessionIfChanged(session, mergedSession);
 
   console.log(`Control plane: ${getSessionControlPlaneBaseUrl(session)}`);
-  if (result.data.instance?.id) console.log(`Instance: ${result.data.instance.id}`);
-  if (result.data.instance?.state) console.log(`State: ${result.data.instance.state}`);
+  printManagedInstanceSummary(result.data.instance);
   if (result.data.provisioning_job?.state) console.log(`Provisioning: ${result.data.provisioning_job.state}`);
   if (result.data.provisioning_job?.updated_at) {
     console.log(`Provisioning updated: ${result.data.provisioning_job.updated_at}`);
