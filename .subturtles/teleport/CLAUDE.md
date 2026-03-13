@@ -1,87 +1,39 @@
 # Current task
-Continue replacing managed VM assumptions with one persistent E2B sandbox per user. IMPORTANT DIRECTION FROM HUMAN: We are doing E2B ONLY. Do NOT build SSH/rsync transport abstractions or "transport-aware" branching. Remove any if/else transport switching you already added. The teleport path is E2B — period. Build the E2B sandbox lifecycle, E2B file upload, E2B command/PTY execution directly. No SSH fallback, no transport abstraction layer. Keep it simple. Current focus: keep making the sandbox lifecycle durable now that teleport seeds persistent machine-heartbeat helpers inside the sandbox.
+Finish a testable end-to-end local -> cloud managed teleport path on E2B using the existing working pieces, and do not spend time broadening transport abstractions unless they directly block the E2B test path. Current focus: clear the remaining live-cutover blockers after local Claude/Codex auth seeding is in place for managed sandboxes.
 
 # End goal with specs
-A fully working /teleport feature where:
-- Any logged-in user can use /teleport (no billing gate for now, open to all authenticated users)
-- /teleport from Telegram moves the bot from local to an E2B sandbox (local to cloud)
-- /teleport again moves it back (cloud to local)
-- Only one runtime is authoritative at a time (lease system already exists)
-- Handoff preserves semantic continuity using the existing handoff bundle model
-- E2B sandbox is created and managed by the control plane (one persistent sandbox per user)
-- Control plane tracks managed instances with sandbox_id + template_id instead of SSH coordinates
-- Provider auth (Claude/Codex) is bootstrapped from local machine on first teleport
-- superturtle-web deployed on Vercel with all API routes working
-- /teleport status shows phase, active owner, destination state, and failure reasons
+- `/teleport` from Telegram can move the live bot from local -> E2B managed sandbox end to end
+- The active path for this worker is the hosted managed E2B sandbox flow, not generic transport work
+- The same Telegram bot identity is preserved through the semantic handoff bundle model
+- The destination runtime is verified healthy before ownership transfer completes
+- Existing local Claude/Codex auth is reused to seed the managed sandbox when available
+- Hosted control-plane endpoints used by the test flow return the data the runtime actually needs
+- The repo ends with a concrete operator test recipe and explicit known gaps
+- Cloud -> local return remains in scope, but local -> cloud testability is the immediate priority
 
 # Roadmap (Completed)
-- Hosted auth and CLI login flow (superturtle login/whoami work)
-- Control plane API routes for cloud status, instance resume, teleport target, machine register/heartbeat, runtime lease claim/heartbeat/release
-- Durable schema for managed instances, provisioning jobs, runtime leases, machine registration
-- Runtime ownership enforcement in superturtle start/stop with lease semantics (claim, heartbeat, release, conflict refusal, fail-open warning)
+- Hosted browser login and CLI account linking are working against the live control plane
+- Linked local startup ownership enforcement exists with lease claim, heartbeat, release, and conflict refusal
+- `/teleport` preflight confirm/cancel, idle-only rejection, and richer status reporting exist
+- The current implementation already has E2B helper commands, archive sync, auth bootstrap, and sandbox runtime bootstrap pieces
+- Local tests already cover the E2B helper path and managed teleport bootstrap path
 
 # Roadmap (Upcoming)
-- E2B sandbox lifecycle and managed runtime surfaces in superturtle-web
-- Teleport UX with preflight, confirm/cancel, and status
-- Local to cloud teleport via E2B
-- Cloud to local return teleport
-- Provider auth bootstrap for managed sandboxes
+- Make the current local -> cloud E2B teleport path runnable end to end against live infrastructure
+- Tighten destination health verification, failure handling, and operator feedback around cutover
+- Validate that hosted cloud-status, teleport-target, machine-register, and machine-heartbeat compose cleanly in the real flow
+- Leave a concise operator test recipe plus known limitations after the path works
+- Only after local -> cloud is testable, close the largest blocker on cloud -> local return
 
 # Backlog
-- [x] Examine both repos to map what exists: check ../superturtle-web/ for E2B integration, managed instance routes, sandbox adapters, and route handlers; check agentic repo for teleport command handler, handoff code in super_turtle/state/teleport_handoff.py, E2B config, cloud control plane runtime in super_turtle/bin/cloud-control-plane-runtime.js, and provider auth helpers
-  - Inventory captured in `.subturtles/teleport/INVENTORY.md`.
-- [x] Fix any pre-existing build errors in ../superturtle-web/ (known: simple-import-sort/imports errors in src/app/v1/cli/runtime/lease/claim/route.ts, heartbeat/route.ts, release/route.ts and src/features/cloud/controllers/runtime-lease.ts) so npm run build passes clean
-  - Verified `npm run build` passes in `../superturtle-web/` on March 13, 2026.
-- [x] Add /teleport preflight summary with confirm/cancel before cutover using ask_user MCP tool for inline Telegram buttons
-- [x] Keep /teleport idle-only; reject while work is active or queued with clear error message
-- [x] Improve /teleport status with phase, active owner, destination runtime state, and latest failure reason
-- [x] Surface clear preflight failures for missing login, missing cloud auth, and destination sandbox issues
-- [x] Wire the deployed hosted control plane to real managed-runtime endpoints (/v1/cli/cloud/status, resume, teleport target)
-  - Updated the default hosted control-plane origin in `super_turtle/bin/cloud.js` to `https://superturtle-web.vercel.app` so cloud status, resume, and teleport-target calls now hit the live deployed endpoints without requiring `SUPERTURTLE_CLOUD_URL`.
-- Replace managed VM assumptions with one persistent E2B sandbox per user <- current
-  - Progress: the local control-plane contract now accepts either legacy SSH teleport targets or E2B sandbox targets (`transport`, `sandbox_id`, `template_id`, `project_root`) without breaking the current SSH path, and the manual teleport script now fails explicitly if the hosted API switches to `transport=e2b` before the file/PTY cutover lands.
-  - Progress: the local control-plane runtime now supports `provider=e2b`, persists `sandbox_id` and `template_id` on managed instances and machine registration/heartbeat, returns `transport=e2b` teleport targets for E2B-backed instances, and keeps the SSH path unchanged for legacy GCP-backed instances.
-  - Progress: `superturtle cloud status` / `cloud resume` now print provider, `sandbox_id`, and `template_id` for E2B-backed managed instances, and `/teleport` now labels E2B destinations as managed sandboxes instead of managed VMs in operator-facing Telegram copy.
-  - Progress: `teleport-manual.sh --managed` now labels hosted readiness polling as `managed runtime`/`managed instance`/`managed sandbox` based on the control-plane provider signal, so timeout and unavailability failures stop hard-coding `managed SuperTurtle VM` when the destination is E2B-backed.
-  - Progress: `/teleport` hosted preflight failures now say `destination managed instance` for GCP-backed runtimes and keep `destination sandbox` for E2B-backed runtimes instead of hard-coding `destination sandbox` for every provider.
-  - Progress: `super_turtle/state/teleport_handoff.py export` now accepts `--transport` and `--destination-label`, persists `destination_transport` / `destination_label` in the handoff bundle, and keeps the current SSH export path explicit so future E2B file-upload/PTY cutovers can reuse the same semantic handoff text without pretending the destination is an SSH host.
-  - Progress: `super_turtle/scripts/teleport-manual.sh` now has a real E2B transport branch instead of failing immediately: it uploads repo archives through a helper, runs remote preflight/import/start/status scripts through the same transport abstraction, keeps the SSH path unchanged, and is covered by `super_turtle/tests/teleport-manual-managed.test.js` with a fake E2B helper backend.
-  - Progress: `super_turtle/bin/teleport-e2b.js` now defines the local helper contract for sandbox file upload and remote script execution, so the remaining work is wiring and validating that helper against the real `e2b` SDK in live managed sandboxes rather than inventing the transport boundary later.
-  - Progress: `super_turtle/bin/teleport-e2b.js` now supports either named or default `Sandbox` exports plus an explicit `SUPERTURTLE_TELEPORT_E2B_SDK_PATH` override, and `super_turtle/tests/teleport-e2b.test.js` exercises `upload-file` / `run-script` directly through a stub E2B SDK so helper behavior is validated at the SDK boundary instead of only through the fake shell helper wrapper.
-  - Progress: `teleport-manual.sh` now emits an E2B-specific remote preflight script that drops the SSH-only `rsync` requirement while keeping the SSH transport checks intact, and the managed teleport integration test now fails if sandbox preflight regresses back to requiring `rsync`.
-  - Progress: `super_turtle/tests/teleport-e2b-live.test.js` now provides an opt-in smoke test that creates a real E2B sandbox, exercises `teleport-e2b.js upload-file` and `run-script` end to end against the live SDK, verifies payload transfer plus temp-script cleanup, and tears the sandbox down so future cutover work can validate against real infrastructure instead of only stubs.
-  - Progress: `super_turtle/bin/teleport-e2b.js` now has a `sync-archive` subcommand, `teleport-manual.sh` uses that helper boundary for E2B repo transfer, and both the stubbed SDK test plus the opt-in live E2B smoke test now validate archive upload/extract/cleanup semantics against sandbox file + command APIs instead of leaving repo sync split across bash and unverified remote shell glue.
-  - Progress: `super_turtle/bin/teleport-e2b.js` now also has a non-destructive `extract-archive` subcommand, and `teleport-manual.sh --managed` uses it to seed local `~/.codex/auth.json` into `/home/user/.codex/auth.json` inside E2B sandboxes with permission fixup so managed cutover can carry driver auth state that lives outside the repo.
-  - Progress: `/teleport --managed` now bootstraps sandbox-local runtime config after final E2B sync by creating `.superturtle/.env` when needed, rewriting sandbox path settings, writing machine register/heartbeat helper scripts into `.superturtle/managed-runtime`, and posting initial `/v1/machine/register` plus `/v1/machine/heartbeat` calls when the hosted teleport target includes a machine bootstrap token.
-  - Progress: `/teleport --managed` now also writes a durable in-sandbox heartbeat loop/start pair, persists the heartbeat interval plus tmux session name in `control-plane.env`, and autostarts the machine-heartbeat tmux session after the initial register/heartbeat unless the local operator explicitly disables it with `SUPERTURTLE_TELEPORT_E2B_HEARTBEAT_AUTOSTART=0`.
-- Define managed-runtime lifecycle and idempotent sandbox create/connect-resume/pause/reprovision/delete behavior
-- Build the production superturtle-teleport E2B template with pinned toolchain, startup scripts, health checks, log paths, and provider config directories
-- Store hosted runtime identity as sandbox_id + template_id in the control plane instead of SSH coordinates
-- Use E2B metadata only for non-secret routing (user_id, account_id, sandbox role, driver, environment, teleport session)
-- Add a sandbox adapter in ../superturtle-web for create, connect/resume, pause, kill, list, and metadata lookup through the E2B SDK
-- Set short active timeouts with onTimeout pause and keep resume control-plane-driven for /teleport, cloud status, and explicit resume
-- Default managed sandboxes to secure access with restricted public traffic; front any exposed ports with the control plane and traffic-token checks
-- Build sandbox bootstrap, health reporting, and registration back to the control plane: install tmux/rsync/bun, clone repo, configure .superturtle/.env for sandbox paths, register via /v1/machine/register
-- Reuse the semantic handoff bundle for managed E2B cutover
-- Replace SSH target resolution with a sandbox_id-based hosted teleport target contract
-- Upload handoff bundles and required runtime artifacts with E2B file APIs instead of rsync
-- Start remote bootstrap and health verification through E2B commands/PTY not SSH and stream logs back through command/PTY output
-- Transfer ownership only after the destination runtime is healthy
-- Add automatic rollback so local remains authoritative if cloud startup fails
-- Prevent duplicate concurrent teleport launches across both local lock state and control-plane ownership
-- Keep SSH/manual teleport only as an operator fallback path during migration off the current host-based flow
-- Define cloud to local teleport as a first-class flow rather than an operator-only workaround
-- Rehydrate the local runtime from cloud handoff state before ownership returns
-- Transfer ownership back only after local is healthy
-- Add rollback so cloud remains authoritative if local restart fails
-- Block teleport before ownership transfer when required destination provider auth is missing
-- Productize first-teleport provider setup so the user can reuse existing local Claude/Codex auth when available with browser/device auth only as fallback
-- Support user-scoped Claude hosted auth bootstrap from the local machine by reusing existing local auth state or token material instead of requiring direct browser login inside the managed sandbox
-- Support user-scoped Codex hosted auth bootstrap from the local machine by reusing existing local auth state or API-key-backed login instead of requiring direct browser login inside the managed sandbox
-- Store user-scoped hosted provider auth material securely in the control plane and use it only for that users sandbox/session
-- Add reauth/refresh/recovery flows when hosted Claude/Codex auth expires, is revoked, or becomes invalid
-- Add managed Claude/Codex settings and secret-deny policy for hosted sandboxes
-- Keep secrets out of E2B metadata and out of shared persisted sandbox auth state
-- Add production telemetry for provisioning failures, teleport failures, and unhealthy runtimes
-- Verify npm run build passes in both repos after all changes
-- Commit all changes in both repos separately
+- [x] Inventory the existing managed teleport, cloud control-plane, and E2B helper pieces already in the repo
+- [x] Add `/teleport` preflight confirm/cancel, idle-only checks, and better status reporting
+- [x] Build the E2B helper path for archive sync, script execution, and auth/bootstrap support
+- [ ] Finish the live local -> cloud E2B teleport path end to end, fix whatever blocks a real test, and leave it runnable by the human <- current
+  - Progress: `teleport-manual.sh` no longer drops `~/.codex` from `ALLOWED_PATHS` during the remote start rewrite, so an E2B sandbox that was seeded with local Codex auth stays able to start and verify the teleported runtime instead of losing access to the codex config dir at the last step.
+  - Progress: `teleport-manual.sh --managed` now discovers reusable local Claude auth from env/keychain/credentials files, stages it into the E2B sandbox after final sync, merges it into the sandbox `.superturtle/.env`, and removes the temporary bootstrap file so first live cutovers do not depend solely on preconfigured hosted Claude auth.
+  - Progress: managed teleport integration coverage now proves both local Codex auth and local Claude auth are seeded into the sandbox during the E2B path.
+- [ ] Verify destination health and ownership-transfer behavior under success and failure, adding rollback or failure surfacing only where needed to make testing reliable
+- [ ] Validate the hosted control-plane contract used by the test flow (`cloud status`, `instance resume`, `teleport target`, `machine register`, `machine heartbeat`) and fix mismatches
+- [ ] Write a concise operator test recipe plus known limitations for the current E2E teleport path
+- [ ] If local -> cloud is working, implement the smallest viable cloud -> local return path needed for another real test pass

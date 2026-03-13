@@ -1004,6 +1004,16 @@ async function testManagedTeleportUsesE2BHelperForSandboxCutover(tmpDir) {
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /bun install/.test(entry.script)), "expected remote dependency install");
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /teleport_handoff\.py" import/.test(entry.script)), "expected runtime import");
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /bun super_turtle\/bin\/superturtle\.js start/.test(entry.script)), "expected remote start");
+    assert.ok(
+      helperLog.some(
+        (entry) =>
+          entry.subcommand === "run-script" &&
+          /bun super_turtle\/bin\/superturtle\.js start/.test(entry.script) &&
+          /ALLOWED_PATHS/.test(entry.script) &&
+          /\.codex/.test(entry.script)
+      ),
+      "expected remote start config rewrite to preserve the sandbox .codex path"
+    );
     assert.ok(helperLog.some((entry) => entry.subcommand === "run-script" && /status_output="\$\(bun super_turtle\/bin\/superturtle\.js status\)"/.test(entry.script)), "expected remote status verification");
     assert.strictEqual(machineRegisterPayloads.length, 1, "expected a machine register call");
     assert.strictEqual(machineHeartbeatPayloads.length, 1, "expected a machine heartbeat call");
@@ -1130,6 +1140,83 @@ async function testManagedTeleportBootstrapsLocalCodexAuthIntoSandbox(tmpDir) {
   }
 }
 
+async function testManagedTeleportBootstrapsLocalClaudeAuthIntoSandbox(tmpDir) {
+  const { fakeBinDir, sshLogPath, rsyncLogPath, sessionPath, ctlPath, e2bHelperLogPath } = createBaseEnvironment(tmpDir);
+  const helperPath = resolve(tmpDir, "fake-e2b-helper");
+  const sandboxRoot = resolve(tmpDir, "sandbox-root");
+  createFakeE2BHelper(helperPath, e2bHelperLogPath, sandboxRoot);
+
+  const server = http.createServer((req, res) => {
+    const authorize = req.headers.authorization;
+    assert.strictEqual(authorize, "Bearer access-abc");
+
+    if (req.method === "GET" && req.url === "/v1/cli/teleport/target") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          instance: {
+            id: "inst_e2b_claude",
+            provider: "e2b",
+            state: "running",
+            sandbox_id: "sandbox_claude",
+            template_id: "template_teleport_v1",
+            machine_token_id: "machine-token-123",
+            last_seen_at: "2026-03-12T10:00:00Z",
+            resume_requested_at: "2026-03-12T09:58:00Z",
+          },
+          transport: "e2b",
+          sandbox_id: "sandbox_claude",
+          template_id: "template_teleport_v1",
+          project_root: "/home/user/agentic",
+          sandbox_metadata: {
+            account_id: "acct_123",
+            sandbox_role: "managed_runtime",
+          },
+          audit_log: [],
+        })
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  pointSessionAtBaseUrl(sessionPath, `http://127.0.0.1:${address.port}`);
+
+  try {
+    const result = await runTeleport(["--managed"], {
+      ...process.env,
+      PATH: `${fakeBinDir}:${process.env.PATH}`,
+      SUPERTURTLE_CLOUD_SESSION_PATH: sessionPath,
+      SUPERTURTLE_TELEPORT_E2B_HELPER_PATH: helperPath,
+      SUPERTURTLE_TELEPORT_CTL_PATH: ctlPath,
+      SUPERTURTLE_TELEPORT_CLAUDE_ACCESS_TOKEN: "claude-local-token",
+    });
+
+    assert.strictEqual(result.code, 0, `expected success, got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    assert.match(result.stdout, /\[teleport\] bootstrapping local Claude auth into managed sandbox/);
+    assert.ok(!fs.existsSync(sshLogPath), "expected SSH not to run for an E2B target");
+    assert.ok(!fs.existsSync(rsyncLogPath), "expected rsync not to run for an E2B target");
+    assert.strictEqual(
+      readEnvValue(resolve(sandboxRoot, "home", "user", "agentic", ".superturtle", ".env"), "CLAUDE_CODE_OAUTH_TOKEN"),
+      "claude-local-token"
+    );
+    assert.ok(
+      !fs.existsSync(resolve(sandboxRoot, "home", "user", "agentic", ".superturtle", "managed-runtime", "claude-access-token.txt")),
+      "expected temporary Claude bootstrap token file to be removed after runtime bootstrap"
+    );
+
+    const helperLog = readHelperLog(e2bHelperLogPath);
+    assert.ok(helperLog.some((entry) => entry.subcommand === "extract-archive"), "expected Claude auth archive extraction");
+  } finally {
+    server.close();
+  }
+}
+
 async function main() {
   const tmpDir = fs.mkdtempSync(resolve(os.tmpdir(), "superturtle-teleport-managed-"));
   try {
@@ -1138,6 +1225,7 @@ async function main() {
     await testManagedTeleportSurfacesProvisioningFailure(resolve(tmpDir, "failure"));
     await testManagedTeleportTimesOutWithSandboxWordingForE2BRuntime(resolve(tmpDir, "e2b-timeout"));
     await testManagedTeleportUsesE2BHelperForSandboxCutover(resolve(tmpDir, "e2b-target"));
+    await testManagedTeleportBootstrapsLocalClaudeAuthIntoSandbox(resolve(tmpDir, "e2b-claude-auth"));
     await testManagedTeleportBootstrapsLocalCodexAuthIntoSandbox(resolve(tmpDir, "e2b-codex-auth"));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });

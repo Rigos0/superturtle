@@ -32,6 +32,7 @@ CTL_PATH="${SUPERTURTLE_TELEPORT_CTL_PATH:-${REPO_ROOT}/super_turtle/subturtle/c
 E2B_HELPER_PATH="${SUPERTURTLE_TELEPORT_E2B_HELPER_PATH:-${REPO_ROOT}/super_turtle/bin/teleport-e2b.js}"
 ENV_FILE="${REPO_ROOT}/.superturtle/.env"
 E2B_REMOTE_HOME="${SUPERTURTLE_TELEPORT_E2B_HOME:-/home/user}"
+CLAUDE_CREDENTIALS_SOURCE_PATH="${SUPERTURTLE_TELEPORT_CLAUDE_CREDENTIALS_PATH:-}"
 CODEX_AUTH_SOURCE_PATH="${SUPERTURTLE_TELEPORT_CODEX_AUTH_PATH:-$HOME/.codex/auth.json}"
 MACHINE_HEARTBEAT_INTERVAL_SECONDS="${SUPERTURTLE_TELEPORT_MACHINE_HEARTBEAT_INTERVAL_SECONDS:-30}"
 MACHINE_HEARTBEAT_AUTOSTART="${SUPERTURTLE_TELEPORT_E2B_HEARTBEAT_AUTOSTART:-1}"
@@ -692,6 +693,117 @@ create_relative_file_archive() {
   printf '%s\n' "$archive_path"
 }
 
+discover_local_claude_access_token() {
+  node <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+
+function extractToken(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+
+  const candidates = [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    const visit = (value) => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      for (const [key, child] of Object.entries(value)) {
+        if (
+          typeof child === "string" &&
+          ["accessToken", "access_token", "oauthAccessToken", "token"].includes(key)
+        ) {
+          candidates.push(child.trim());
+        } else {
+          visit(child);
+        }
+      }
+    };
+    visit(parsed);
+  } catch {
+    candidates.push(trimmed);
+  }
+
+  return candidates.find((candidate) => candidate.length > 0) || "";
+}
+
+function readTokenFromFile(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return "";
+    return extractToken(fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return "";
+  }
+}
+
+const envCandidates = [
+  process.env.SUPERTURTLE_TELEPORT_CLAUDE_ACCESS_TOKEN,
+  process.env.SUPERTURTLE_CLAUDE_ACCESS_TOKEN,
+  process.env.CLAUDE_CODE_OAUTH_TOKEN,
+];
+for (const candidate of envCandidates) {
+  const token = extractToken(candidate);
+  if (token) {
+    process.stdout.write(token);
+    process.exit(0);
+  }
+}
+
+const user = process.env.USER || "unknown";
+if (process.platform === "darwin") {
+  const attempts = [
+    ["security", ["find-generic-password", "-s", "Claude Code-credentials", "-a", user, "-w"]],
+    ["security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"]],
+  ];
+  for (const [command, args] of attempts) {
+    const result = spawnSync(command, args, { stdio: "pipe" });
+    if (result.status === 0) {
+      const token = extractToken(result.stdout.toString("utf-8"));
+      if (token) {
+        process.stdout.write(token);
+        process.exit(0);
+      }
+    }
+  }
+}
+
+if (process.platform === "linux" && spawnSync("sh", ["-c", "command -v secret-tool"], { stdio: "ignore" }).status === 0) {
+  const attempts = [
+    ["secret-tool", ["lookup", "service", "Claude Code-credentials", "username", user]],
+    ["secret-tool", ["lookup", "service", "Claude Code-credentials"]],
+  ];
+  for (const [command, args] of attempts) {
+    const result = spawnSync(command, args, { stdio: "pipe" });
+    if (result.status === 0) {
+      const token = extractToken(result.stdout.toString("utf-8"));
+      if (token) {
+        process.stdout.write(token);
+        process.exit(0);
+      }
+    }
+  }
+}
+
+const home = process.env.HOME || "";
+const fileCandidates = [
+  process.env.SUPERTURTLE_TELEPORT_CLAUDE_CREDENTIALS_PATH,
+  home ? path.resolve(home, ".config", "claude-code", "credentials.json") : "",
+  home ? path.resolve(home, ".claude", "credentials.json") : "",
+].filter(Boolean);
+for (const filePath of fileCandidates) {
+  const token = readTokenFromFile(filePath);
+  if (token) {
+    process.stdout.write(token);
+    process.exit(0);
+  }
+}
+NODE
+}
+
 e2b_sync_repo() {
   if (( DRY_RUN == 1 )); then
     echo "[teleport] dry-run: skipping sandbox archive upload"
@@ -749,6 +861,41 @@ fi
 EOF
 }
 
+bootstrap_e2b_claude_auth() {
+  if [[ "$TELEPORT_TRANSPORT" != "e2b" ]]; then
+    return
+  fi
+
+  local claude_token=""
+  claude_token="$(discover_local_claude_access_token)"
+  if [[ -z "$claude_token" ]]; then
+    if [[ -n "$CLAUDE_CREDENTIALS_SOURCE_PATH" ]]; then
+      echo "[teleport] local Claude auth was not found at ${CLAUDE_CREDENTIALS_SOURCE_PATH}; reusing any existing sandbox auth"
+    else
+      echo "[teleport] local Claude auth was not found; reusing any existing sandbox auth"
+    fi
+    return
+  fi
+
+  local token_path archive_path remote_archive status
+  token_path="$(mktemp "${TMPDIR:-/tmp}/superturtle-teleport-claude-token.XXXXXX")"
+  printf '%s\n' "$claude_token" > "$token_path"
+  archive_path="$(create_relative_file_archive "$token_path" ".superturtle/managed-runtime/claude-access-token.txt")"
+  rm -f "$token_path"
+  remote_archive="/tmp/superturtle-claude-auth-${E2B_SANDBOX_ID}.tar.gz"
+  status=0
+
+  echo "[teleport] bootstrapping local Claude auth into managed sandbox"
+  set_phase "bootstrapping_remote_auth"
+  if ! e2b_helper extract-archive --sandbox-id "$E2B_SANDBOX_ID" --source "$archive_path" --destination-root "$REMOTE_ROOT" --archive-path "$remote_archive"; then
+    status=$?
+  fi
+  rm -f "$archive_path"
+  if (( status != 0 )); then
+    return "$status"
+  fi
+}
+
 bootstrap_e2b_runtime() {
   if [[ "$TELEPORT_TRANSPORT" != "e2b" ]]; then
     return
@@ -768,6 +915,7 @@ heartbeat_interval_seconds="$7"
 heartbeat_autostart="$8"
 managed_runtime_dir="$remote_root/.superturtle/managed-runtime"
 env_file="$remote_root/.superturtle/.env"
+claude_token_path="$managed_runtime_dir/claude-access-token.txt"
 
 mkdir -p "$managed_runtime_dir"
 mkdir -p "$(dirname "$env_file")"
@@ -815,6 +963,46 @@ for key, value in desired.items():
 
 env_path.write_text("\n".join(updated) + "\n")
 PY
+
+if [[ -f "$claude_token_path" ]]; then
+  python3 - "$env_file" "$claude_token_path" <<'PY'
+from pathlib import Path
+import sys
+
+env_path = Path(sys.argv[1])
+token_path = Path(sys.argv[2])
+token = token_path.read_text().strip()
+if not token:
+    raise SystemExit("Missing Claude access token for sandbox bootstrap")
+
+desired = {
+    "CLAUDE_CODE_OAUTH_TOKEN": token,
+}
+
+lines = env_path.read_text().splitlines()
+updated = []
+seen = set()
+
+for raw in lines:
+    stripped = raw.strip()
+    if not stripped or stripped.startswith("#") or "=" not in raw:
+        updated.append(raw)
+        continue
+    key, _, _ = raw.partition("=")
+    if key in desired:
+        updated.append(f"{key}={desired[key]}")
+        seen.add(key)
+    else:
+        updated.append(raw)
+
+for key, value in desired.items():
+    if key not in seen:
+        updated.append(f"{key}={value}")
+
+env_path.write_text("\n".join(updated) + "\n")
+PY
+  rm -f "$claude_token_path"
+fi
 
 mkdir -p "$remote_home/.claude" "$remote_home/.codex"
 chmod 700 "$remote_home/.claude" "$remote_home/.codex"
@@ -1114,10 +1302,17 @@ import sys
 env_path = Path(sys.argv[1])
 remote_root = sys.argv[2]
 home = str(Path.home())
+allowed_paths = ",".join(
+    [
+        remote_root,
+        f"{home}/.claude",
+        f"{home}/.codex",
+    ]
+)
 
 desired = {
     "CLAUDE_WORKING_DIR": remote_root,
-    "ALLOWED_PATHS": f"{remote_root},{home}/.claude",
+    "ALLOWED_PATHS": allowed_paths,
 }
 
 lines = env_path.read_text().splitlines()
@@ -1262,6 +1457,8 @@ stop_local_bot
 echo "[teleport] final sync"
 set_phase "final_sync"
 run_transport_sync
+
+bootstrap_e2b_claude_auth
 
 bootstrap_e2b_runtime
 
