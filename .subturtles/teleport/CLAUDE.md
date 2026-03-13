@@ -1,5 +1,5 @@
 # Current task
-Continue replacing managed VM assumptions with one persistent E2B sandbox per user, now that `teleport-manual.sh` uses provider-aware managed runtime wording during hosted resume/readiness polling and `/teleport status` expects the new non-VM timeout copy for GCP-backed instances.
+Continue replacing managed VM assumptions with one persistent E2B sandbox per user, now that `/teleport` preflight failures use provider-aware destination wording for GCP versus E2B and the remaining work is in the deeper transport/runtime contract.
 
 # End goal with specs
 A fully working /teleport feature where:
@@ -43,6 +43,7 @@ A fully working /teleport feature where:
   - Progress: the local control-plane runtime now supports `provider=e2b`, persists `sandbox_id` and `template_id` on managed instances and machine registration/heartbeat, returns `transport=e2b` teleport targets for E2B-backed instances, and keeps the SSH path unchanged for legacy GCP-backed instances.
   - Progress: `superturtle cloud status` / `cloud resume` now print provider, `sandbox_id`, and `template_id` for E2B-backed managed instances, and `/teleport` now labels E2B destinations as managed sandboxes instead of managed VMs in operator-facing Telegram copy.
   - Progress: `teleport-manual.sh --managed` now labels hosted readiness polling as `managed runtime`/`managed instance`/`managed sandbox` based on the control-plane provider signal, so timeout and unavailability failures stop hard-coding `managed SuperTurtle VM` when the destination is E2B-backed.
+  - Progress: `/teleport` hosted preflight failures now say `destination managed instance` for GCP-backed runtimes and keep `destination sandbox` for E2B-backed runtimes instead of hard-coding `destination sandbox` for every provider.
 - Define managed-runtime lifecycle and idempotent sandbox create/connect-resume/pause/reprovision/delete behavior
 - Build the production superturtle-teleport E2B template with pinned toolchain, startup scripts, health checks, log paths, and provider config directories
 - Store hosted runtime identity as sandbox_id + template_id in the control plane instead of SSH coordinates

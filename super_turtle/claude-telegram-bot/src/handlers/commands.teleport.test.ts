@@ -428,7 +428,7 @@ describe("/teleport", () => {
     expect(result.payload?.spawnCmd).toEqual([]);
   });
 
-  it("surfaces failed destination sandbox state before opening teleport confirmation", async () => {
+  it("surfaces failed destination managed instance state before opening teleport confirmation", async () => {
     const result = await runTeleportProbe("/teleport", {
       cloudStatusResponse: {
         status: 200,
@@ -453,6 +453,45 @@ describe("/teleport", () => {
 
     if (result.exitCode !== 0) {
       throw new Error(`Teleport destination-state probe failed:\n${result.stderr || result.stdout}`);
+    }
+
+    expect(result.payload?.replies).toEqual([
+      {
+        text:
+          "❌ Teleport preflight failed:\n" +
+          "- The destination managed instance has a failed resume job: sandbox_boot_failed.\n" +
+          "- The destination managed instance is failed.",
+      },
+    ]);
+    expect(result.payload?.askUserRequest).toBeNull();
+    expect(result.payload?.spawnCmd).toEqual([]);
+  });
+
+  it("keeps sandbox wording for failed E2B destination state", async () => {
+    const result = await runTeleportProbe("/teleport", {
+      cloudStatusResponse: {
+        status: 200,
+        body: {
+          response: {
+            instance: {
+              id: "inst_123",
+              provider: "e2b",
+              state: "failed",
+            },
+            provisioning_job: {
+              kind: "resume",
+              state: "failed",
+              error_code: "sandbox_boot_failed",
+              error_message: "sandbox bootstrap failed",
+            },
+            audit_log: [],
+          },
+        },
+      },
+    });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Teleport e2b destination-state probe failed:\n${result.stderr || result.stdout}`);
     }
 
     expect(result.payload?.replies).toEqual([

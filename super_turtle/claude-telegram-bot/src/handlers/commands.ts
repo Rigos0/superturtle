@@ -449,6 +449,16 @@ function describeManagedTeleportDestinationLabel(provider: string | null): strin
   return "linked managed SuperTurtle cloud runtime";
 }
 
+function describeManagedTeleportDestinationNoun(provider: string | null): string {
+  if (provider === "e2b") {
+    return "destination sandbox";
+  }
+  if (provider === "gcp") {
+    return "destination managed instance";
+  }
+  return "destination runtime";
+}
+
 function formatTeleportPreflightFailureList(failures: string[]): string {
   return [
     "❌ Teleport preflight failed:",
@@ -654,6 +664,7 @@ async function getManagedTeleportHostedPreflight():
   if (!instance) {
     failures.push("No linked managed runtime is available for this account yet.");
   } else {
+    const destinationNoun = describeManagedTeleportDestinationNoun(instance.provider || null);
     if (provisioningJob?.state === "failed") {
       const jobContext = [
         provisioningJob.kind ? `${provisioningJob.kind} job` : "provisioning job",
@@ -661,11 +672,11 @@ async function getManagedTeleportHostedPreflight():
       ]
         .filter(Boolean)
         .join(": ");
-      failures.push(`The destination sandbox has a failed ${jobContext || "provisioning job"}.`);
+      failures.push(`The ${destinationNoun} has a failed ${jobContext || "provisioning job"}.`);
     }
 
     if (["failed", "deleted", "deleting"].includes(instance.state || "")) {
-      failures.push(`The destination sandbox is ${instance.state}.`);
+      failures.push(`The ${destinationNoun} is ${instance.state}.`);
     }
   }
 
