@@ -4,7 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const http = require("http");
 const os = require("os");
-const { resolve } = require("path");
+const { basename, resolve } = require("path");
 const { spawn } = require("child_process");
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
@@ -32,6 +32,11 @@ function readEnvValue(path, key) {
 function sanitizeTokenPrefix(token) {
   const prefix = (token.split(":", 1)[0] || "default").toLowerCase();
   return prefix.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "default";
+}
+
+function deriveLocalTmuxSessionName() {
+  const token = readEnvValue(ENV_FILE_PATH, "TELEGRAM_BOT_TOKEN");
+  return `superturtle-${sanitizeTokenPrefix(token)}-${basename(REPO_ROOT)}`;
 }
 
 function seedDriverPrefs(activeDriver = "claude") {
@@ -117,7 +122,9 @@ function createBaseEnvironment(tmpDir, options = {}) {
   seedDriverPrefs(activeDriver);
   const realTmpDir = fs.realpathSync(tmpDir);
   const fakeBinDir = resolve(realTmpDir, "bin");
+  const tmuxStateDir = resolve(realTmpDir, "tmux-state");
   fs.mkdirSync(fakeBinDir, { recursive: true });
+  fs.mkdirSync(tmuxStateDir, { recursive: true });
   const sshLogPath = resolve(realTmpDir, "ssh.log");
   const rsyncLogPath = resolve(realTmpDir, "rsync.log");
   const sessionPath = resolve(realTmpDir, "cloud-session.json");
@@ -150,7 +157,55 @@ exit 0
     resolve(fakeBinDir, "tmux"),
     `#!/usr/bin/env bash
 set -euo pipefail
-exit 1
+state_dir="\${SUPERTURTLE_TEST_TMUX_STATE_DIR:-${tmuxStateDir}}"
+mkdir -p "$state_dir"
+
+session_path() {
+  printf '%s/%s\\n' "$state_dir" "$1"
+}
+
+case "\${1:-}" in
+  has-session)
+    target=""
+    while [[ $# -gt 0 ]]; do
+      if [[ "\${1:-}" == "-t" ]]; then
+        target="\${2:-}"
+        break
+      fi
+      shift
+    done
+    [[ -n "$target" && -f "$(session_path "$target")" ]]
+    ;;
+  kill-session)
+    target=""
+    while [[ $# -gt 0 ]]; do
+      if [[ "\${1:-}" == "-t" ]]; then
+        target="\${2:-}"
+        break
+      fi
+      shift
+    done
+    rm -f "$(session_path "$target")"
+    ;;
+  new-session)
+    session=""
+    while [[ $# -gt 0 ]]; do
+      if [[ "\${1:-}" == "-s" ]]; then
+        session="\${2:-}"
+        break
+      fi
+      shift
+    done
+    [[ -n "$session" ]] || exit 1
+    touch "$(session_path "$session")"
+    ;;
+  attach-session)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
 `
   );
   writeExecutable(
@@ -200,7 +255,7 @@ exit 0
     )}\n`
   );
 
-  return { fakeBinDir, sshLogPath, rsyncLogPath, sessionPath, ctlPath, e2bHelperLogPath };
+  return { fakeBinDir, sshLogPath, rsyncLogPath, sessionPath, ctlPath, e2bHelperLogPath, tmuxStateDir };
 }
 
 function pointSessionAtBaseUrl(sessionPath, baseUrl) {
@@ -737,7 +792,7 @@ async function testManagedTeleportTimesOutWithSandboxWordingForE2BRuntime(tmpDir
   }
 }
 
-function createFakeE2BHelper(helperPath, logPath, sandboxRoot) {
+function createFakeE2BHelper(helperPath, logPath, sandboxRoot, options = {}) {
   writeExecutable(
     helperPath,
     `#!/usr/bin/env node
@@ -747,6 +802,7 @@ const { spawnSync } = require("child_process");
 
 const logPath = ${JSON.stringify(logPath)};
 const sandboxRoot = ${JSON.stringify(sandboxRoot)};
+const failVerify = ${options.failVerify ? "true" : "false"};
 
 function log(entry) {
   fs.appendFileSync(logPath, JSON.stringify(entry) + "\\n");
@@ -837,6 +893,11 @@ function runUpload(args) {
   }
 
   if (script.includes('status_output="$(bun super_turtle/bin/superturtle.js status)"')) {
+    if (failVerify) {
+      process.stdout.write("Bot: stopped\\n");
+      process.stderr.write("[teleport][remote] Bot did not report running status\\n");
+      process.exit(1);
+    }
     process.stdout.write("Bot: running (sandbox-session)\\n");
     return;
   }
@@ -862,6 +923,7 @@ function runUpload(args) {
 	    script.includes('chmod 600 "$remote_home/.codex/auth.json"') ||
 	    script.includes('teleport_handoff.py" import') ||
 	    script.includes('bun super_turtle/bin/superturtle.js start') ||
+	    script.includes('tmux kill-session -t "$tmux_session"') ||
 	    script.includes('teleport_handoff.py" notify')
   ) {
     return;
@@ -900,6 +962,15 @@ function readHelperLog(path) {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+function writeTmuxSession(stateDir, sessionName) {
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(resolve(stateDir, sessionName), "running\n");
+}
+
+function tmuxSessionExists(stateDir, sessionName) {
+  return fs.existsSync(resolve(stateDir, sessionName));
 }
 
 async function testManagedTeleportUsesE2BHelperForSandboxCutover(tmpDir) {
@@ -1234,6 +1305,121 @@ async function testManagedTeleportBootstrapsLocalClaudeAuthIntoSandbox(tmpDir) {
   }
 }
 
+async function testManagedTeleportRollsBackLocalBotWhenRemoteVerifyFails(tmpDir) {
+  const {
+    fakeBinDir,
+    sessionPath,
+    ctlPath,
+    e2bHelperLogPath,
+    tmuxStateDir,
+  } = createBaseEnvironment(tmpDir);
+  const helperPath = resolve(tmpDir, "fake-e2b-helper");
+  const sandboxRoot = resolve(tmpDir, "sandbox-root");
+  createFakeE2BHelper(helperPath, e2bHelperLogPath, sandboxRoot, { failVerify: true });
+  const localSessionName = deriveLocalTmuxSessionName();
+  writeTmuxSession(tmuxStateDir, localSessionName);
+
+  let leaseClaims = 0;
+  const server = http.createServer((req, res) => {
+    const authorize = req.headers.authorization;
+    assert.strictEqual(authorize, "Bearer access-abc");
+
+    if (req.method === "GET" && req.url === "/v1/cli/teleport/target") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          instance: {
+            id: "inst_e2b_rollback",
+            provider: "e2b",
+            state: "running",
+            sandbox_id: "sandbox_rollback",
+            template_id: "template_teleport_v1",
+            machine_token_id: "machine-token-123",
+            last_seen_at: "2026-03-12T10:00:00Z",
+            resume_requested_at: "2026-03-12T09:58:00Z",
+          },
+          transport: "e2b",
+          sandbox_id: "sandbox_rollback",
+          template_id: "template_teleport_v1",
+          project_root: "/home/user/agentic",
+          audit_log: [],
+        })
+      );
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/v1/cli/runtime/lease/claim") {
+      leaseClaims += 1;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          lease: {
+            lease_id: "lease_rollback_local",
+            lease_epoch: 1,
+            runtime_id: "runtime_rollback_local",
+            owner_type: "local",
+            owner_hostname: "test-host",
+            owner_pid: 1234,
+            acquired_at: "2026-03-12T10:00:00Z",
+            heartbeat_at: "2026-03-12T10:00:00Z",
+            expires_at: "2026-03-12T10:00:45Z",
+            metadata: {},
+          },
+        })
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  pointSessionAtBaseUrl(sessionPath, `http://127.0.0.1:${address.port}`);
+
+  try {
+    const result = await runTeleport(["--managed"], {
+      ...process.env,
+      PATH: `${fakeBinDir}:${process.env.PATH}`,
+      SUPERTURTLE_CLOUD_SESSION_PATH: sessionPath,
+      SUPERTURTLE_TELEPORT_E2B_HELPER_PATH: helperPath,
+      SUPERTURTLE_TELEPORT_CTL_PATH: ctlPath,
+      SUPERTURTLE_TEST_TMUX_STATE_DIR: tmuxStateDir,
+    });
+
+    assert.strictEqual(result.code, 1, `expected verify failure, got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    assert.match(result.stderr, /\[teleport\]\[remote\] Bot did not report running status/);
+    assert.match(result.stdout, /\[teleport\] cutover failed during verifying_remote_bot; attempting rollback to local runtime/);
+    assert.match(result.stdout, /\[teleport\] stopping remote bot before local rollback/);
+    assert.match(result.stdout, /\[teleport\] restarting local bot after failed cutover/);
+    assert.match(result.stdout, /\[teleport\] rollback complete: local bot restarted/);
+    assert.ok(tmuxSessionExists(tmuxStateDir, localSessionName), "expected rollback to restore the local tmux session");
+    assert.strictEqual(leaseClaims, 1, "expected local rollback restart to reclaim ownership once");
+
+    const helperLog = readHelperLog(e2bHelperLogPath);
+    assert.ok(
+      helperLog.some(
+        (entry) =>
+          entry.subcommand === "run-script" &&
+          /status_output="\$\(bun super_turtle\/bin\/superturtle\.js status\)"/.test(entry.script)
+      ),
+      "expected remote verification attempt"
+    );
+    assert.ok(
+      helperLog.some(
+        (entry) =>
+          entry.subcommand === "run-script" &&
+          /tmux kill-session -t "\$tmux_session"/.test(entry.script)
+      ),
+      "expected remote stop during rollback"
+    );
+  } finally {
+    server.close();
+  }
+}
+
 async function main() {
   const tmpDir = fs.mkdtempSync(resolve(os.tmpdir(), "superturtle-teleport-managed-"));
   try {
@@ -1244,6 +1430,7 @@ async function main() {
     await testManagedTeleportUsesE2BHelperForSandboxCutover(resolve(tmpDir, "e2b-target"));
     await testManagedTeleportBootstrapsLocalClaudeAuthIntoSandbox(resolve(tmpDir, "e2b-claude-auth"));
     await testManagedTeleportBootstrapsLocalCodexAuthIntoSandbox(resolve(tmpDir, "e2b-codex-auth"));
+    await testManagedTeleportRollsBackLocalBotWhenRemoteVerifyFails(resolve(tmpDir, "e2b-rollback"));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

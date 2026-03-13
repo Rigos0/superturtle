@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
@@ -49,6 +49,11 @@ MACHINE_AUTH_TOKEN=""
 DRY_RUN=0
 USE_MANAGED_TARGET=0
 CURRENT_PHASE="preflight"
+LOCAL_BOT_STOPPED=0
+REMOTE_START_ATTEMPTED=0
+REMOTE_RUNTIME_VERIFIED=0
+ROLLBACK_ATTEMPTED=0
+LATEST_FAILURE_REASON=""
 
 if [[ ! "$MACHINE_HEARTBEAT_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
   echo "[teleport] SUPERTURTLE_TELEPORT_MACHINE_HEARTBEAT_INTERVAL_SECONDS must be a positive integer" >&2
@@ -80,10 +85,12 @@ set_destination_state() {
 }
 
 set_failure_reason() {
+  LATEST_FAILURE_REASON="$*"
   emit_status "failure_reason" "$*"
 }
 
 clear_failure_reason() {
+  LATEST_FAILURE_REASON=""
   emit_status "failure_reason" ""
 }
 
@@ -1274,7 +1281,16 @@ stop_local_bot() {
   if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$tmux_session" 2>/dev/null; then
     echo "[teleport] stopping local bot tmux session ${tmux_session}"
     tmux kill-session -t "$tmux_session"
+    LOCAL_BOT_STOPPED=1
   fi
+}
+
+restart_local_bot() {
+  echo "[teleport] restarting local bot after failed cutover"
+  (
+    cd "$REPO_ROOT"
+    node "$REPO_ROOT/super_turtle/bin/superturtle.js" start
+  )
 }
 
 remote_import_runtime() {
@@ -1361,6 +1377,78 @@ bun super_turtle/bin/superturtle.js start
 EOF
 }
 
+stop_remote_bot() {
+  remote_bash "$REMOTE_ROOT" <<'EOF'
+set -euo pipefail
+remote_root="$1"
+env_file="$remote_root/.superturtle/.env"
+if [[ ! -f "$env_file" ]]; then
+  exit 0
+fi
+
+python3 - "$env_file" "$remote_root" <<'PY'
+from pathlib import Path
+import sys
+
+env_path = Path(sys.argv[1])
+remote_root = sys.argv[2]
+home = str(Path.home())
+allowed_paths = ",".join(
+    [
+        remote_root,
+        f"{home}/.claude",
+        f"{home}/.codex",
+    ]
+)
+
+desired = {
+    "CLAUDE_WORKING_DIR": remote_root,
+    "ALLOWED_PATHS": allowed_paths,
+}
+
+lines = env_path.read_text().splitlines()
+updated = []
+seen = set()
+
+for raw in lines:
+    stripped = raw.strip()
+    if not stripped or stripped.startswith("#") or "=" not in raw:
+        updated.append(raw)
+        continue
+    key, _, _ = raw.partition("=")
+    if key in desired:
+        updated.append(f"{key}={desired[key]}")
+        seen.add(key)
+    else:
+        updated.append(raw)
+
+for key, value in desired.items():
+    if key not in seen:
+        updated.append(f"{key}={value}")
+
+env_path.write_text("\n".join(updated) + "\n")
+PY
+
+set -a
+source "$env_file"
+set +a
+
+sanitize_name() {
+  printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_-' '-' | sed -e 's/^-*//' -e 's/-*$//'
+}
+
+token_prefix="$(sanitize_name "${TELEGRAM_BOT_TOKEN%%:*}")"
+token_prefix="${token_prefix:-default}"
+project_slug="$(sanitize_name "$(basename "$remote_root")")"
+project_slug="${project_slug:-project}"
+tmux_session="superturtle-${token_prefix}-${project_slug}"
+
+if tmux has-session -t "$tmux_session" 2>/dev/null; then
+  tmux kill-session -t "$tmux_session"
+fi
+EOF
+}
+
 verify_remote_bot() {
   remote_bash "$REMOTE_ROOT" <<'EOF'
 set -euo pipefail
@@ -1386,6 +1474,38 @@ message_b64="$2"
 message="$(printf '%s' "$message_b64" | base64 --decode)"
 python3 "$remote_root/super_turtle/state/teleport_handoff.py" notify --project-root "$remote_root" --text "$message"
 EOF
+}
+
+rollback_failed_cutover() {
+  local exit_code="$1"
+  if (( exit_code == 0 || DRY_RUN == 1 || LOCAL_BOT_STOPPED == 0 || REMOTE_RUNTIME_VERIFIED == 1 || ROLLBACK_ATTEMPTED == 1 )); then
+    return
+  fi
+
+  ROLLBACK_ATTEMPTED=1
+  set +e
+
+  echo "[teleport] cutover failed during ${CURRENT_PHASE}; attempting rollback to local runtime"
+  set_phase "rolling_back_local_runtime"
+  set_active_owner "local"
+
+  if (( REMOTE_START_ATTEMPTED == 1 )); then
+    echo "[teleport] stopping remote bot before local rollback"
+    if ! stop_remote_bot; then
+      echo "[teleport] warning: failed to stop remote bot during rollback"
+    fi
+  fi
+
+  if restart_local_bot; then
+    set_destination_state "rollback_local_running"
+    set_failure_reason "Teleport failed during ${CURRENT_PHASE}. Local bot restarted."
+    echo "[teleport] rollback complete: local bot restarted"
+    return
+  fi
+
+  set_destination_state "rollback_failed"
+  set_failure_reason "Teleport failed during ${CURRENT_PHASE}. Local bot restart failed; manual recovery required."
+  echo "[teleport] rollback failed: local bot did not restart"
 }
 
 run_transport_sync() {
@@ -1425,6 +1545,7 @@ CONTEXT_FILE="${REPO_ROOT}/.superturtle/teleport/context.json"
 TOKEN_PREFIX="$(read_json_field "$CONTEXT_FILE" "token_prefix")"
 ACTIVE_DRIVER="$(read_json_field "$CONTEXT_FILE" "active_driver")"
 ACTIVE_DRIVER="${ACTIVE_DRIVER:-claude}"
+trap 'rollback_failed_cutover "$?"' EXIT
 
 echo "[teleport] active driver: ${ACTIVE_DRIVER}"
 set_phase "remote_preflight"
@@ -1474,20 +1595,26 @@ remote_import_runtime
 
 echo "[teleport] starting remote bot"
 set_phase "starting_remote_bot"
+REMOTE_START_ATTEMPTED=1
 start_remote_bot
 
 echo "[teleport] verifying remote bot"
 set_phase "verifying_remote_bot"
 verify_remote_bot
+REMOTE_RUNTIME_VERIFIED=1
+set_active_owner "cloud"
+set_destination_state "running"
+clear_failure_reason
 
 if [[ "$TELEPORT_TRANSPORT" == "e2b" ]]; then
-  send_remote_notification "Teleport complete. Super Turtle is now running on managed sandbox ${E2B_SANDBOX_ID}."
+  if ! send_remote_notification "Teleport complete. Super Turtle is now running on managed sandbox ${E2B_SANDBOX_ID}."; then
+    echo "[teleport] warning: failed to write remote teleport completion notice"
+  fi
 else
-  send_remote_notification "Teleport complete. Super Turtle is now running on ${SSH_TARGET}."
+  if ! send_remote_notification "Teleport complete. Super Turtle is now running on ${SSH_TARGET}."; then
+    echo "[teleport] warning: failed to write remote teleport completion notice"
+  fi
 fi
 
 echo "[teleport] success"
 set_phase "complete"
-set_active_owner "cloud"
-set_destination_state "running"
-clear_failure_reason

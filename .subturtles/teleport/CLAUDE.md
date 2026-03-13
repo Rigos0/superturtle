@@ -1,5 +1,5 @@
 # Current task
-Finish a testable end-to-end local -> cloud managed teleport path on E2B using the existing working pieces, and do not spend time broadening transport abstractions unless they directly block the E2B test path. Current focus: clear the remaining live-cutover blockers after local Claude/Codex auth seeding is in place for managed sandboxes, with the post-final-sync dependency reinstall now restored for E2B cutover.
+Finish a testable end-to-end local -> cloud managed teleport path on E2B using the existing working pieces, and do not spend time broadening transport abstractions unless they directly block the E2B test path. Current focus: clear the remaining live-cutover blockers after local Claude/Codex auth seeding is in place for managed sandboxes, with rollback now added for post-cutover verification failures and the post-final-sync dependency reinstall already restored for E2B cutover.
 
 # End goal with specs
 - `/teleport` from Telegram can move the live bot from local -> E2B managed sandbox end to end
@@ -34,6 +34,7 @@ Finish a testable end-to-end local -> cloud managed teleport path on E2B using t
   - Progress: `teleport-manual.sh --managed` now discovers reusable local Claude auth from env/keychain/credentials files, stages it into the E2B sandbox after final sync, merges it into the sandbox `.superturtle/.env`, and removes the temporary bootstrap file so first live cutovers do not depend solely on preconfigured hosted Claude auth.
   - Progress: managed teleport integration coverage now proves both local Codex auth and local Claude auth are seeded into the sandbox during the E2B path.
   - Progress: the E2B path now reruns `bun install` after the final archive sync, so the last sync no longer wipes the remote dependencies that the managed sandbox needs immediately before import/start/verify.
+  - Progress: if local -> cloud cutover fails after the local bot has been stopped but before the remote runtime is verified healthy, `teleport-manual.sh` now stops the partially started remote bot, restarts the local tmux runtime, and keeps the failure surfaced in the teleport log instead of leaving the bot down.
 - [ ] Verify destination health and ownership-transfer behavior under success and failure, adding rollback or failure surfacing only where needed to make testing reliable
 - [ ] Validate the hosted control-plane contract used by the test flow (`cloud status`, `instance resume`, `teleport target`, `machine register`, `machine heartbeat`) and fix mismatches
 - [ ] Write a concise operator test recipe plus known limitations for the current E2E teleport path
