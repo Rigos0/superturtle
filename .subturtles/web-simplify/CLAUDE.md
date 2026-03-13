@@ -1,5 +1,5 @@
 # Current task
-Run `npm run build` and fix all errors until it passes.
+Commit the pending simplification changes in the `../superturtle-web` git repo with a clear message.
 
 # End goal with specs
 A clean, minimal app with only the pages and components needed for:
@@ -31,6 +31,7 @@ The repo is at the cwd (superturtle-web). Some deletions may already be done fro
 - [x] Simplify `src/app/(auth)/auth-ui.tsx`: remove two-column layout, Terms/Privacy links, AuthFact cards; single-column sign-in card with GitHub button
 - [x] Simplify `src/app/(account)/account/page.tsx`: remove dark gradient summary panel and SectionHeading import; use clean simple cards for identity, billing, CLI, machine. Fix the /pricing link since pricing page is deleted.
 - [x] Grep entire src/ tree for dangling imports to deleted files and fix them all
-- [ ] Run npm run build and fix all errors until it passes <- current
-- [ ] Run npm run lint and fix all errors until it passes
-- [ ] Commit all changes with a clear message
+- [x] Run npm run build and fix all errors until it passes
+- [x] Run npm run lint and fix all errors until it passes
+- [x] Commit this `.subturtles/web-simplify/CLAUDE.md` state update in the `agentic` git repo
+- [ ] Commit pending `../superturtle-web` simplification changes in the `superturtle-web` git repo with a clear message <- current
