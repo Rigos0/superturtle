@@ -24,6 +24,7 @@ import {
   TOKEN_PREFIX,
   DEFAULT_CODEX_EFFORT,
   getCodexUnavailableReason,
+  IPC_DIR,
 } from "../config";
 import { getContextReport } from "../context-command";
 import { isAuthorized } from "../security";
@@ -34,6 +35,7 @@ import { handleStop } from "./stop";
 import { clearPreparedSnapshots, getPreparedSnapshotCount } from "../cron-supervision-queue";
 import { getAllDeferredQueues } from "../deferred-queue";
 import { cmdLog } from "../logger";
+import { checkPendingAskUserRequests } from "./streaming";
 import type { BotCommand } from "grammy/types";
 
 // Canonical main-loop log written by live.sh (tmux + caffeinate + run-loop).
@@ -44,6 +46,7 @@ const TELEPORT_LOG_DIR = join(WORKING_DIR, ".superturtle", "logs", "teleport");
 const TELEPORT_STATE_DIR = join(WORKING_DIR, ".superturtle", "teleport");
 const TELEPORT_LOCK_PATH = join(TELEPORT_STATE_DIR, "managed-active.lock");
 const TELEPORT_CLAIM_DIR = `${TELEPORT_LOCK_PATH}.d`;
+export const TELEPORT_PREFLIGHT_COMMAND_KIND = "teleport_preflight";
 const LOOPLOGS_LINE_COUNT = 50;
 const RESUME_SESSIONS_LIMIT = 5;
 const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
@@ -237,52 +240,19 @@ function countDeferredQueueItems(): number {
   );
 }
 
-export async function handleTeleportCommand(ctx: Context): Promise<void> {
-  const userId = ctx.from?.id;
+function getTeleportIpcDir(): string {
+  const override = process.env.SUPERTURTLE_IPC_DIR?.trim();
+  return override && override.length > 0 ? override : IPC_DIR;
+}
 
-  if (!isAuthorized(userId, ALLOWED_USERS)) {
-    await ctx.reply("Unauthorized.");
-    return;
-  }
-
-  const options = parseTeleportCommandOptions(ctx.message?.text);
-  if (!options) {
-    await ctx.reply("❌ Usage: /teleport [status|managed] [dry-run]");
-    return;
-  }
-
-  if (options.action === "status") {
-    const activeTeleport = getActiveTeleportLockState();
-    if (activeTeleport) {
-      const modeLabel = activeTeleport.mode === "dry-run" ? "dry-run" : "live";
-      const launchedAt = activeTeleport.launchedAt || "unknown";
-      const logPath = activeTeleport.logPath || "unknown";
-      await ctx.reply(
-        `🛰️ Managed teleport ${modeLabel} is running.\nStarted: ${launchedAt}\nLog: ${logPath}`
-      );
-      return;
-    }
-
-    const latestLogPath = getLatestTeleportLogPath();
-    await ctx.reply(
-      latestLogPath
-        ? `🛰️ No managed teleport is running.\nLast log: ${latestLogPath}`
-        : "🛰️ No managed teleport is running.\nNo teleport logs found yet."
-    );
-    return;
-  }
-
+function getManagedTeleportLaunchBlocker(): string | null {
   if (isBackgroundRunActive() || isAnyDriverRunning()) {
-    await ctx.reply("❌ Teleport requires the bot to be idle. Stop the current run and retry.");
-    return;
+    return "❌ Teleport requires the bot to be idle. Stop the current run and retry.";
   }
 
   const queuedItems = countDeferredQueueItems();
   if (queuedItems > 0) {
-    await ctx.reply(
-      `❌ Teleport requires an empty queue. Clear ${queuedItems} queued item${queuedItems === 1 ? "" : "s"} and retry.`
-    );
-    return;
+    return `❌ Teleport requires an empty queue. Clear ${queuedItems} queued item${queuedItems === 1 ? "" : "s"} and retry.`;
   }
 
   const activeTeleport = getActiveTeleportLockState();
@@ -290,9 +260,73 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
     const modeLabel = activeTeleport.mode === "dry-run" ? "dry-run" : "live";
     const launchedAtSuffix = activeTeleport.launchedAt ? ` Started: ${activeTeleport.launchedAt}` : "";
     const logSuffix = activeTeleport.logPath ? ` Log: ${activeTeleport.logPath}` : "";
-    await ctx.reply(
-      `❌ A managed teleport ${modeLabel} is already running.${launchedAtSuffix}${logSuffix}`
-    );
+    return `❌ A managed teleport ${modeLabel} is already running.${launchedAtSuffix}${logSuffix}`;
+  }
+
+  return null;
+}
+
+function buildTeleportPreflightQuestion(dryRun: boolean): string {
+  return [
+    "Teleport preflight:",
+    `Mode: ${dryRun ? "dry-run" : "live cutover"}`,
+    "Destination: linked managed SuperTurtle runtime",
+    "Checks passed: bot idle, queue empty, no active teleport",
+    "Continue?",
+  ].join("\n");
+}
+
+async function sendTeleportPreflightPrompt(
+  ctx: Context,
+  options: { dryRun: boolean }
+): Promise<void> {
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("❌ Failed to open teleport confirmation: missing chat context.");
+    return;
+  }
+
+  const ipcDir = getTeleportIpcDir();
+  mkdirSync(ipcDir, { recursive: true, mode: 0o700 });
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const requestFile = join(ipcDir, `ask-user-${requestId}.json`);
+  await Bun.write(
+    requestFile,
+    JSON.stringify(
+      {
+        request_id: requestId,
+        question: buildTeleportPreflightQuestion(options.dryRun),
+        options: [options.dryRun ? "Start dry-run" : "Start teleport", "Cancel"],
+        status: "pending",
+        chat_id: String(chatId),
+        created_at: new Date().toISOString(),
+        command_kind: TELEPORT_PREFLIGHT_COMMAND_KIND,
+        dry_run: options.dryRun,
+      },
+      null,
+      2
+    )
+  );
+
+  const buttonsSent = await checkPendingAskUserRequests(ctx, chatId);
+  if (!buttonsSent) {
+    try {
+      rmSync(requestFile);
+    } catch {
+      // Ignore cleanup failures; the send failure is what matters.
+    }
+    await ctx.reply("❌ Failed to send teleport confirmation. Retry /teleport.");
+    return;
+  }
+}
+
+export async function launchManagedTeleport(
+  ctx: Pick<Context, "reply">,
+  options: { dryRun: boolean }
+): Promise<void> {
+  const blocker = getManagedTeleportLaunchBlocker();
+  if (blocker) {
+    await ctx.reply(blocker);
     return;
   }
 
@@ -375,8 +409,51 @@ export async function handleTeleportCommand(ctx: Context): Promise<void> {
     await ctx.reply(
       `❌ Failed to launch teleport: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`
     );
+  }
+}
+
+export async function handleTeleportCommand(ctx: Context): Promise<void> {
+  const userId = ctx.from?.id;
+
+  if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await ctx.reply("Unauthorized.");
     return;
   }
+
+  const options = parseTeleportCommandOptions(ctx.message?.text);
+  if (!options) {
+    await ctx.reply("❌ Usage: /teleport [status|managed] [dry-run]");
+    return;
+  }
+
+  if (options.action === "status") {
+    const activeTeleport = getActiveTeleportLockState();
+    if (activeTeleport) {
+      const modeLabel = activeTeleport.mode === "dry-run" ? "dry-run" : "live";
+      const launchedAt = activeTeleport.launchedAt || "unknown";
+      const logPath = activeTeleport.logPath || "unknown";
+      await ctx.reply(
+        `🛰️ Managed teleport ${modeLabel} is running.\nStarted: ${launchedAt}\nLog: ${logPath}`
+      );
+      return;
+    }
+
+    const latestLogPath = getLatestTeleportLogPath();
+    await ctx.reply(
+      latestLogPath
+        ? `🛰️ No managed teleport is running.\nLast log: ${latestLogPath}`
+        : "🛰️ No managed teleport is running.\nNo teleport logs found yet."
+    );
+    return;
+  }
+
+  const blocker = getManagedTeleportLaunchBlocker();
+  if (blocker) {
+    await ctx.reply(blocker);
+    return;
+  }
+
+  await sendTeleportPreflightPrompt(ctx, { dryRun: options.dryRun });
 }
 
 function getCodexUnavailableMessage(): string {

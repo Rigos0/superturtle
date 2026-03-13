@@ -7,7 +7,15 @@ const deferredQueuePath = resolve(import.meta.dir, "../deferred-queue.ts");
 const marker = "__TELEPORT_PROBE__=";
 
 type TeleportProbePayload = {
-  replies: string[];
+  replies: Array<{
+    text: string;
+    extra?: {
+      reply_markup?: {
+        inline_keyboard?: Array<Array<{ text?: string; callback_data?: string }>>;
+      };
+    };
+  }>;
+  askUserRequest?: Record<string, unknown> | null;
   spawnCmd: string[];
   spawnOpts: {
     cwd?: string;
@@ -74,8 +82,12 @@ async function runTeleportProbe(messageText: string, options?: {
     const { beginBackgroundRun, endBackgroundRun } = await import(driverRoutingPath);
     const { enqueueDeferredMessage } = await import(deferredQueuePath);
     const { handleTeleportCommand } = await import(modulePath);
-    const { mkdirSync, rmSync, writeFileSync } = await import("fs");
+    const { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = await import("fs");
     const { join } = await import("path");
+    const { tmpdir } = await import("os");
+
+    const ipcDir = mkdtempSync(join(tmpdir(), "teleport-ask-user-"));
+    process.env.SUPERTURTLE_IPC_DIR = ipcDir;
 
     const teleportStateDir = join(process.cwd(), ".superturtle", "teleport");
     const teleportLockPath = join(teleportStateDir, "managed-active.lock");
@@ -119,8 +131,10 @@ async function runTeleportProbe(messageText: string, options?: {
     const ctx = {
       from: { id: 123 },
       message: { text: ${JSON.stringify(messageText)} },
-      reply: async (text) => {
-        replies.push(String(text));
+      chat: { id: 123, type: "private" },
+      reply: async (text, extra) => {
+        replies.push({ text: String(text), extra: extra || undefined });
+        return { message_id: replies.length };
       },
     };
 
@@ -128,9 +142,17 @@ async function runTeleportProbe(messageText: string, options?: {
     if (running) {
       endBackgroundRun();
     }
+    const askUserFiles = readdirSync(ipcDir)
+      .filter((name) => name.startsWith("ask-user-") && name.endsWith(".json"))
+      .sort();
+    const askUserRequest = askUserFiles[0]
+      ? JSON.parse(readFileSync(join(ipcDir, askUserFiles[0]), "utf-8"))
+      : null;
+
     rmSync(teleportStateDir, { recursive: true, force: true });
     rmSync(teleportLogDir, { recursive: true, force: true });
-    console.log(marker + JSON.stringify({ replies, spawnCmd, spawnOpts, unrefCalled }));
+    rmSync(ipcDir, { recursive: true, force: true });
+    console.log(marker + JSON.stringify({ replies, spawnCmd, spawnOpts, unrefCalled, askUserRequest }));
   `;
 
   const proc = Bun.spawn({
@@ -159,7 +181,7 @@ async function runTeleportProbe(messageText: string, options?: {
 }
 
 describe("/teleport", () => {
-  it("launches the managed teleport script in the background", async () => {
+  it("shows a preflight confirmation before launching managed teleport", async () => {
     const result = await runTeleportProbe("/teleport dry-run");
 
     if (result.exitCode !== 0) {
@@ -167,38 +189,26 @@ describe("/teleport", () => {
     }
 
     expect(result.payload).not.toBeNull();
-    expect(result.payload?.replies).toEqual([
-      expect.stringMatching(
-        /^🛰️ Starting managed teleport dry-run in the background\.\nLog: .+\/\.superturtle\/logs\/teleport\/.+-dry-run\.log$/
-      ),
+    expect(result.payload?.replies).toHaveLength(1);
+    expect(result.payload?.replies[0]?.text).toBe(
+      "❓ Teleport preflight:\nMode: dry-run\nDestination: linked managed SuperTurtle runtime\nChecks passed: bot idle, queue empty, no active teleport\nContinue?"
+    );
+    const keyboardRows = (result.payload?.replies[0]?.extra?.reply_markup?.inline_keyboard || [])
+      .filter((row) => row.length > 0);
+    expect(keyboardRows).toEqual([
+      [{ text: "Start dry-run", callback_data: expect.stringMatching(/^askuser:[A-Za-z0-9._-]+:0$/) }],
+      [{ text: "Cancel", callback_data: expect.stringMatching(/^askuser:[A-Za-z0-9._-]+:1$/) }],
     ]);
-    expect(result.payload?.spawnCmd).toEqual([
-      "bash",
-      "-lc",
-      expect.stringContaining('mkdir "$SUPERTURTLE_TELEPORT_CLAIM_DIR" 2>/dev/null'),
-      "teleport-managed",
-      "--dry-run",
-    ]);
-    expect(result.payload?.spawnCmd[2]).toContain(
-      '"$TELEPORT_SCRIPT_PATH" --managed "$@" >>"$SUPERTURTLE_TELEPORT_LOG_PATH" 2>&1'
-    );
-    expect(result.payload?.spawnOpts?.detached).toBe(true);
-    expect(result.payload?.spawnOpts?.stdin).toBe("ignore");
-    expect(result.payload?.spawnOpts?.stdout).toBe("ignore");
-    expect(result.payload?.spawnOpts?.stderr).toBe("ignore");
-    expect(result.payload?.spawnOpts?.env?.TELEPORT_SCRIPT_PATH).toBe(
-      `${process.cwd()}/super_turtle/scripts/teleport-manual.sh`
-    );
-    expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_LOG_PATH).toMatch(
-      /\/\.superturtle\/logs\/teleport\/.+-dry-run\.log$/
-    );
-    expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_LOCK_PATH).toMatch(
-      /\/\.superturtle\/teleport\/managed-active\.lock$/
-    );
-    expect(result.payload?.spawnOpts?.env?.SUPERTURTLE_TELEPORT_CLAIM_DIR).toMatch(
-      /\/\.superturtle\/teleport\/managed-active\.lock\.d$/
-    );
-    expect(result.payload?.unrefCalled).toBe(true);
+    expect(result.payload?.askUserRequest).toMatchObject({
+      question: "Teleport preflight:\nMode: dry-run\nDestination: linked managed SuperTurtle runtime\nChecks passed: bot idle, queue empty, no active teleport\nContinue?",
+      options: ["Start dry-run", "Cancel"],
+      status: "sent",
+      chat_id: "123",
+      command_kind: "teleport_preflight",
+      dry_run: true,
+    });
+    expect(result.payload?.spawnCmd).toEqual([]);
+    expect(result.payload?.unrefCalled).toBe(false);
   });
 
   it("refuses to start while the bot is busy", async () => {
@@ -209,7 +219,7 @@ describe("/teleport", () => {
     }
 
     expect(result.payload?.replies).toEqual([
-      "❌ Teleport requires the bot to be idle. Stop the current run and retry.",
+      { text: "❌ Teleport requires the bot to be idle. Stop the current run and retry." },
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });
@@ -222,7 +232,7 @@ describe("/teleport", () => {
     }
 
     expect(result.payload?.replies).toEqual([
-      "❌ Teleport requires an empty queue. Clear 1 queued item and retry.",
+      { text: "❌ Teleport requires an empty queue. Clear 1 queued item and retry." },
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });
@@ -235,7 +245,7 @@ describe("/teleport", () => {
     }
 
     expect(result.payload?.replies).toEqual([
-      "❌ Usage: /teleport [status|managed] [dry-run]",
+      { text: "❌ Usage: /teleport [status|managed] [dry-run]" },
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });
@@ -255,7 +265,7 @@ describe("/teleport", () => {
     }
 
     expect(result.payload?.replies).toEqual([
-      "🛰️ Managed teleport dry-run is running.\nStarted: 2026-03-12T10:30:00Z\nLog: /tmp/existing-teleport.log",
+      { text: "🛰️ Managed teleport dry-run is running.\nStarted: 2026-03-12T10:30:00Z\nLog: /tmp/existing-teleport.log" },
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });
@@ -273,11 +283,13 @@ describe("/teleport", () => {
     }
 
     expect(result.payload?.replies).toEqual([
-      expect.stringMatching(
-        new RegExp(
-          `No managed teleport is running\\.\\nLast log: ${process.cwd().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.superturtle/logs/teleport/2026-03-12T10-00-00\\.000Z-dry-run\\.log$`
-        )
-      ),
+      {
+        text: expect.stringMatching(
+          new RegExp(
+            `No managed teleport is running\\.\\nLast log: ${process.cwd().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.superturtle/logs/teleport/2026-03-12T10-00-00\\.000Z-dry-run\\.log$`
+          )
+        ),
+      },
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });
@@ -297,7 +309,7 @@ describe("/teleport", () => {
     }
 
     expect(result.payload?.replies).toEqual([
-      "❌ A managed teleport live is already running. Started: 2026-03-12T10:30:00Z Log: /tmp/existing-teleport.log",
+      { text: "❌ A managed teleport live is already running. Started: 2026-03-12T10:30:00Z Log: /tmp/existing-teleport.log" },
     ]);
     expect(result.payload?.spawnCmd).toEqual([]);
   });

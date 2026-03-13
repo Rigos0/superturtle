@@ -1,5 +1,5 @@
 # Current task
-Add /teleport preflight summary with confirm/cancel before cutover using ask_user MCP tool for inline Telegram buttons.
+Improve /teleport status with phase, active owner, destination runtime state, and latest failure reason.
 
 # End goal with specs
 A fully working /teleport feature where:
@@ -32,10 +32,9 @@ A fully working /teleport feature where:
   - Inventory captured in `.subturtles/teleport/INVENTORY.md`.
 - [x] Fix any pre-existing build errors in ../superturtle-web/ (known: simple-import-sort/imports errors in src/app/v1/cli/runtime/lease/claim/route.ts, heartbeat/route.ts, release/route.ts and src/features/cloud/controllers/runtime-lease.ts) so npm run build passes clean
   - Verified `npm run build` passes in `../superturtle-web/` on March 13, 2026.
-- Add /teleport preflight summary with confirm/cancel before cutover using ask_user MCP tool for inline Telegram buttons
-- Add /teleport preflight summary with confirm/cancel before cutover using ask_user MCP tool for inline Telegram buttons <- current
-- Keep /teleport idle-only; reject while work is active or queued with clear error message
-- Improve /teleport status with phase, active owner, destination runtime state, and latest failure reason
+- [x] Add /teleport preflight summary with confirm/cancel before cutover using ask_user MCP tool for inline Telegram buttons
+- [x] Keep /teleport idle-only; reject while work is active or queued with clear error message
+- Improve /teleport status with phase, active owner, destination runtime state, and latest failure reason <- current
 - Surface clear preflight failures for missing login, missing cloud auth, and destination sandbox issues
 - Wire the deployed hosted control plane to real managed-runtime endpoints (/v1/cli/cloud/status, resume, teleport target)
 - Replace managed VM assumptions with one persistent E2B sandbox per user

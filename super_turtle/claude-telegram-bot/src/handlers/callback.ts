@@ -43,6 +43,8 @@ import {
   readClaudeStateSummary,
   readClaudeBacklogItems,
   formatBacklogSummary,
+  launchManagedTeleport,
+  TELEPORT_PREFLIGHT_COMMAND_KIND,
 } from "./commands";
 import { eventLog, streamLog } from "../logger";
 
@@ -50,6 +52,11 @@ const SAFE_CALLBACK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SAFE_CALLBACK_OPTION_INDEX = /^\d+$/;
 const PINOLOG_LEVELS = new Set(["info", "warn", "error"]);
 const callbackLog = streamLog.child({ handler: "callback" });
+
+function getCallbackIpcDir(): string {
+  const override = process.env.SUPERTURTLE_IPC_DIR?.trim();
+  return override && override.length > 0 ? override : IPC_DIR;
+}
 
 function isSafeCallbackId(value: string): boolean {
   if (!SAFE_CALLBACK_ID.test(value)) {
@@ -394,11 +401,13 @@ export async function handleCallback(ctx: Context): Promise<void> {
   const optionIndex = Number.parseInt(optionIndexRaw, 10);
 
   // 9. Load request file
-  const requestFile = `${IPC_DIR}/ask-user-${requestId}.json`;
+  const requestFile = `${getCallbackIpcDir()}/ask-user-${requestId}.json`;
   let requestData: {
     question: string;
     options: string[];
     status: string;
+    command_kind?: string;
+    dry_run?: boolean;
   };
 
   try {
@@ -418,6 +427,44 @@ export async function handleCallback(ctx: Context): Promise<void> {
   }
 
   const selectedOption = requestData.options[optionIndex]!;
+
+  if (requestData.command_kind === TELEPORT_PREFLIGHT_COMMAND_KIND) {
+    try {
+      unlinkSync(requestFile);
+    } catch (error) {
+      callbackLog.debug(
+        { err: error, requestFile, requestId: callbackRequestId, userId, chatId },
+        "Failed to delete teleport ask-user request file"
+      );
+    }
+
+    const dryRun = requestData.dry_run === true;
+    const isConfirm = optionIndex === 0;
+
+    try {
+      await ctx.editMessageText(
+        isConfirm
+          ? `✓ ${selectedOption}`
+          : `✖ Managed teleport ${dryRun ? "dry-run" : "launch"} canceled`
+      );
+    } catch (error) {
+      callbackLog.debug(
+        { err: error, userId, chatId, requestId: callbackRequestId },
+        "Failed to edit teleport callback message"
+      );
+    }
+
+    await ctx.answerCallbackQuery({
+      text: isConfirm
+        ? (dryRun ? "Starting teleport dry-run" : "Starting teleport")
+        : "Teleport canceled",
+    });
+
+    if (isConfirm) {
+      await launchManagedTeleport(ctx, { dryRun });
+    }
+    return;
+  }
 
   // 11. Update the message to show selection
   try {
