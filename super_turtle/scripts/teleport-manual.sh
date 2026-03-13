@@ -1027,6 +1027,21 @@ heartbeat_script="$managed_runtime_dir/superturtle-machine-heartbeat.sh"
 heartbeat_loop_script="$managed_runtime_dir/superturtle-machine-heartbeat-loop.sh"
 heartbeat_start_script="$managed_runtime_dir/superturtle-machine-heartbeat-start.sh"
 
+run_best_effort_control_plane_step() {
+  local label="$1"
+  shift
+  local output=""
+  if output="$("$@" 2>&1)"; then
+    return 0
+  fi
+  local status=$?
+  printf '[teleport][remote] warning: %s failed (exit %s); continuing without blocking teleport\n' "$label" "$status" >&2
+  if [[ -n "$output" ]]; then
+    printf '%s\n' "$output" >&2
+  fi
+  return 1
+}
+
 {
   printf 'CONTROL_PLANE_ORIGIN=%q\n' "$control_plane_origin"
   printf 'CONTROL_PLANE_REGISTER_URL=%q\n' "${control_plane_origin%/}/v1/machine/register"
@@ -1150,10 +1165,10 @@ EOF_HEARTBEAT_START
 chmod 700 "$heartbeat_start_script"
 
 if [[ -n "$control_plane_origin" && -n "$machine_auth_token" ]]; then
-  "$register_script" >/dev/null
-  "$heartbeat_script" >/dev/null
+  run_best_effort_control_plane_step "initial machine register" "$register_script" || true
+  run_best_effort_control_plane_step "initial machine heartbeat" "$heartbeat_script" || true
   if [[ "$heartbeat_autostart" == "1" ]]; then
-    "$heartbeat_start_script" >/dev/null
+    run_best_effort_control_plane_step "machine heartbeat autostart" "$heartbeat_start_script" || true
   else
     echo "[teleport][remote] machine heartbeat autostart disabled; leaving helper scripts in place"
   fi

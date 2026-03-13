@@ -904,8 +904,13 @@ function runUpload(args) {
 
   if (script.includes('managed_runtime_dir="$remote_root/.superturtle/managed-runtime"')) {
     const result = spawnSync("bash", interpreterArgs, { input: script, stdio: "pipe" });
-    if (result.status !== 0) {
+    if (result.stdout.length > 0) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr.length > 0) {
       process.stderr.write(result.stderr);
+    }
+    if (result.status !== 0) {
       process.exit(result.status || 1);
     }
     return;
@@ -1137,6 +1142,102 @@ async function testManagedTeleportUsesE2BHelperForSandboxCutover(tmpDir) {
     assert.strictEqual(
       readEnvValue(resolve(sandboxProjectRoot, ".superturtle", "managed-runtime", "control-plane.env"), "MACHINE_HEARTBEAT_SESSION"),
       "superturtle-machine-heartbeat-sandbox_123"
+    );
+  } finally {
+    server.close();
+  }
+}
+
+async function testManagedTeleportContinuesWhenMachineBootstrapFails(tmpDir) {
+  const { fakeBinDir, sessionPath, ctlPath, e2bHelperLogPath } = createBaseEnvironment(tmpDir);
+  const helperPath = resolve(tmpDir, "fake-e2b-helper");
+  const sandboxRoot = resolve(tmpDir, "sandbox-root");
+  createFakeE2BHelper(helperPath, e2bHelperLogPath, sandboxRoot);
+  let machineRegisterAttempts = 0;
+  let machineHeartbeatAttempts = 0;
+
+  const server = http.createServer((req, res) => {
+    const authorize = req.headers.authorization;
+
+    if (req.method === "GET" && req.url === "/v1/cli/teleport/target") {
+      assert.strictEqual(authorize, "Bearer access-abc");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          instance: {
+            id: "inst_e2b_degraded",
+            provider: "e2b",
+            state: "running",
+            sandbox_id: "sandbox_degraded",
+            template_id: "template_teleport_v1",
+            machine_token_id: "machine-token-123",
+            last_seen_at: "2026-03-12T10:00:00Z",
+            resume_requested_at: "2026-03-12T09:58:00Z",
+          },
+          transport: "e2b",
+          sandbox_id: "sandbox_degraded",
+          template_id: "template_teleport_v1",
+          machine_auth_token: "machine-auth-sandbox-degraded",
+          project_root: "/home/user/agentic",
+          sandbox_metadata: {
+            account_id: "acct_123",
+            sandbox_role: "managed_runtime",
+          },
+          audit_log: [],
+        })
+      );
+      return;
+    }
+
+    if (req.method === "POST" && (req.url === "/v1/machine/register" || req.url === "/v1/machine/heartbeat")) {
+      assert.strictEqual(authorize, "Bearer machine-auth-sandbox-degraded");
+      if (req.url === "/v1/machine/register") {
+        machineRegisterAttempts += 1;
+      } else {
+        machineHeartbeatAttempts += 1;
+      }
+      req.resume();
+      req.on("end", () => {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "control_plane_temporarily_unavailable" }));
+      });
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  pointSessionAtBaseUrl(sessionPath, `http://127.0.0.1:${address.port}`);
+
+  try {
+    const result = await runTeleport(["--managed"], {
+      ...process.env,
+      PATH: `${fakeBinDir}:${process.env.PATH}`,
+      SUPERTURTLE_CLOUD_SESSION_PATH: sessionPath,
+      SUPERTURTLE_TELEPORT_E2B_HELPER_PATH: helperPath,
+      SUPERTURTLE_TELEPORT_CTL_PATH: ctlPath,
+      SUPERTURTLE_TELEPORT_E2B_HEARTBEAT_AUTOSTART: "0",
+    });
+
+    assert.strictEqual(result.code, 0, `expected success, got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    assert.match(result.stdout, /\[teleport\] success/);
+    assert.match(result.stderr, /\[teleport\]\[remote\] warning: initial machine register failed/);
+    assert.match(result.stderr, /\[teleport\]\[remote\] warning: initial machine heartbeat failed/);
+    assert.strictEqual(machineRegisterAttempts, 1, "expected an initial machine register attempt");
+    assert.strictEqual(machineHeartbeatAttempts, 1, "expected an initial machine heartbeat attempt");
+
+    const helperLog = readHelperLog(e2bHelperLogPath);
+    assert.ok(
+      helperLog.some(
+        (entry) =>
+          entry.subcommand === "run-script" &&
+          /managed_runtime_dir="\$remote_root\/\.superturtle\/managed-runtime"/.test(entry.script)
+      ),
+      "expected sandbox runtime bootstrap even when control-plane bootstrap fails"
     );
   } finally {
     server.close();
@@ -1428,6 +1529,7 @@ async function main() {
     await testManagedTeleportSurfacesProvisioningFailure(resolve(tmpDir, "failure"));
     await testManagedTeleportTimesOutWithSandboxWordingForE2BRuntime(resolve(tmpDir, "e2b-timeout"));
     await testManagedTeleportUsesE2BHelperForSandboxCutover(resolve(tmpDir, "e2b-target"));
+    await testManagedTeleportContinuesWhenMachineBootstrapFails(resolve(tmpDir, "e2b-control-plane-warning"));
     await testManagedTeleportBootstrapsLocalClaudeAuthIntoSandbox(resolve(tmpDir, "e2b-claude-auth"));
     await testManagedTeleportBootstrapsLocalCodexAuthIntoSandbox(resolve(tmpDir, "e2b-codex-auth"));
     await testManagedTeleportRollsBackLocalBotWhenRemoteVerifyFails(resolve(tmpDir, "e2b-rollback"));
