@@ -48,6 +48,9 @@ const TEXT_EXTENSIONS = [
   ".toml",
 ];
 
+// Supported Office document extensions
+const OFFICE_EXTENSIONS = [".docx", ".pptx"];
+
 // Supported archive extensions
 const ARCHIVE_EXTENSIONS = [".zip", ".tar", ".tar.gz", ".tgz"];
 
@@ -118,7 +121,103 @@ async function extractText(
     return text.slice(0, 100000);
   }
 
+  // Modern Office files
+  if (
+    extension === ".docx" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    const text = await extractDocxText(filePath);
+    return text.slice(0, 100000);
+  }
+
+  if (
+    extension === ".pptx" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  ) {
+    const text = await extractPptxText(filePath);
+    return text.slice(0, 100000);
+  }
+
   throw new Error(`Unsupported file type: ${extension || mimeType}`);
+}
+
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#xA;/gi, "\n")
+    .replace(/&#10;/g, "\n")
+    .replace(/&#x9;/gi, "\t")
+    .replace(/&#9;/g, "\t");
+}
+
+function stripXmlText(xml: string): string {
+  return decodeXmlEntities(
+    xml
+      .replace(/<w:tab\b[^>]*\/>/g, "\t")
+      .replace(/<w:br\b[^>]*\/>/g, "\n")
+      .replace(/<\/w:p>/g, "\n\n")
+      .replace(/<\/a:p>/g, "\n\n")
+      .replace(/<\/a:tr>/g, "\n")
+      .replace(/<[^>]+>/g, "")
+  )
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function unzipFileEntry(filePath: string, entryPath: string): Promise<string> {
+  const result = await Bun.$`unzip -p ${filePath} ${entryPath}`.quiet();
+  return result.text();
+}
+
+async function listZipEntries(filePath: string, pattern: string): Promise<string[]> {
+  const result = await Bun.$`unzip -Z1 ${filePath} ${pattern}`.quiet();
+  return result
+    .text()
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort();
+}
+
+async function extractDocxText(filePath: string): Promise<string> {
+  try {
+    const xml = await unzipFileEntry(filePath, "word/document.xml");
+    const text = stripXmlText(xml);
+    return text || "[DOCX document contains no extractable text]";
+  } catch (error) {
+    documentLog.error({ err: error, filePath }, "DOCX parsing failed");
+    return "[DOCX parsing failed]";
+  }
+}
+
+async function extractPptxText(filePath: string): Promise<string> {
+  try {
+    const slideEntries = await listZipEntries(filePath, "ppt/slides/slide*.xml");
+    if (slideEntries.length === 0) {
+      return "[PPTX presentation contains no slide text]";
+    }
+
+    const slides: string[] = [];
+    for (const [index, entry] of slideEntries.entries()) {
+      const xml = await unzipFileEntry(filePath, entry);
+      const text = stripXmlText(xml);
+      if (text) {
+        slides.push(`--- Slide ${index + 1} ---\n${text}`);
+      }
+    }
+
+    return slides.length > 0
+      ? slides.join("\n\n")
+      : "[PPTX presentation contains no extractable slide text]";
+  } catch (error) {
+    documentLog.error({ err: error, filePath }, "PPTX parsing failed");
+    return "[PPTX parsing failed]";
+  }
 }
 
 /**
@@ -503,10 +602,14 @@ export async function handleDocument(ctx: Context): Promise<void> {
   const isPdf = doc.mime_type === "application/pdf" || extension === ".pdf";
   const isText =
     TEXT_EXTENSIONS.includes(extension) || doc.mime_type?.startsWith("text/");
+  const isOfficeFile =
+    OFFICE_EXTENSIONS.includes(extension) ||
+    doc.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    doc.mime_type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   const isArchiveFile = isArchive(fileName);
 
   // Check if it's an audio file sent as a document
-  if (!isPdf && !isText && !isArchiveFile && isAudioFile(fileName, doc.mime_type)) {
+  if (!isPdf && !isText && !isOfficeFile && !isArchiveFile && isAudioFile(fileName, doc.mime_type)) {
     documentLog.info(
       { userId, username, chatId, fileName, msgType: "audio-document" },
       "Received audio document"
@@ -551,12 +654,12 @@ export async function handleDocument(ctx: Context): Promise<void> {
     return;
   }
 
-  if (!isPdf && !isText && !isArchiveFile) {
+  if (!isPdf && !isText && !isOfficeFile && !isArchiveFile) {
     await ctx.reply(
       `❌ Unsupported file type: ${extension || doc.mime_type}\n\n` +
         `Supported: PDF, archives (${ARCHIVE_EXTENSIONS.join(
           ", "
-        )}), ${TEXT_EXTENSIONS.join(", ")}`
+        )}), Office (${OFFICE_EXTENSIONS.join(", ")}), ${TEXT_EXTENSIONS.join(", ")}`
     );
     return;
   }
@@ -664,3 +767,10 @@ export async function handleDocument(ctx: Context): Promise<void> {
       processDocumentPaths(gctx, paths, caption, gUserId, gUsername, gChatId, requestId)
   );
 }
+
+export const __test__ = {
+  extractText,
+  extractDocxText,
+  extractPptxText,
+  stripXmlText,
+};
