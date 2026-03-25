@@ -142,6 +142,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "send_file",
+      description: [
+        "Send a file to the user in Telegram as a document.",
+        "Accepts a local file path or a URL. Optionally include a caption.",
+        "Use this for logs, archives, PDFs, code bundles, or any other Telegram-supported file.",
+      ].join("\n"),
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          source: {
+            type: "string",
+            description:
+              "Absolute file path (e.g. /tmp/report.pdf) or HTTP(S) URL to a file",
+          },
+          caption: {
+            type: "string",
+            description: "Optional caption to display below the file",
+          },
+        },
+        required: ["source"],
+      },
+    },
+    {
       name: "pino_logs",
       description: [
         "Fetch recent Pino logs from the Telegram bot.",
@@ -297,6 +320,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         {
           type: "text" as const,
           text: `[Image sent to chat: ${source}${args.caption ? ` — "${args.caption}"` : ""}]`,
+        },
+      ],
+    };
+  }
+
+  if (request.params.name === "send_file") {
+    const args = request.params.arguments as {
+      source?: string;
+      caption?: string;
+    };
+
+    const source = (args.source || "").trim();
+    if (!source) {
+      throw new Error("source is required (file path or URL)");
+    }
+
+    const requestUuid = crypto.randomUUID().slice(0, 8);
+    const chatId = requireChatId("send_file");
+
+    const requestData = {
+      request_id: requestUuid,
+      source,
+      caption: args.caption || "",
+      status: "pending",
+      chat_id: chatId,
+      created_at: new Date().toISOString(),
+    };
+
+    const requestFile = `${IPC_DIR}/send-file-${requestUuid}.json`;
+    await Bun.write(requestFile, JSON.stringify(requestData, null, 2));
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `[File sent to chat: ${source}${args.caption ? ` — "${args.caption}"` : ""}]`,
         },
       ],
     };

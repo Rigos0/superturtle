@@ -36,6 +36,7 @@ export function classifyCodexToolCompletionMessage(
     case "ask_user":
     case "bot_control":
     case "pino_logs":
+    case "send_file":
     case "send_image":
     case "send_turtle":
       return OutboundMessageKind.InteractiveSideEffect;

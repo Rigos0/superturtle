@@ -37,6 +37,7 @@ describe("CodexDriver", () => {
       checkPendingAskUserRequests: async () => false,
       checkPendingBotControlRequests: async () => false,
       checkPendingPinoLogsRequests: async () => false,
+      checkPendingSendFileRequests: async () => false,
       checkPendingSendImageRequests: async () => false,
       checkPendingSendTurtleRequests: async () => false,
     });
@@ -76,6 +77,7 @@ describe("CodexDriver", () => {
       checkPendingAskUserRequests: async () => false,
       checkPendingBotControlRequests: async () => false,
       checkPendingPinoLogsRequests: async () => false,
+      checkPendingSendFileRequests: async () => false,
       checkPendingSendImageRequests: async (_ctx: Context, chatId: number) => {
         sendImageChecks.push(chatId);
         return true;
@@ -111,6 +113,49 @@ describe("CodexDriver", () => {
     expect(sendImageChecks).toContain(789);
   });
 
+  it("flushes pending send_file requests for Codex MCP tool calls", async () => {
+    const sendFileChecks: number[] = [];
+
+    await mockStreamingModule({
+      checkPendingAskUserRequests: async () => false,
+      checkPendingBotControlRequests: async () => false,
+      checkPendingPinoLogsRequests: async () => false,
+      checkPendingSendFileRequests: async (_ctx: Context, chatId: number) => {
+        sendFileChecks.push(chatId);
+        return true;
+      },
+      checkPendingSendImageRequests: async () => false,
+      checkPendingSendTurtleRequests: async () => false,
+    });
+
+    codexSession.sendMessage = (async (
+      _message,
+      _statusCallback,
+      _model,
+      _reasoning,
+      mcpCompletionCallback
+    ) => {
+      await mcpCompletionCallback?.("bot-control", "send_file");
+      return "ok";
+    }) as typeof codexSession.sendMessage;
+
+    const { CodexDriver } = await loadCodexDriverModule();
+    const driver = new CodexDriver();
+
+    const response = await driver.runMessage({
+      message: "send the report",
+      source: "text",
+      username: "tester",
+      userId: 123,
+      chatId: 654,
+      ctx: {} as Context,
+      statusCallback: async () => {},
+    });
+
+    expect(response).toBe("ok");
+    expect(sendFileChecks).toContain(654);
+  });
+
   it("forwards done even when a pending checker hangs after Codex completion", async () => {
     const originalPendingTimeout = process.env.CODEX_PENDING_REQUEST_TIMEOUT_MS;
     const originalPumpShutdownTimeout = process.env.CODEX_PENDING_PUMP_SHUTDOWN_TIMEOUT_MS;
@@ -122,6 +167,7 @@ describe("CodexDriver", () => {
         checkPendingAskUserRequests: async () => await new Promise<boolean>(() => {}),
         checkPendingBotControlRequests: async () => false,
         checkPendingPinoLogsRequests: async () => false,
+        checkPendingSendFileRequests: async () => false,
         checkPendingSendImageRequests: async () => false,
         checkPendingSendTurtleRequests: async () => false,
       });
@@ -174,6 +220,7 @@ describe("CodexDriver", () => {
       checkPendingAskUserRequests: async () => false,
       checkPendingBotControlRequests: async () => false,
       checkPendingPinoLogsRequests: async () => false,
+      checkPendingSendFileRequests: async () => false,
       checkPendingSendImageRequests: async () => false,
       checkPendingSendTurtleRequests: async () => false,
     });
@@ -209,6 +256,7 @@ describe("CodexDriver", () => {
       checkPendingAskUserRequests: async () => false,
       checkPendingBotControlRequests: async () => false,
       checkPendingPinoLogsRequests: async () => false,
+      checkPendingSendFileRequests: async () => false,
       checkPendingSendImageRequests: async () => false,
       checkPendingSendTurtleRequests: async () => false,
     });

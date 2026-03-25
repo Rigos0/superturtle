@@ -18,6 +18,7 @@ export class CodexDriver implements ChatDriver {
       checkPendingAskUserRequests,
       checkPendingBotControlRequests,
       checkPendingPinoLogsRequests,
+      checkPendingSendFileRequests,
       checkPendingSendImageRequests,
       checkPendingSendTurtleRequests,
     } = await import("../handlers/streaming");
@@ -30,6 +31,7 @@ export class CodexDriver implements ChatDriver {
         ctx: input.ctx,
         chatId: input.chatId,
         checkPendingAskUserRequests,
+        checkPendingSendFileRequests,
         checkPendingSendImageRequests,
         checkPendingSendTurtleRequests,
         checkPendingBotControlRequests,

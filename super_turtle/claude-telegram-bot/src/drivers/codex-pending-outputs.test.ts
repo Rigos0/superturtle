@@ -31,6 +31,7 @@ describe("createCodexPendingOutputCoordinator().handleToolCompletion()", () => {
           await wait(35);
           return true;
         },
+        send_file: async () => false,
         send_image: async () => false,
         send_turtle: async () => false,
         bot_control: async () => false,
@@ -54,6 +55,7 @@ describe("createCodexPendingOutputCoordinator().handleToolCompletion()", () => {
       chatId: 123,
       checks: {
         ask_user: async () => false,
+        send_file: async () => false,
         send_image: async () => {
           sendImageCalls += 1;
           await wait(35);

@@ -10,6 +10,7 @@ const {
   checkPendingAskUserRequests,
   checkPendingBotControlRequests,
   checkPendingPinoLogsRequests,
+  checkPendingSendFileRequests,
   checkPendingSendImageRequests,
   checkPendingSendTurtleRequests,
   cleanupToolMessages,
@@ -1021,6 +1022,94 @@ describe("streaming notifications", () => {
     }
   });
 
+  it("uses the final file as the notifying terminal result even after text output", async () => {
+    const {
+      checkPendingSendFileRequests,
+      clearStreamingState,
+      createStatusCallback,
+      StreamingState,
+    } = await loadFreshStreamingModule();
+    const customIpcDir = `/tmp/streaming-file-text-wins-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const previousIpcDir = process.env.SUPERTURTLE_IPC_DIR;
+    mkdirSync(customIpcDir, { recursive: true });
+    process.env.SUPERTURTLE_IPC_DIR = customIpcDir;
+
+    try {
+      const requestId = `streaming-send-file-text-wins-${Date.now()}`;
+      const requestFile = `${customIpcDir}/send-file-${requestId}.json`;
+      const deleteMessageMock = mock(async () => {});
+      let nextReplyMessageId = 1;
+      const replyMock = mock(async (text: string, extra?: Record<string, unknown>) => ({
+        chat: { id: 123 },
+        message_id: nextReplyMessageId++,
+        text,
+        extra,
+      }));
+      const replyWithDocumentMock = mock(async () => ({
+        chat: { id: 123 },
+        message_id: 101,
+        document: { file_id: "document-file-id" },
+      }));
+
+      await Bun.write(
+        requestFile,
+        JSON.stringify({
+          request_id: requestId,
+          source: "https://example.com/final-report.pdf",
+          caption: "Late file",
+          status: "pending",
+          chat_id: "123",
+          created_at: new Date().toISOString(),
+        })
+      );
+
+      const ctx = {
+        chat: { id: 123 },
+        reply: replyMock,
+        replyWithDocument: replyWithDocumentMock,
+        api: {
+          deleteMessage: deleteMessageMock,
+          editMessageText: mock(async () => {}),
+        },
+      } as unknown as Context;
+
+      const state = new StreamingState();
+      const statusCallback = createStatusCallback(ctx, state);
+      await state.progressUpdateChain;
+
+      await statusCallback("segment_end", "Hello from Super Turtle", 0);
+      expect(state.hasTextSegmentOutput).toBe(true);
+      expect(replyWithDocumentMock).not.toHaveBeenCalled();
+
+      const handled = await checkPendingSendFileRequests(ctx, 123);
+      expect(handled).toBe(true);
+      expect(replyWithDocumentMock).not.toHaveBeenCalled();
+      expect(state.lastNotifiableOutput?.kind).toBe("final_artifact");
+
+      await statusCallback("done", "");
+
+      expect(replyMock).toHaveBeenCalledTimes(1);
+      expect(replyMock.mock.calls[0]?.[0]).toBe("\u200b");
+      expect(replyMock.mock.calls[0]?.[1]).toMatchObject({
+        disable_notification: true,
+        parse_mode: "HTML",
+      });
+      expect(replyWithDocumentMock).toHaveBeenCalledTimes(1);
+      const documentCall = replyWithDocumentMock.mock.calls[0] as
+        | [unknown, { caption?: string; disable_notification?: boolean }]
+        | undefined;
+      expect(documentCall?.[1]).toMatchObject({
+        caption: "Late file",
+      });
+      expect(documentCall?.[1]?.disable_notification).toBeUndefined();
+      expect(deleteMessageMock).not.toHaveBeenCalledWith(123, 101);
+    } finally {
+      process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
+      rmSync(customIpcDir, { recursive: true, force: true });
+      clearStreamingState(123);
+    }
+  });
+
   it("promotes a final image reply as the notifying message", async () => {
     const {
       checkPendingSendImageRequests,
@@ -1088,6 +1177,86 @@ describe("streaming notifications", () => {
         caption: "Final image",
       });
       expect(replyWithPhotoMock.mock.calls[0]?.[1]?.disable_notification).toBeUndefined();
+      expect(replyMock).toHaveBeenCalledTimes(1);
+      expect(replyMock.mock.calls[0]).toEqual([
+        "\u200b",
+        { disable_notification: true, parse_mode: "HTML" },
+      ]);
+      expect(deleteMessageMock).not.toHaveBeenCalled();
+    } finally {
+      process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
+      rmSync(customIpcDir, { recursive: true, force: true });
+      clearStreamingState(123);
+    }
+  });
+
+  it("promotes a final file reply as the notifying message", async () => {
+    const {
+      checkPendingSendFileRequests,
+      clearStreamingState,
+      createStatusCallback,
+      StreamingState,
+    } = await loadFreshStreamingModule();
+    const customIpcDir = `/tmp/streaming-file-notify-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const previousIpcDir = process.env.SUPERTURTLE_IPC_DIR;
+    mkdirSync(customIpcDir, { recursive: true });
+    process.env.SUPERTURTLE_IPC_DIR = customIpcDir;
+
+    try {
+      const requestId = `streaming-send-file-notify-${Date.now()}`;
+      const requestFile = `${customIpcDir}/send-file-${requestId}.json`;
+      const deleteMessageMock = mock(async () => {});
+      const replyMock = mock(async (text: string, extra?: Record<string, unknown>) => ({
+        chat: { id: 123 },
+        message_id: extra?.disable_notification === true ? 3 : 4,
+        text,
+      }));
+      const replyWithDocumentMock = mock(
+        async (_source: unknown, extra?: Record<string, unknown>) => ({
+          chat: { id: 123 },
+          message_id: 1,
+          document: { file_id: "document-file-id" },
+        })
+      );
+
+      await Bun.write(
+        requestFile,
+        JSON.stringify({
+          request_id: requestId,
+          source: "https://example.com/build-log.txt",
+          caption: "Final file",
+          status: "pending",
+          chat_id: "123",
+          created_at: new Date().toISOString(),
+        })
+      );
+
+      const ctx = {
+        chat: { id: 123 },
+        reply: replyMock,
+        replyWithDocument: replyWithDocumentMock,
+        api: {
+          deleteMessage: deleteMessageMock,
+          editMessageText: mock(async () => {}),
+        },
+      } as unknown as Context;
+
+      const state = new StreamingState();
+      const statusCallback = createStatusCallback(ctx, state);
+      await state.progressUpdateChain;
+
+      const handled = await checkPendingSendFileRequests(ctx, 123);
+      expect(handled).toBe(true);
+      expect(state.lastNotifiableOutput?.kind).toBe("final_artifact");
+      expect(replyWithDocumentMock).not.toHaveBeenCalled();
+
+      await statusCallback("done", "");
+
+      expect(replyWithDocumentMock).toHaveBeenCalledTimes(1);
+      expect(replyWithDocumentMock.mock.calls[0]?.[1]).toMatchObject({
+        caption: "Final file",
+      });
+      expect(replyWithDocumentMock.mock.calls[0]?.[1]?.disable_notification).toBeUndefined();
       expect(replyMock).toHaveBeenCalledTimes(1);
       expect(replyMock.mock.calls[0]).toEqual([
         "\u200b",

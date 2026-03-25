@@ -37,6 +37,9 @@ describe("classifyCodexToolCompletionMessage()", () => {
     expect(classifyCodexToolCompletionMessage("send-image")).toBe(
       OutboundMessageKind.InteractiveSideEffect
     );
+    expect(classifyCodexToolCompletionMessage("send_file")).toBe(
+      OutboundMessageKind.InteractiveSideEffect
+    );
     expect(classifyCodexToolCompletionMessage("send_turtle")).toBe(
       OutboundMessageKind.InteractiveSideEffect
     );
