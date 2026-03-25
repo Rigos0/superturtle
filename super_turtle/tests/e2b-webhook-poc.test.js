@@ -111,6 +111,7 @@ CLAUDE_WORKING_DIR='/tmp/project'
   assert.strictEqual(remoteEnv.TELEGRAM_WEBHOOK_URL, "https://sandbox.example/telegram/webhook/demo");
   assert.strictEqual(remoteEnv.TELEGRAM_WEBHOOK_SECRET, "secret-demo");
   assert.strictEqual(remoteEnv.TELEGRAM_WEBHOOK_READY_PATH, "/readyz");
+  assert.strictEqual(remoteEnv.DASHBOARD_ENABLED, "false");
   assert.strictEqual(remoteEnv.PORT, "8787");
   assert.strictEqual(remoteEnv.TURTLE_GREETINGS, "false");
 

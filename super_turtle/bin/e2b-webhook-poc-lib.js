@@ -551,6 +551,7 @@ function buildRemoteEnv(
     TELEGRAM_WEBHOOK_SECRET: webhookSecret,
     TELEGRAM_WEBHOOK_HEALTH_PATH: healthPath,
     TELEGRAM_WEBHOOK_READY_PATH: readyPath,
+    DASHBOARD_ENABLED: "false",
     PORT: String(port),
     TURTLE_GREETINGS: "false",
   };
