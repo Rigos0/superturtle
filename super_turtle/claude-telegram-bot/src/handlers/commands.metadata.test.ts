@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("TELEGRAM_COMMANDS", () => {
-  it("hides teleport commands when E2B is not configured", async () => {
+  it("publishes the local command set without teleport commands when E2B is not configured", async () => {
     const { TELEGRAM_COMMANDS } = await loadCommandsModule("");
     const names = TELEGRAM_COMMANDS.map((entry: { command: string }) => entry.command);
 
@@ -38,11 +38,12 @@ describe("TELEGRAM_COMMANDS", () => {
     expect(TELEGRAM_COMMANDS.every((entry: { description: string }) => entry.description.trim().length > 0)).toBe(true);
   });
 
-  it("publishes teleport when E2B is configured", async () => {
+  it("publishes the same local command set when E2B is configured", async () => {
     const { TELEGRAM_COMMANDS } = await loadCommandsModule("test-e2b-key");
     const names = TELEGRAM_COMMANDS.map((entry: { command: string }) => entry.command);
 
-    expect(names).toContain("teleport");
+    expect(names).not.toContain("teleport");
+    expect(names).not.toContain("home");
     expect(new Set(names).size).toBe(names.length);
     expect(TELEGRAM_COMMANDS.every((entry: { description: string }) => entry.description.trim().length > 0)).toBe(true);
   });

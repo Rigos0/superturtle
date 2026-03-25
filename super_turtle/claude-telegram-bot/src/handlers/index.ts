@@ -13,8 +13,6 @@ export {
   handleSubturtle,
   handleCron,
   handleDebug,
-  handleTeleport,
-  handleHome,
   handleRestart,
   handleStopCommand,
 } from "./commands";

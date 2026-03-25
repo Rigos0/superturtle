@@ -72,7 +72,7 @@ describe("remote media scope", () => {
 
     expect(replies).toEqual([
       {
-        text: "This remote SuperTurtle currently supports text chat only. Use /home to return to the full local runtime on your PC.",
+        text: "This remote SuperTurtle currently supports text chat only.",
       },
     ]);
   });

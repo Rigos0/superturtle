@@ -37,8 +37,6 @@ import {
   handleDebug,
   handleRestart,
   handleStopCommand,
-  handleTeleport,
-  handleHome,
   handleText,
   handleVoice,
   handlePhoto,
@@ -572,8 +570,6 @@ const COMMAND_HANDLERS: Record<string, (ctx: Context) => Promise<void> | void> =
   turtles: handleSubturtle,
   cron: handleCron,
   debug: handleDebug,
-  teleport: handleTeleport,
-  home: handleHome,
   restart: handleRestart,
 };
 
@@ -617,11 +613,6 @@ bot.use(async (ctx, next) => {
   const commandName = getCommandNameFromText(ctx.message?.text);
   if (!commandName) {
     await next();
-    return;
-  }
-
-  if (commandName === "teleport") {
-    await ctx.reply("ℹ️ Already running in E2B webhook mode. Use /home to return ownership to your PC.");
     return;
   }
 

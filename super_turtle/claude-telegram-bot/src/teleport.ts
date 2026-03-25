@@ -59,12 +59,11 @@ export type TeleportState = {
 const HOME_RETURN_GRACE_MS = 30_000;
 
 export const TELEPORT_CONTROL_MESSAGE =
-  "This remote teleport runtime is control-only. Use /home to return Telegram ownership to your PC.";
+  "This remote teleport runtime is control-only.";
 export const TELEPORT_AGENT_TEXT_ONLY_MESSAGE =
-  "This remote SuperTurtle currently supports text chat only. Use /home to return to the full local runtime on your PC.";
+  "This remote SuperTurtle currently supports text chat only.";
 
 export const TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS = new Set([
-  "home",
   "status",
   "looplogs",
   "pinologs",
@@ -72,7 +71,6 @@ export const TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS = new Set([
   "restart",
 ]);
 export const TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS = new Set([
-  "home",
   "status",
   "looplogs",
   "pinologs",

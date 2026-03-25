@@ -153,7 +153,7 @@ describe("remote text mode", () => {
     expect(runCalls).toHaveLength(0);
     expect(replies).toEqual([
       {
-        text: "This remote teleport runtime is control-only. Use /home to return Telegram ownership to your PC.",
+        text: "This remote teleport runtime is control-only.",
       },
     ]);
   });

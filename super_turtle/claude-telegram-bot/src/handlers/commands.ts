@@ -86,12 +86,10 @@ const LOCAL_TELEGRAM_COMMANDS = [
   { command: "sub", description: "Manage SubTurtles" },
   { command: "cron", description: "Show scheduled jobs" },
   { command: "debug", description: "Show debug state" },
-  { command: "teleport", description: "Move Telegram control to E2B" },
   { command: "restart", description: "Restart the bot" },
 ] as const;
 
 const TELEPORT_REMOTE_CONTROL_COMMANDS = [
-  { command: "home", description: "Return Telegram control to your PC" },
   { command: "status", description: "Show detailed status" },
   { command: "looplogs", description: "Show main loop logs" },
   { command: "pinologs", description: "Show Pino logs" },
@@ -107,7 +105,7 @@ function getVisibleTelegramCommands(commands: readonly BotCommand[]): readonly B
   if (TELEPORT_COMMANDS_ENABLED) {
     return commands;
   }
-  return commands.filter((entry) => entry.command !== "teleport" && entry.command !== "home");
+  return commands;
 }
 
 export function getTelegramCommandsForRuntime(
