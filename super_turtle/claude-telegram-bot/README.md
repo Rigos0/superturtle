@@ -267,7 +267,7 @@ bun run --bun tsc --noEmit
 
 Multiple layers protect against misuse:
 
-1. **User allowlist** - Only your Telegram IDs can use the bot
+1. **Owner binding** - The bot binds to the persisted Telegram owner, with `TELEGRAM_ALLOWED_USERS` kept only as a legacy fallback
 2. **Intent classification** - AI filter blocks dangerous requests
 3. **Path validation** - File access restricted to `ALLOWED_PATHS`
 4. **Command safety** - Destructive patterns like `rm -rf /` are blocked
@@ -278,7 +278,7 @@ Multiple layers protect against misuse:
 
 **Bot doesn't respond**
 
-- Verify your user ID is in `TELEGRAM_ALLOWED_USERS`
+- Send the bot a private message once so it can persist the Telegram owner
 - Check the bot token is correct
 - Look at logs: `tail -f /tmp/claude-telegram-bot-ts.err`
 - Ensure the bot process is running

@@ -27,7 +27,6 @@ RestartSec=5
 
 # Environment variables (update these)
 Environment=TELEGRAM_BOT_TOKEN=your-bot-token-here
-Environment=TELEGRAM_ALLOWED_USERS=123456789
 Environment=CLAUDE_WORKING_DIR=/home/USERNAME/projects/agentic
 Environment=SUPERTURTLE_BIN=superturtle
 Environment=PATH=/home/USERNAME/.local/bin:/home/USERNAME/.bun/bin:/usr/local/bin:/usr/bin:/bin
@@ -36,6 +35,7 @@ Environment=PATH=/home/USERNAME/.local/bin:/home/USERNAME/.bun/bin:/usr/local/bi
 # Environment=SUPERTURTLE_BIN=/home/USERNAME/projects/agentic/super_turtle/bin/superturtle.js
 
 # Optional environment variables
+# Environment=TELEGRAM_ALLOWED_USERS=123456789
 # Environment=OPENAI_API_KEY=sk-...
 # Environment=ALLOWED_PATHS=/home/USERNAME/projects,/home/USERNAME/Documents
 # Environment=CODEX_ENABLED=true

@@ -22,9 +22,11 @@
         <key>TELEGRAM_BOT_TOKEN</key>
         <string>your-bot-token-here</string>
 
-        <!-- Required: Comma-separated Telegram user IDs -->
+        <!-- Optional legacy fallback: the bot now persists the owner after the first private message -->
+        <!--
         <key>TELEGRAM_ALLOWED_USERS</key>
         <string>123456789</string>
+        -->
 
         <!-- Recommended: Working directory for Claude -->
         <key>CLAUDE_WORKING_DIR</key>

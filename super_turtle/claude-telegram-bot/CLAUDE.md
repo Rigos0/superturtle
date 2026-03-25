@@ -47,7 +47,7 @@ Each message type has a dedicated async handler:
 
 ### Security Layers
 
-1. User allowlist (`TELEGRAM_ALLOWED_USERS`)
+1. Persisted Telegram owner binding (`.superturtle/telegram-owner.json`), with `TELEGRAM_ALLOWED_USERS` as a legacy fallback
 2. Rate limiting (token bucket, configurable)
 3. Path validation (`ALLOWED_PATHS`)
 4. Command safety (blocked patterns)
@@ -57,7 +57,8 @@ Each message type has a dedicated async handler:
 ### Configuration
 
 All config via `.superturtle/.env` (created by `superturtle init`). The repo-root `.env.example` is reference material only. Key variables:
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS` (required)
+- `TELEGRAM_BOT_TOKEN` (required)
+- `TELEGRAM_ALLOWED_USERS` (optional legacy fallback)
 - `CLAUDE_WORKING_DIR` - Working directory for Claude
 - `ALLOWED_PATHS` - Directories Claude can access
 - `OPENAI_API_KEY` - For voice transcription

@@ -7,6 +7,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Telegram owner onboarding now persists the owner from the first private message instead of requiring a manual `TELEGRAM_ALLOWED_USERS` setup step for new installs
+- `superturtle init` now treats `--user` as an optional bootstrap shortcut and otherwise instructs the user to link the bot by sending a private message
+
+### Fixed
+- startup notifications, cron routing, SubTurtle board refresh, and remote bootstrap now resolve the Telegram target from persisted owner state instead of assuming an env-only allowlist
+
 ## [0.2.7] - 2026-03-20
 
 ### Fixed

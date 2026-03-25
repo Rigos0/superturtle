@@ -181,7 +181,7 @@ reconcile_live_subturtle_board() {
       set +a
     fi
 
-    if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_ALLOWED_USERS:-}" ]]; then
+    if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
       exit 0
     fi
 
