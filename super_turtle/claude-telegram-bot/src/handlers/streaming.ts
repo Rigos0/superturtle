@@ -833,46 +833,32 @@ async function executeBotControlAction(
     case "switch_driver": {
       const { buildSessionOverviewLines, resetAllDriverSessions } = await import("./commands");
       const driver = params.driver?.toLowerCase();
-      if (driver !== "claude" && driver !== "codex") {
-        return `Invalid driver "${params.driver ?? ""}". Use: claude or codex`;
+      if (driver !== "codex") {
+        return driver
+          ? `Unsupported driver "${params.driver ?? ""}". Only codex is available.`
+          : "Only codex is available.";
       }
 
-      if (driver === "codex" && !CODEX_AVAILABLE) {
+      if (!CODEX_AVAILABLE) {
         return `Cannot switch to Codex: ${codexUnavailableBotControlMessage()}`;
       }
 
       await resetAllDriverSessions({ stopRunning: true });
 
-      if (driver === "codex") {
-        await codexSession.startNewThread();
-        session.activeDriver = "codex";
-        if (chatId) {
-          try {
-            const lines = await buildSessionOverviewLines("Switched to Codex 🟢");
-            await bot.api.sendMessage(chatId, lines.join("\n"), { parse_mode: "HTML" });
-          } catch (err) {
-            streamLog.warn(
-              { err, action: "switch_driver", driver: "codex", chatId },
-              "Failed to send switch overview"
-            );
-          }
-        }
-        return "Switched to Codex";
-      }
-
-      session.activeDriver = "claude";
+      await codexSession.startNewThread();
+      session.activeDriver = "codex";
       if (chatId) {
         try {
-          const lines = await buildSessionOverviewLines("Switched to Claude Code 🔵");
+          const lines = await buildSessionOverviewLines("Switched to Codex 🟢");
           await bot.api.sendMessage(chatId, lines.join("\n"), { parse_mode: "HTML" });
         } catch (err) {
           streamLog.warn(
-            { err, action: "switch_driver", driver: "claude", chatId },
+            { err, action: "switch_driver", driver: "codex", chatId },
             "Failed to send switch overview"
           );
         }
       }
-      return "Switched to Claude Code";
+      return "Switched to Codex";
     }
 
     case "new_session": {

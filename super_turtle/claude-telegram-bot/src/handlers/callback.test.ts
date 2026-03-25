@@ -392,7 +392,7 @@ describe("handleCallback Codex switching and controls", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or effort level:");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or effort level:");
     expect(
       result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
@@ -447,7 +447,7 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
     expect(result.payload?.effort).toBe("low");
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or effort level:");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or effort level:");
     expect(
       result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
@@ -571,7 +571,7 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.payload?.sessionKillCalls).toBe(1);
     expect(result.payload?.codexKillCalls).toBe(1);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Switched to Codex");
-    expect(result.payload?.editTexts[0] || "").toContain("Select driver, model, or reasoning effort:");
+    expect(result.payload?.editTexts[0] || "").toContain("Select model or reasoning effort:");
   });
 
   it("codex_model callback with active session preserves the current thread and only updates prefs", async () => {
@@ -647,7 +647,7 @@ describe("handleCallback Codex switching and controls", () => {
       ["codex-thread-model", result.payload?.targetModel || "", "medium"],
     ]);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Codex model updated for current convo");
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or reasoning effort:");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or reasoning effort:");
     expect(
       result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
@@ -725,7 +725,7 @@ describe("handleCallback Codex switching and controls", () => {
       ["codex-thread-effort", result.payload?.model || "", "high"],
     ]);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Codex effort updated for current convo");
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or reasoning effort:");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or reasoning effort:");
     expect(
       result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
@@ -805,7 +805,7 @@ describe("handleCallback Codex switching and controls", () => {
 });
 
 describe("handleCallback resume_current", () => {
-  it("continues the active Claude session", async () => {
+  it("continues the active Codex session even when the saved active driver was Claude", async () => {
     const result = await runCallbackProbe<{
       callbackAnswers: Array<{ text?: string; show_alert?: boolean }>;
       replies: string[];
@@ -813,10 +813,11 @@ describe("handleCallback resume_current", () => {
     }>(`
       const { handleCallback } = await import(callbackPath);
       const { session } = await import(sessionPath);
+      const { codexSession } = await import(codexPath);
 
       session.activeDriver = "claude";
-      session.sessionId = "claude-current-123";
-      session.recentMessages = [
+      codexSession.getThreadId = () => "codex-thread-via-callback";
+      codexSession.recentMessages = [
         { role: "user", text: "hello" },
         { role: "assistant", text: "hi there" },
       ];
@@ -850,10 +851,10 @@ describe("handleCallback resume_current", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
-    expect(result.payload?.callbackAnswers[0]?.text).toBe("Continuing current Claude session");
+    expect(result.payload?.callbackAnswers[0]?.text).toBe("Continuing current Codex session");
     expect(result.payload?.callbackAnswers[0]?.show_alert).toBeUndefined();
-    expect(result.payload?.editTexts[0]).toContain("Continuing current Claude session");
-    expect(result.payload?.replies[0]).toContain("📝 Current Claude session");
+    expect(result.payload?.editTexts[0]).toContain("Continuing current Codex session");
+    expect(result.payload?.replies[0]).toContain("📝 Current Codex session");
   });
 
   it("continues the active Codex session", async () => {
@@ -915,10 +916,9 @@ describe("handleCallback resume_current", () => {
       editTexts: string[];
     }>(`
       const { handleCallback } = await import(callbackPath);
-      const { session } = await import(sessionPath);
+      const { codexSession } = await import(codexPath);
 
-      session.activeDriver = "claude";
-      session.sessionId = null;
+      codexSession.getThreadId = () => null;
 
       const callbackAnswers = [];
       const replies = [];
@@ -950,7 +950,7 @@ describe("handleCallback resume_current", () => {
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
     expect(result.payload?.callbackAnswers[0]?.show_alert).toBe(true);
-    expect(result.payload?.callbackAnswers[0]?.text).toBe("No active Claude session");
+    expect(result.payload?.callbackAnswers[0]?.text).toBe("No active Codex session");
     expect(result.payload?.replies).toHaveLength(0);
     expect(result.payload?.editTexts).toHaveLength(0);
   });

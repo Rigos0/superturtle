@@ -233,22 +233,20 @@ async function probeUsage(
 }
 
 describe("formatUnifiedUsage", () => {
-  it("shows unknown Claude status when usage lines are empty", () => {
+  it("shows disabled Codex tracking status when quota tracking is disabled", () => {
     const output = formatUnifiedUsage([], [], false);
 
-    expect(output).toContain("❓ <b>Claude Code</b>");
-    expect(output).toContain("<i>No usage data available</i>");
-    expect(output).toContain("❓ <b>Status:</b> Claude usage data unavailable");
-    expect(output).not.toContain("✅ <b>Claude Code</b>");
+    expect(output).toContain("❓ <b>Status:</b> Codex quota tracking is disabled");
+    expect(output).not.toContain("Claude");
   });
 
-  it("shows unknown Codex status and partial summary when Codex data is empty", () => {
+  it("shows unknown Codex status when Codex data is empty", () => {
     const output = formatUnifiedUsage(["▓▓▓░░░░ 42% Session"], [], true);
 
     expect(output).toContain("❓ <b>Codex</b>");
     expect(output).toContain("<i>No quota data available</i>");
-    expect(output).toContain("❓ <b>Status:</b> Partial data — check above");
-    expect(output).not.toContain("✅ <b>Status:</b> All services operating normally");
+    expect(output).toContain("❓ <b>Status:</b> Codex quota data unavailable");
+    expect(output).not.toContain("All services operating normally");
   });
 
   it("escapes Codex plan type in HTML output", () => {
@@ -264,7 +262,7 @@ describe("formatUnifiedUsage", () => {
 });
 
 describe("/usage command with CODEX_ENABLED variations", () => {
-  it("returns Claude section only when CODEX_ENABLED=false", async () => {
+  it("returns disabled Codex tracking status when CODEX_ENABLED=false", async () => {
     const result = await probeUsage("false");
     if (result.exitCode !== 0) {
       throw new Error(`Probe failed (CODEX_ENABLED=false):\n${result.stderr || result.stdout}`);
@@ -272,14 +270,13 @@ describe("/usage command with CODEX_ENABLED variations", () => {
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replyCount).toBe(1);
     expect(result.payload?.parseMode).toBe("HTML");
-    expect(result.payload?.replyText).toContain("<b>Claude Code</b>");
-    expect(result.payload?.replyText).not.toContain("<b>Codex</b>");
-    expect(result.payload?.replyText).toContain("✅ <b>Status:</b> Claude Code operating normally");
+    expect(result.payload?.replyText).toContain("❓ <b>Status:</b> Codex quota tracking is disabled");
+    expect(result.payload?.replyText).not.toContain("Claude");
     expect(result.payload?.codexFetchCalls).toBe(0);
-    expect(result.payload?.usageFetchCalls).toBeGreaterThan(0);
+    expect(result.payload?.usageFetchCalls).toBe(0);
   });
 
-  it("returns Claude and Codex sections with status indicators when CODEX_ENABLED=true", async () => {
+  it("returns Codex section with status indicators when CODEX_ENABLED=true", async () => {
     const result = await probeUsage("true");
     if (result.exitCode !== 0) {
       throw new Error(`Probe failed (CODEX_ENABLED=true):\n${result.stderr || result.stdout}`);
@@ -287,33 +284,32 @@ describe("/usage command with CODEX_ENABLED variations", () => {
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replyCount).toBe(1);
     expect(result.payload?.parseMode).toBe("HTML");
-    expect(result.payload?.replyText).toContain("<b>Claude Code</b>");
     expect(result.payload?.replyText).toContain("<b>Codex (pro)</b>");
     expect(result.payload?.replyText).toMatch(/\d+%.*window/);
     expect(result.payload?.replyText).toContain("Resets");
+    expect(result.payload?.replyText).not.toContain("Claude");
 
     const hasStatusIndicator = result.payload?.replyText.includes("✅ <b>Status:</b>") ||
                                 result.payload?.replyText.includes("⚠️ <b>Status:</b>") ||
                                 result.payload?.replyText.includes("🔴 <b>Status:</b>");
     expect(hasStatusIndicator).toBe(true);
     expect(result.payload?.codexFetchCalls).toBeGreaterThan(0);
-    expect(result.payload?.usageFetchCalls).toBeGreaterThan(0);
+    expect(result.payload?.usageFetchCalls).toBe(0);
   });
 
-  it("falls back to credentials file when keychain lookup fails", async () => {
+  it("does not fall back to Claude credentials when CODEX_ENABLED=false", async () => {
     const result = await probeUsage("false", { securityMode: "fail" });
     if (result.exitCode !== 0) {
       throw new Error(`Probe failed (security fallback):\n${result.stderr || result.stdout}`);
     }
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replyCount).toBe(1);
-    expect(result.payload?.replyText).toContain("<b>Claude Code</b>");
-    expect(result.payload?.replyText).toContain("✅ <b>Status:</b> Claude Code operating normally");
-    expect(result.payload?.replyText).not.toContain("No usage data available");
-    expect(result.payload?.usageFetchCalls).toBeGreaterThan(0);
+    expect(result.payload?.replyText).toContain("❓ <b>Status:</b> Codex quota tracking is disabled");
+    expect(result.payload?.replyText).not.toContain("Claude");
+    expect(result.payload?.usageFetchCalls).toBe(0);
   });
 
-  it("ignores known test tokens in non-test runtime", async () => {
+  it("ignores Claude credential files in non-test runtime", async () => {
     const result = await probeUsage("false", {
       securityMode: "fail",
       fileAccessToken: "test-claude-token",
@@ -324,21 +320,18 @@ describe("/usage command with CODEX_ENABLED variations", () => {
     }
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replyCount).toBe(1);
-    expect(result.payload?.replyText).toContain("No usage data available");
+    expect(result.payload?.replyText).toContain("❓ <b>Status:</b> Codex quota tracking is disabled");
     expect(result.payload?.usageFetchCalls).toBe(0);
   });
 
-  it("surfaces Claude usage API rate-limit instead of empty usage", async () => {
+  it("does not hit the Claude usage endpoint even when the mocked endpoint would rate-limit", async () => {
     const result = await probeUsage("false", { usageHttpStatus: 429 });
     if (result.exitCode !== 0) {
       throw new Error(`Probe failed (rate-limit handling):\n${result.stderr || result.stdout}`);
     }
     expect(result.payload).not.toBeNull();
     expect(result.payload?.replyCount).toBe(1);
-    expect(result.payload?.replyText).toContain(
-      "Claude usage is temporarily unavailable due to Anthropic service limits"
-    );
-    expect(result.payload?.replyText).toContain("❓ <b>Status:</b> Claude usage data unavailable");
-    expect(result.payload?.usageFetchCalls).toBeGreaterThan(0);
+    expect(result.payload?.replyText).toContain("❓ <b>Status:</b> Codex quota tracking is disabled");
+    expect(result.payload?.usageFetchCalls).toBe(0);
   });
 });

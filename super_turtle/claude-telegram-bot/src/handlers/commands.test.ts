@@ -1031,7 +1031,7 @@ describe("handlers with mock Context", () => {
     expect(replies[0]!.text).toContain("🔁 <code>SubTurtle worker-a (silent)</code>");
   });
 
-  it("handleModel replies with inline keyboard model options for Claude", async () => {
+  it("handleModel reports Codex unavailability instead of showing Claude controls", async () => {
     session.activeDriver = "claude";
     session.model = getAvailableModels()[0]!.value;
     session.effort = "high";
@@ -1041,32 +1041,11 @@ describe("handlers with mock Context", () => {
 
     expect(replies).toHaveLength(1);
     const reply = replies[0]!;
-    expect(reply.extra?.parse_mode).toBe("HTML");
-    expect(reply.text).toContain("<b>Model:</b>");
-    expect(reply.text).toContain("Select driver, model, or effort level:");
-
-    const keyboard = getInlineKeyboard(reply);
-    expect(keyboard.length).toBeGreaterThan(1);
-
-    const callbackData = keyboard.flat().map((button) => button.callback_data || "");
-    for (const model of getAvailableModels()) {
-      expect(callbackData).toContain(`model:${model.value}`);
-    }
-    expect(callbackData).toContain("effort:low");
-    expect(callbackData).toContain("effort:medium");
-    expect(callbackData).toContain("effort:high");
+    expect(reply.extra?.parse_mode).toBeUndefined();
+    expect(reply.text).toContain("Codex is disabled in config");
   });
 
-  it("handleModel shows configured default effort labels for Claude and Codex", () => {
-    const claudeResult = runModelPickerProbeInIsolatedProcess({
-      activeDriver: "claude",
-      defaultClaudeEffort: "medium",
-    });
-    expect(claudeResult.replies[0]?.text).toContain("<b>Effort:</b> Medium (default)");
-
-    const claudeButtons = getInlineKeyboard(claudeResult.replies[0]!);
-    expect(claudeButtons.flat().some((button) => button.text?.includes("Medium (default)"))).toBe(true);
-
+  it("handleModel shows configured default effort labels for Codex", () => {
     const codexResult = runModelPickerProbeInIsolatedProcess({
       activeDriver: "codex",
       defaultCodexEffort: "low",
@@ -1117,13 +1096,11 @@ describe("handlers with mock Context", () => {
     const callbackData = keyboard.flat().map((button) => button.callback_data || "");
     expect(callbackData).toEqual([
       "codex_resume:codex-newest",
-      "resume:claude-new",
       "codex_resume:codex-mid",
-      "resume:claude-old",
     ]);
   }, 20_000);
 
-  it("handleResume keeps inactive-driver current session visible while hiding active current session", () => {
+  it("handleResume keeps the current Codex session behind resume_current and hides it from saved-session buttons", () => {
     const result = runResumeProbeInIsolatedProcess({
       activeDriver: "codex",
       currentClaudeSessionId: "claude-current",
@@ -1156,7 +1133,6 @@ describe("handlers with mock Context", () => {
     const keyboard = getInlineKeyboard(result.replies[0]!);
     const callbackData = keyboard.flat().map((button) => button.callback_data || "");
     expect(callbackData).toContain("resume_current");
-    expect(callbackData).toContain("resume:claude-current");
     expect(callbackData).toContain("codex_resume:codex-older");
     expect(callbackData).not.toContain("codex_resume:codex-current");
   }, 20_000);
@@ -1179,28 +1155,24 @@ describe("handlers with mock Context", () => {
     ]);
   });
 
-  it("handleModel shows driver row with Codex unavailable when Codex is disabled", () => {
+  it("handleModel shows Codex unavailable message when Codex is disabled", () => {
     const replies = runSwitchNoArgInIsolatedProcess(false);
     expect(replies).toHaveLength(1);
     const reply = replies[0]!;
-    expect(reply.extra?.parse_mode).toBe("HTML");
-    expect(reply.text).toContain("<b>Driver:</b>");
-
-    const callbackData = getInlineKeyboard(reply).flat().map((button) => button.callback_data || "");
-    expect(callbackData).toContain("switch:claude");
-    expect(callbackData).toContain("switch:codex_unavailable");
+    expect(reply.extra?.parse_mode).toBeUndefined();
+    expect(reply.text).toContain("Codex is disabled in config");
   }, 20_000);
 
-  it("handleModel shows driver row with Codex button when Codex is available", () => {
+  it("handleModel shows a Codex-only picker when Codex is available", () => {
     const replies = runSwitchNoArgInIsolatedProcess(true);
 
     expect(replies).toHaveLength(1);
     const reply = replies[0]!;
     expect(reply.extra?.parse_mode).toBe("HTML");
-    expect(reply.text).toContain("<b>Driver:</b>");
+    expect(reply.text).toContain("<b>Codex Model:</b>");
+    expect(reply.text).not.toContain("Claude");
 
     const callbackData = getInlineKeyboard(reply).flat().map((button) => button.callback_data || "");
-    expect(callbackData).toContain("switch:claude");
     expect(callbackData).toContain("switch:codex");
     expect(callbackData).not.toContain("switch:codex_unavailable");
   }, 20_000);
@@ -1252,7 +1224,7 @@ describe("handlers with mock Context", () => {
     expect(result.replies[0]!.text).toContain("forced start failure for test");
   }, 20_000);
 
-  it("handleModel rejects unknown driver arguments", () => {
+  it("handleModel rejects unknown model arguments", () => {
     const result = runSwitchCommandProbeInIsolatedProcess({
       command: "/model codxe",
       codexEnabled: true,
@@ -1264,7 +1236,7 @@ describe("handlers with mock Context", () => {
     expect(result.sessionKillCalls).toBe(0);
     expect(result.codexKillCalls).toBe(0);
     expect(result.replies).toHaveLength(1);
-    expect(result.replies[0]!.text).toContain("Unknown driver: codxe");
+    expect(result.replies[0]!.text).toContain("Unknown model target: codxe");
   }, 20_000);
 
   it("handleSwitch keeps the legacy redirect behind authorization", () => {
