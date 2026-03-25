@@ -111,13 +111,23 @@ if ! grep -q '^TELEGRAM_BOT_TOKEN=123456:token$' "${PROJECT_DIR}/.superturtle/.e
   exit 1
 fi
 
-if ! grep -q '^TELEGRAM_ALLOWED_USERS=424242$' "${PROJECT_DIR}/.superturtle/.env"; then
-  echo "Expected TELEGRAM_ALLOWED_USERS in .superturtle/.env." >&2
+if grep -q '^TELEGRAM_ALLOWED_USERS=' "${PROJECT_DIR}/.superturtle/.env"; then
+  echo "Did not expect TELEGRAM_ALLOWED_USERS in .superturtle/.env." >&2
   exit 1
 fi
 
 if ! grep -q "^CLAUDE_WORKING_DIR=${PROJECT_DIR}$" "${PROJECT_DIR}/.superturtle/.env"; then
   echo "Expected CLAUDE_WORKING_DIR to point at the repo root." >&2
+  exit 1
+fi
+
+if [[ ! -f "${PROJECT_DIR}/.superturtle/telegram-owner.json" ]]; then
+  echo "Expected .superturtle/telegram-owner.json to be created when --user is provided." >&2
+  exit 1
+fi
+
+if ! grep -q '"owner_user_id": 424242' "${PROJECT_DIR}/.superturtle/telegram-owner.json"; then
+  echo "Expected telegram-owner.json to persist the provided Telegram user ID." >&2
   exit 1
 fi
 

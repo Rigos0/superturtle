@@ -559,15 +559,8 @@ if (!IS_TEST_ENV) {
     configLog.error("ERROR: TELEGRAM_BOT_TOKEN environment variable is required");
     process.exit(1);
   }
-
-  if (ALLOWED_USERS.length === 0) {
-    configLog.error(
-      "ERROR: TELEGRAM_ALLOWED_USERS environment variable is required"
-    );
-    process.exit(1);
-  }
 }
 
 configLog.info(
-  `Config loaded: ${ALLOWED_USERS.length} allowed users, working dir: ${WORKING_DIR}`
+  `Config loaded: ${ALLOWED_USERS.length} legacy allowed users, working dir: ${WORKING_DIR}`
 );

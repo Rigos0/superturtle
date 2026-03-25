@@ -193,19 +193,35 @@ async function sendGreeting(bot: Bot, chatId: number, definition: GreetingDefini
   }
 }
 
-function scheduleGreeting(bot: Bot, chatId: number, definition: GreetingDefinition, timeZone: string): void {
+function scheduleGreeting(
+  bot: Bot,
+  resolveChatId: () => number | null,
+  definition: GreetingDefinition,
+  timeZone: string
+): void {
   const initialDelayMs = msUntilNextScheduledHour(definition.hour, timeZone);
 
   setTimeout(() => {
-    void sendGreeting(bot, chatId, definition);
+    const initialChatId = resolveChatId();
+    if (initialChatId !== null) {
+      void sendGreeting(bot, initialChatId, definition);
+    }
 
     setInterval(() => {
+      const chatId = resolveChatId();
+      if (chatId === null) {
+        return;
+      }
       void sendGreeting(bot, chatId, definition);
     }, DAILY_INTERVAL_MS);
   }, initialDelayMs);
 }
 
-export function startTurtleGreetings(bot: Bot, chatId: number, timeZone = DEFAULT_TIME_ZONE): void {
+export function startTurtleGreetings(
+  bot: Bot,
+  resolveChatId: () => number | null,
+  timeZone = DEFAULT_TIME_ZONE
+): void {
   const definitions: GreetingDefinition[] = [
     {
       type: "morning",
@@ -222,6 +238,6 @@ export function startTurtleGreetings(bot: Bot, chatId: number, timeZone = DEFAUL
   ];
 
   for (const definition of definitions) {
-    scheduleGreeting(bot, chatId, definition, timeZone);
+    scheduleGreeting(bot, resolveChatId, definition, timeZone);
   }
 }

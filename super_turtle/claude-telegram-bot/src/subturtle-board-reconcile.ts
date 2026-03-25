@@ -1,14 +1,14 @@
-import { ALLOWED_USERS } from "./config";
 import { bot } from "./bot";
 import { syncLiveSubturtleBoard, type LiveSubturtleBoardApi } from "./handlers/commands";
 import { botLog } from "./logger";
+import { getPrimaryTelegramTarget } from "./telegram-owner";
 
 export async function reconcileLiveSubturtleBoardNow(options: {
   api?: LiveSubturtleBoardApi;
   chatId?: number | null;
   reason?: string;
 } = {}) {
-  const chatId = options.chatId ?? ALLOWED_USERS[0] ?? null;
+  const chatId = options.chatId ?? getPrimaryTelegramTarget()?.chatId ?? null;
   if (chatId === null) {
     return null;
   }

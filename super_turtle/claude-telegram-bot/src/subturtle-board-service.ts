@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, statSync, watch, type FSWatcher } from "fs";
 import { dirname, join } from "path";
-import { ALLOWED_USERS, SUPERTURTLE_DATA_DIR } from "./config";
+import { SUPERTURTLE_DATA_DIR } from "./config";
 import { botLog } from "./logger";
 import { syncLiveSubturtleBoard, type LiveSubturtleBoardApi } from "./handlers/commands";
+import { getPrimaryTelegramTarget } from "./telegram-owner";
 
 const RELEVANT_EVENT_TYPES = new Set([
   "worker.started",
@@ -28,7 +29,7 @@ function stateEventsPath(stateDir: string): string {
 }
 
 function boardTargetChatId(): number | null {
-  return ALLOWED_USERS[0] ?? null;
+  return getPrimaryTelegramTarget()?.chatId ?? null;
 }
 
 export function isRelevantSubturtleBoardEventType(eventType: string): boolean {
@@ -64,11 +65,6 @@ function parseJsonLines(
 }
 
 export function startSubturtleBoardService(api: LiveSubturtleBoardApi): { stop: () => void } {
-  const chatId = boardTargetChatId();
-  if (chatId === null) {
-    return { stop: () => {} };
-  }
-
   const stateDir = join(SUPERTURTLE_DATA_DIR, "state");
   const eventsPath = stateEventsPath(stateDir);
   mkdirSync(dirname(eventsPath), { recursive: true });
@@ -86,6 +82,12 @@ export function startSubturtleBoardService(api: LiveSubturtleBoardApi): { stop: 
   const reconcileBoard = async (reason: string) => {
     if (stopped || reconciling) {
       pendingRerun = true;
+      return;
+    }
+
+    const chatId = boardTargetChatId();
+    if (chatId === null) {
+      log.debug({ reason }, "Skipped live SubTurtle board reconcile: no Telegram target");
       return;
     }
 
