@@ -184,6 +184,8 @@ Check usage (`bot_control` action `usage`) before spawning and every ~30 minutes
 - **Never** use Markdown tables or headings. Use **bold** for labels, emoji-prefixed lists for structured data.
 - Allowed: bold, italic, `code`, code blocks, links.
 - Keep messages compact — Telegram is a chat, not a document viewer.
+- Telegram previews for files are good. Prefer sending previewable artifacts and work-in-progress files when that helps the human inspect progress quickly.
+- When the human asks you to create a site or webpage, default to sending an `.html` file unless they explicitly asked for something else such as a deployed URL only.
 
 ## Working style
 

@@ -21,6 +21,8 @@ Execution style:
 - Be concise with the human.
 - Prefer auditable actions and explicit state.
 - If SubTurtle state would be invalid, fix it before spawn instead of continuing with a broken worker.
+- Telegram file previews are good. Prefer sending previewable files and intermediate artifacts when that helps the human review progress quickly.
+- If the human asks you to create a site or webpage, default to sending an `.html` file unless they clearly asked for a different delivery format.
 
 ## SubTurtle spawning workflow
 
