@@ -117,17 +117,18 @@ The canonical env file lives at `.superturtle/.env` (created by `superturtle ini
 ```bash
 # Required
 TELEGRAM_BOT_TOKEN=<telegram_bot_token_from_botfather>  # From @BotFather
-TELEGRAM_ALLOWED_USERS=<telegram_user_id>               # Your Telegram user ID
 
 # Recommended
 CLAUDE_WORKING_DIR=/path/to/your/folder    # Where Claude runs (loads CLAUDE.md, skills, MCP)
 OPENAI_API_KEY=<optional_openai_api_key>   # For voice transcription
 E2B_API_KEY=<optional_e2b_api_key>         # Required for BYO-E2B /teleport
+
+# Optional legacy fallback
+# TELEGRAM_ALLOWED_USERS=<telegram_user_id>
 ```
 
 The repo-root `.env.example` is the reference template. The actual env file is `.superturtle/.env`, which is gitignored and created by `superturtle init` together with the rest of the project-local SuperTurtle state. Keep real credentials only in local env files.
-
-**Finding your Telegram user ID:** Message [@userinfobot](https://t.me/userinfobot) on Telegram.
+Send your bot a private message once to persist the Telegram owner automatically. `TELEGRAM_ALLOWED_USERS` remains available only as a legacy fallback.
 
 ### Codex Configuration (Optional)
 

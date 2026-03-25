@@ -54,7 +54,7 @@ describe("turtle greetings sticker delivery", () => {
       },
     } as any;
 
-    startTurtleGreetings(bot, 12345);
+    startTurtleGreetings(bot, () => 12345);
 
     expect(scheduledCallbacks.length).toBe(2);
 
@@ -116,7 +116,7 @@ describe("turtle greetings sticker delivery", () => {
       },
     } as any;
 
-    startTurtleGreetings(bot, 12345);
+    startTurtleGreetings(bot, () => 12345);
     const afterStartCronJobs = JSON.stringify(getJobs());
 
     expect(afterStartCronJobs).toBe(beforeCronJobs);

@@ -17,6 +17,7 @@ const TELEPORT_STATE_RELATIVE_PATH = join(".superturtle", "teleport-state.json")
 const LEGACY_POC_STATE_RELATIVE_PATH = join(".superturtle", "e2b-webhook-poc.json");
 const PROJECT_CONFIG_RELATIVE_PATH = join(".superturtle", "project.json");
 const PROJECT_ENV_RELATIVE_PATH = join(".superturtle", ".env");
+const TELEGRAM_OWNER_RELATIVE_PATH = join(".superturtle", "telegram-owner.json");
 const LEGACY_SUBTURTLES_RELATIVE_PATH = ".subturtles";
 const SUBTURTLES_RELATIVE_PATH = join(".superturtle", "subturtles");
 const TELEPORT_RUNTIME_RELATIVE_PATH = join(".superturtle", "teleport");
@@ -358,6 +359,14 @@ function loadProjectEnv(projectRoot) {
   return parseDotEnv(fs.readFileSync(envPath, "utf-8"));
 }
 
+function loadTelegramOwnerState(projectRoot) {
+  const ownerPath = resolve(projectRoot, TELEGRAM_OWNER_RELATIVE_PATH);
+  if (!fs.existsSync(ownerPath)) {
+    return null;
+  }
+  return fs.readFileSync(ownerPath, "utf-8");
+}
+
 function loadRuntimeEnv(projectRoot) {
   try {
     return loadProjectEnv(projectRoot);
@@ -565,7 +574,7 @@ function buildRemoteEnv(
     env.SUPERTURTLE_REMOTE_DRIVER = remoteDriver;
   }
 
-  const requiredKeys = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS"];
+  const requiredKeys = ["TELEGRAM_BOT_TOKEN"];
   for (const key of requiredKeys) {
     if (!env[key] || !String(env[key]).trim()) {
       throw new Error(`Missing required env ${key} in project config.`);
@@ -709,10 +718,11 @@ async function importSandbox() {
   }
 }
 
-async function persistRemoteProjectState(sandbox, config, remoteEnv) {
+async function persistRemoteProjectState(sandbox, config, remoteEnv, telegramOwnerState = null) {
   const remoteProjectDir = `${config.remoteRoot}/.superturtle`;
   const remoteProjectConfigPath = `${remoteProjectDir}/project.json`;
   const remoteProjectEnvPath = `${config.remoteRoot}/${DEFAULT_REMOTE_PROJECT_ENV_PATH}`;
+  const remoteTelegramOwnerPath = `${config.remoteRoot}/${TELEGRAM_OWNER_RELATIVE_PATH}`;
 
   await sandbox.commands.run(
     ["set -euo pipefail", `mkdir -p ${shellEscape(remoteProjectDir)}`].join(" && "),
@@ -734,11 +744,15 @@ async function persistRemoteProjectState(sandbox, config, remoteEnv) {
     )}\n`
   );
   await sandbox.files.write(remoteProjectEnvPath, serializeDotEnv(remoteEnv));
+  if (telegramOwnerState) {
+    await sandbox.files.write(remoteTelegramOwnerPath, telegramOwnerState);
+  }
   await sandbox.commands.run(
     [
       "set -euo pipefail",
       `chmod 600 ${shellEscape(remoteProjectConfigPath)}`,
       `chmod 600 ${shellEscape(remoteProjectEnvPath)}`,
+      ...(telegramOwnerState ? [`chmod 600 ${shellEscape(remoteTelegramOwnerPath)}`] : []),
     ].join(" && "),
     { timeoutMs: 30_000 }
   );
@@ -746,6 +760,7 @@ async function persistRemoteProjectState(sandbox, config, remoteEnv) {
   return {
     remoteProjectConfigPath,
     remoteProjectEnvPath,
+    remoteTelegramOwnerPath: telegramOwnerState ? remoteTelegramOwnerPath : null,
   };
 }
 
@@ -983,6 +998,7 @@ function saveStateWithOwner(projectRoot, state, ownerMode) {
 async function launchTeleportRuntime(projectRoot, options = {}) {
   await emitProgress(options, "preparing");
   const projectEnv = loadProjectEnv(projectRoot);
+  const telegramOwnerState = loadTelegramOwnerState(projectRoot);
   const existingState = loadPocState(projectRoot);
   const config = buildPocConfig(projectRoot, options, existingState);
   const authBootstrap = buildLocalAuthBootstrap(projectEnv);
@@ -1070,7 +1086,7 @@ async function launchTeleportRuntime(projectRoot, options = {}) {
     envs: remoteEnv,
     timeoutMs: 10 * 60 * 1000,
   });
-  await persistRemoteProjectState(sandbox, config, remoteEnv);
+  await persistRemoteProjectState(sandbox, config, remoteEnv, telegramOwnerState);
   await emitProgress(options, "bootstrapping_auth", {
     sandboxId: sandbox.sandboxId,
     remoteMode: config.remoteMode,

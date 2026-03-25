@@ -15,6 +15,7 @@ import {
   RATE_LIMIT_WINDOW,
   TEMP_PATHS,
 } from "./config";
+import { getAuthorizedTelegramUserIds } from "./telegram-owner";
 
 // ============== Rate Limiter ==============
 
@@ -162,6 +163,7 @@ export function isAuthorized(
   allowedUsers: number[]
 ): boolean {
   if (!userId) return false;
-  if (allowedUsers.length === 0) return false;
-  return allowedUsers.includes(userId);
+  const authorizedUsers = getAuthorizedTelegramUserIds(allowedUsers);
+  if (authorizedUsers.length === 0) return false;
+  return authorizedUsers.includes(userId);
 }

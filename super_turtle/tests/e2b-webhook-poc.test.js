@@ -87,7 +87,6 @@ CLAUDE_WORKING_DIR='/tmp/project'
   const remoteEnv = buildRemoteEnv(
     {
       TELEGRAM_BOT_TOKEN: "123:abc",
-      TELEGRAM_ALLOWED_USERS: "12345",
       CLAUDE_WORKING_DIR: "/local/path",
       OPENAI_API_KEY: "sk-test",
     },
@@ -147,12 +146,10 @@ CLAUDE_WORKING_DIR='/tmp/project'
     parseDotEnv(serializeDotEnv({
       TELEGRAM_BOT_TOKEN: "123:abc",
       CLAUDE_CODE_OAUTH_TOKEN: "token-with-specials:/+=",
-      TELEGRAM_ALLOWED_USERS: "12345",
     })),
     {
       TELEGRAM_BOT_TOKEN: "123:abc",
       CLAUDE_CODE_OAUTH_TOKEN: "token-with-specials:/+=",
-      TELEGRAM_ALLOWED_USERS: "12345",
     }
   );
 
@@ -237,7 +234,7 @@ CLAUDE_WORKING_DIR='/tmp/project'
   assert.throws(
     () =>
       buildRemoteEnv(
-        { TELEGRAM_ALLOWED_USERS: "12345" },
+        {},
         "/home/user/project",
         "https://sandbox.example/telegram/webhook/demo",
         "secret-demo",
@@ -278,7 +275,6 @@ CLAUDE_WORKING_DIR='/tmp/project'
 
   const remoteEnv = {
     TELEGRAM_BOT_TOKEN: "123:abc",
-    TELEGRAM_ALLOWED_USERS: "12345",
   };
   const projectState = await persistRemoteProjectState(fakeSandbox, {
     remoteRoot: "/home/user/project",
@@ -286,12 +282,13 @@ CLAUDE_WORKING_DIR='/tmp/project'
   assert.deepStrictEqual(projectState, {
     remoteProjectConfigPath: "/home/user/project/.superturtle/project.json",
     remoteProjectEnvPath: "/home/user/project/.superturtle/.env",
+    remoteTelegramOwnerPath: null,
   });
   assert.strictEqual(writes.length, 2);
   assert.strictEqual(writes[0].filePath, "/home/user/project/.superturtle/project.json");
   assert.strictEqual(writes[1].filePath, "/home/user/project/.superturtle/.env");
   assert.deepStrictEqual(JSON.parse(String(writes[0].content).trim()).repo_root, "/home/user/project");
-  assert.deepStrictEqual(String(writes[1].content), "TELEGRAM_BOT_TOKEN=123:abc\nTELEGRAM_ALLOWED_USERS=12345\n");
+  assert.deepStrictEqual(String(writes[1].content), "TELEGRAM_BOT_TOKEN=123:abc\n");
   assert.strictEqual(commands.length, 2);
 
   await persistManagedRuntimeManifest(fakeSandbox, {

@@ -9,8 +9,9 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { spawnSync } from "bun";
-import { ALLOWED_USERS, CTL_PATH, SUPERTURTLE_DATA_DIR, WORKING_DIR } from "./config";
+import { CTL_PATH, SUPERTURTLE_DATA_DIR, WORKING_DIR } from "./config";
 import { ensureMetaAgentInboxItem } from "./conductor-inbox";
+import { getPrimaryTelegramTarget } from "./telegram-owner";
 
 const STUCK_WAKEUP_MIN_QUIET_MS = 30 * 60 * 1000;
 const STUCK_WAKEUP_MIN_REPEAT_MS = 60 * 60 * 1000;
@@ -1387,7 +1388,10 @@ export async function processPendingConductorWakeups(
         writeWorkerState(stateDir, workingState);
       }
 
-      const chatId = deriveChatId(wakeup, options.defaultChatId ?? ALLOWED_USERS[0] ?? null);
+      const chatId = deriveChatId(
+        wakeup,
+        options.defaultChatId ?? getPrimaryTelegramTarget()?.chatId ?? null
+      );
       const stateText = readWorkspaceStateText(workingState);
       if (wakeup.category !== "silent") {
         const inboxTitle = buildMetaAgentInboxTitle(wakeup, workingState);

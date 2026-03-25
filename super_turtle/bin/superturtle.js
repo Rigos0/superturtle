@@ -55,6 +55,7 @@ const SUPERTURTLE_SERVICE_PID_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "service
 const PROJECT_CONFIG_RELATIVE_PATH = join(".superturtle", "project.json");
 const PROJECT_ENV_RELATIVE_PATH = join(".superturtle", ".env");
 const PROJECT_ENV_EXAMPLE_RELATIVE_PATH = join(".superturtle", ".env.example");
+const TELEGRAM_OWNER_RELATIVE_PATH = join(".superturtle", "telegram-owner.json");
 
 function normalizeExistingPath(path) {
   try {
@@ -249,6 +250,29 @@ function loadProjectEnv(cwd) {
     parsed[key] = value;
   }
   return parsed;
+}
+
+function getTelegramOwnerPath(projectRoot) {
+  return resolve(projectRoot, TELEGRAM_OWNER_RELATIVE_PATH);
+}
+
+function writeTelegramOwnerState(projectRoot, token, userId, claimSource) {
+  const ownerPath = getTelegramOwnerPath(projectRoot);
+  const tokenPrefix = String(token || "").split(":")[0] || "unknown";
+  const parsedUserId = Number.parseInt(String(userId), 10);
+  if (!Number.isInteger(parsedUserId)) {
+    throw new Error("Telegram user ID must be a valid integer.");
+  }
+  const payload = {
+    schema_version: 1,
+    bot_token_prefix: tokenPrefix,
+    owner_user_id: parsedUserId,
+    owner_chat_id: parsedUserId,
+    claimed_at: new Date().toISOString(),
+    claim_source: claimSource,
+  };
+  fs.writeFileSync(ownerPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+  return ownerPath;
 }
 
 function sanitizeName(value, fallback) {
@@ -818,20 +842,20 @@ async function init() {
 
   // --- .env config ---
   const envPath = resolve(dataDir, ".env");
+  const telegramOwnerPath = getTelegramOwnerPath(projectRoot);
   if (!fs.existsSync(envPath)) {
     let token = flags.token;
     let userId = flags.user;
     let openaiKey = flags.openaiKey;
 
-    if (!token || !userId) {
+    if (!token) {
       // Non-interactive mode: fail fast
       if (!process.stdin.isTTY) {
         blank();
         fail("Missing required flags for non-interactive mode:");
         if (!token) fail("  --token <TELEGRAM_BOT_TOKEN>");
-        if (!userId) fail("  --user <TELEGRAM_USER_ID>");
         blank();
-        info("Usage: superturtle init [--create-git] --token <token> --user <id> [--openai-key <key>]");
+        info("Usage: superturtle init [--create-git] --token <token> [--user <id>] [--openai-key <key>]");
         blank();
         process.exit(1);
       }
@@ -850,22 +874,14 @@ async function init() {
         blank();
       }
 
-      if (!userId) {
-        info("Find your ID: message @userinfobot on Telegram");
-        blank();
-        userId = await ask("User ID: ");
-        if (!userId) { fail("User ID is required."); process.exit(1); }
-        blank();
-      }
+    }
 
-      if (openaiKey === null) {
-        openaiKey = await ask("OpenAI API key " + c.dim("(for voice, Enter to skip)") + ": ");
-        blank();
-      }
+    if (process.stdin.isTTY && openaiKey === null) {
+      openaiKey = await ask("OpenAI API key " + c.dim("(for voice, Enter to skip)") + ": ");
+      blank();
     }
 
     let envContent = `TELEGRAM_BOT_TOKEN=${token}\n`;
-    envContent += `TELEGRAM_ALLOWED_USERS=${userId}\n`;
     envContent += `CLAUDE_WORKING_DIR=${projectRoot}\n`;
     if (openaiKey) {
       envContent += `OPENAI_API_KEY=${openaiKey}\n`;
@@ -878,6 +894,13 @@ async function init() {
       ? "(imported from legacy claude-telegram-bot/.env; legacy file kept)"
       : "(exists)";
     ok(".superturtle/.env " + c.dim(status));
+  }
+
+  if (flags.user && !fs.existsSync(telegramOwnerPath)) {
+    writeTelegramOwnerState(projectRoot, flags.token || loadProjectEnv(projectRoot)?.TELEGRAM_BOT_TOKEN, flags.user, "init_flag");
+    ok(".superturtle/telegram-owner.json");
+  } else if (!fs.existsSync(telegramOwnerPath)) {
+    info("Finish Telegram linking by sending your bot a private message once.");
   }
 
   // --- CLAUDE.md ---
@@ -2147,7 +2170,7 @@ Commands:
 
 Init flags (for non-interactive / agent use):
   --token <token>       Telegram bot token
-  --user <id>           Telegram user ID
+  --user <id>           Optional Telegram user ID bootstrap
   --openai-key <key>    OpenAI API key (optional)
   --create-git          Explicitly run git init if no repo exists
 

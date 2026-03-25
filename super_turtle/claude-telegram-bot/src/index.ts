@@ -108,6 +108,12 @@ import {
   TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS,
   TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS,
 } from "./teleport";
+import {
+  claimTelegramOwnerIfUnclaimed,
+  getAuthorizedTelegramUserIds,
+  getPersistedTelegramOwner,
+  getPrimaryTelegramTarget,
+} from "./telegram-owner";
 
 // Re-export for any existing consumers
 export { bot };
@@ -185,7 +191,12 @@ function summarizeCronError(error: unknown): string {
 }
 
 async function sendStartupNotifications(): Promise<void> {
-  if (ALLOWED_USERS.length === 0 || SUPERTURTLE_RUNTIME_ROLE === "teleport-remote") {
+  if (SUPERTURTLE_RUNTIME_ROLE === "teleport-remote") {
+    return;
+  }
+
+  const target = getPrimaryTelegramTarget();
+  if (!target) {
     return;
   }
 
@@ -194,20 +205,16 @@ async function sendStartupNotifications(): Promise<void> {
     projectName,
     driver: session.activeDriver,
   });
-  const uniqueChatIds = [...new Set(ALLOWED_USERS)];
-
-  await Promise.all(uniqueChatIds.map(async (chatId) => {
-    try {
-      await bot.api.sendMessage(chatId, text);
-    } catch (error) {
-      botLog.warn({ err: error, chatId }, "Failed to send startup notification");
-    }
-  }));
+  try {
+    await bot.api.sendMessage(target.chatId, text);
+  } catch (error) {
+    botLog.warn({ err: error, chatId: target.chatId }, "Failed to send startup notification");
+  }
 }
 
 function isAllowedInteractiveUpdate(ctx: import("grammy").Context): boolean {
   const userId = ctx.from?.id;
-  if (!userId || !ALLOWED_USERS.includes(userId)) {
+  if (!userId || !getAuthorizedTelegramUserIds().includes(userId)) {
     return false;
   }
   return Boolean(ctx.message || ctx.callbackQuery);
@@ -328,7 +335,8 @@ async function runConductorMaintenancePass(
 }
 
 async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
-  if (ALLOWED_USERS.length === 0) return;
+  const target = getPrimaryTelegramTarget();
+  if (!target) return;
   if (isAnyDriverRunning()) return;
   while (!isAnyDriverRunning()) {
     const snapshot = dequeuePreparedSnapshot();
@@ -337,7 +345,7 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
     const cronCtx = createCronTimerContext(
       {
         chatId: snapshot.chatId,
-        userId: ALLOWED_USERS[0]!,
+        userId: target.userId,
       },
       ""
     );
@@ -363,7 +371,7 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
           message: buildPreparedSnapshotPrompt(snapshot),
           source: "background_snapshot",
           username: "cron",
-          userId: ALLOWED_USERS[0]!,
+          userId: target.userId,
           chatId: snapshot.chatId,
           ctx: cronCtx,
           statusCallback,
@@ -376,7 +384,7 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
           message: buildPreparedSnapshotPrompt(snapshot),
           source: "background_snapshot",
           username: "cron",
-          userId: ALLOWED_USERS[0]!,
+          userId: target.userId,
           chatId: snapshot.chatId,
           ctx: cronCtx,
           statusCallback,
@@ -434,20 +442,20 @@ function createCronTimerContext(
 }
 
 async function drainDeferredQueueWhenIdle(): Promise<void> {
-  const resolvedUserId = ALLOWED_USERS[0];
-  if (resolvedUserId === undefined || isAnyDriverRunning()) {
+  const target = getPrimaryTelegramTarget();
+  if (!target || isAnyDriverRunning()) {
     return;
   }
 
   await drainDeferredQueue(
     createCronTimerContext(
       {
-        chatId: resolvedUserId,
-        userId: resolvedUserId,
+        chatId: target.chatId,
+        userId: target.userId,
       },
       ""
     ),
-    resolvedUserId
+    target.chatId
   );
 }
 
@@ -483,6 +491,35 @@ bot.use(async (ctx, next) => {
       rawLength: text.length,
     });
   }
+  await next();
+});
+
+bot.use(async (ctx, next) => {
+  const userId = ctx.from?.id;
+  const chatId = ctx.chat?.id;
+  const chatType = ctx.chat?.type;
+
+  if (
+    !getPersistedTelegramOwner() &&
+    ALLOWED_USERS.length === 0 &&
+    userId &&
+    chatId &&
+    chatType === "private" &&
+    ctx.message
+  ) {
+    const { claimed, owner } = claimTelegramOwnerIfUnclaimed(
+      userId,
+      chatId,
+      "first_private_message"
+    );
+    if (claimed) {
+      botLog.info(
+        { ownerUserId: owner.owner_user_id, ownerChatId: owner.owner_chat_id },
+        "Claimed Telegram owner from first private message"
+      );
+    }
+  }
+
   await next();
 });
 
@@ -685,10 +722,10 @@ const startCronTimer = () => {
       await runConductorMaintenancePass();
 
       const dueJobs = getDueJobs();
-      const resolvedChatId = ALLOWED_USERS[0];
-      if (resolvedChatId !== undefined) {
+      const initialTarget = getPrimaryTelegramTarget();
+      if (initialTarget) {
         pruneQueuedDueCronJobIds(
-          resolvedChatId,
+          initialTarget.chatId,
           new Set(dueJobs.map((job) => job.id)),
           queuedDueCronJobIds
         );
@@ -701,15 +738,17 @@ const startCronTimer = () => {
 
       for (const job of dueJobs) {
         const supervisedWorkerName = resolveSilentSubturtleSupervisorWorker(job);
+        const target = getPrimaryTelegramTarget();
 
-        // Bail if no allowed users are configured — can't authenticate
-        if (ALLOWED_USERS.length === 0) {
-          cronLog.error({ cronJobId: job.id }, `Cron job ${job.id} skipped: ALLOWED_USERS is empty`);
+        if (!target) {
+          cronLog.warn(
+            { cronJobId: job.id },
+            `Cron job ${job.id} skipped: no Telegram owner or single-user fallback target is configured`
+          );
           continue;
         }
-        // Single-chat bot: always use the first allowed user as chat target
-        const resolvedUserId = ALLOWED_USERS[0]!;
-        const resolvedChatId: number = resolvedUserId;
+        const resolvedUserId = target.userId;
+        const resolvedChatId = target.chatId;
 
         try {
           if (supervisedWorkerName) {
@@ -974,10 +1013,67 @@ const startCronTimer = () => {
   }, 10000); // 10 seconds
 };
 
+function shouldDeferRemoteStartupTasks(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return (
+    SUPERTURTLE_RUNTIME_ROLE === "teleport-remote" &&
+    (env.SUPERTURTLE_DEFER_REMOTE_STARTUP_TASKS || "").trim().toLowerCase() === "true"
+  );
+}
+
+function logStartupMilestone(
+  message: string,
+  startupStartedAt: number,
+  stepStartedAt: number = startupStartedAt
+): void {
+  botLog.info(
+    {
+      msSinceStart: Date.now() - startupStartedAt,
+      stepDurationMs: Date.now() - stepStartedAt,
+    },
+    `[startup] ${message}`
+  );
+}
+
+function buildLocalStandbyConfig(): Extract<TelegramTransportConfig, { mode: "standby" }> {
+  const state = loadTeleportStateForCurrentProject();
+  return {
+    mode: "standby",
+    expectedRemoteWebhookUrl: state?.ownerMode === "remote" ? state.webhookUrl : state?.webhookUrl || null,
+    onResumePolling: async () => {
+      await reconcileTeleportOwnershipForCurrentProject();
+    },
+  };
+}
+
+function resolveStartupTransportConfig(): TelegramTransportConfig | undefined {
+  const localTeleportState = loadTeleportStateForCurrentProject();
+  return SUPERTURTLE_RUNTIME_ROLE === "local"
+    ? localTeleportState?.ownerMode === "remote"
+      ? buildLocalStandbyConfig()
+      : {
+          mode: "polling",
+          clearWebhookOnStart: true,
+          standbyOnConflict: async () => {
+            await reconcileTeleportOwnershipForCurrentProject();
+            const state = loadTeleportStateForCurrentProject();
+            if (!state?.webhookUrl) {
+              return null;
+            }
+            return buildLocalStandbyConfig();
+          },
+        }
+    : undefined;
+}
+
 // ============== Startup ==============
 
 botLog.info({ workingDir: WORKING_DIR }, `Working directory: ${WORKING_DIR}`);
-botLog.info({ allowedUsers: ALLOWED_USERS.length }, `Allowed users: ${ALLOWED_USERS.length}`);
+botLog.info(
+  { legacyAllowedUsers: ALLOWED_USERS.length, hasPersistedOwner: Boolean(getPersistedTelegramOwner()) },
+  `Telegram auth configured: persisted_owner=${Boolean(getPersistedTelegramOwner())} legacy_allowed_users=${ALLOWED_USERS.length}`
+);
 botLog.info(
   {
     claudeCli: CLAUDE_CLI_AVAILABLE,
@@ -1014,19 +1110,77 @@ if (isTeleportRemoteAgentMode()) {
 
 mkdirSync(IPC_DIR, { recursive: true });
 const releaseInstanceLock = acquireInstanceLockOrExit();
+const startupStartedAt = Date.now();
+const deferRemoteStartupTasks = shouldDeferRemoteStartupTasks();
 
 // Grammy requires bot.init() (or an explicit botInfo) before handleUpdate().
+const botInitStartedAt = Date.now();
 await bot.init();
 const botInfo = bot.botInfo;
 botLog.info({ username: botInfo.username }, `Bot started: @${botInfo.username}`);
-await syncTelegramCommands();
+if (deferRemoteStartupTasks) {
+  logStartupMilestone("bot.init complete", startupStartedAt, botInitStartedAt);
+}
+
+let startupTransport: Awaited<ReturnType<typeof startTelegramTransport>> | null = null;
+const ensureStartupTransport = async () => {
+  if (startupTransport) {
+    return startupTransport;
+  }
+
+  const transportStartedAt = Date.now();
+  startupTransport = await startTelegramTransport(bot, resolveStartupTransportConfig(), {
+    getReadiness: async () => {
+      if (isTeleportRemoteAgentMode() && !CODEX_AVAILABLE) {
+        return {
+          ok: false,
+          status: 503,
+          body: `remote-agent-codex-unavailable: ${getCodexUnavailableReason() || "Codex is unavailable."}`,
+        };
+      }
+      return { ok: true, status: 200, body: "ok" };
+    },
+  });
+
+  if (deferRemoteStartupTasks) {
+    logStartupMilestone("telegram transport ready", startupStartedAt, transportStartedAt);
+  }
+
+  return startupTransport;
+};
+
+const startDeferredRemoteStartupTasks = () => {
+  if (!deferRemoteStartupTasks) {
+    return;
+  }
+
+  const syncStartedAt = Date.now();
+  botLog.info(
+    {
+      msSinceStart: Date.now() - startupStartedAt,
+    },
+    "[startup] deferred telegram command sync started"
+  );
+
+  void (async () => {
+    await syncTelegramCommands();
+    logStartupMilestone("deferred telegram command sync finished", startupStartedAt, syncStartedAt);
+  })();
+};
+
+if (deferRemoteStartupTasks) {
+  await ensureStartupTransport();
+  startDeferredRemoteStartupTasks();
+} else {
+  await syncTelegramCommands();
+}
 
 if (
   SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote" &&
   TURTLE_GREETINGS_ENABLED &&
-  ALLOWED_USERS.length > 0
+  getPrimaryTelegramTarget()
 ) {
-  startTurtleGreetings(bot, ALLOWED_USERS[0]!);
+  startTurtleGreetings(bot, () => getPrimaryTelegramTarget()?.chatId ?? null);
   botLog.info("Turtle greetings enabled (8am/8pm Europe/Prague)");
 }
 if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
@@ -1109,48 +1263,7 @@ if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
   startCronTimer();
 }
 
-const localTeleportState = loadTeleportStateForCurrentProject();
-const buildLocalStandbyConfig = (): Extract<TelegramTransportConfig, { mode: "standby" }> => {
-  const state = loadTeleportStateForCurrentProject();
-  return {
-    mode: "standby",
-    expectedRemoteWebhookUrl: state?.ownerMode === "remote" ? state.webhookUrl : state?.webhookUrl || null,
-    onResumePolling: async () => {
-      await reconcileTeleportOwnershipForCurrentProject();
-    },
-  };
-};
-
-const transportConfig: TelegramTransportConfig | undefined =
-  SUPERTURTLE_RUNTIME_ROLE === "local"
-    ? localTeleportState?.ownerMode === "remote"
-      ? buildLocalStandbyConfig()
-      : {
-          mode: "polling",
-          clearWebhookOnStart: true,
-          standbyOnConflict: async () => {
-            await reconcileTeleportOwnershipForCurrentProject();
-            const state = loadTeleportStateForCurrentProject();
-            if (!state?.webhookUrl) {
-              return null;
-            }
-            return buildLocalStandbyConfig();
-          },
-        }
-    : undefined;
-
-const transport = await startTelegramTransport(bot, transportConfig, {
-  getReadiness: async () => {
-    if (isTeleportRemoteAgentMode() && !CODEX_AVAILABLE) {
-      return {
-        ok: false,
-        status: 503,
-        body: `remote-agent-codex-unavailable: ${getCodexUnavailableReason() || "Codex is unavailable."}`,
-      };
-    }
-    return { ok: true, status: 200, body: "ok" };
-  },
-});
+const transport = await ensureStartupTransport();
 
 const subturtleBoardService = startSubturtleBoardService(bot.api);
 
