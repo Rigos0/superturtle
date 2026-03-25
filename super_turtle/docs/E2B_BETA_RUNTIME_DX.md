@@ -33,12 +33,12 @@ The local teleport/bootstrap path now follows the same artifact model:
 
 ## Target Developer Flow
 
-### 1. Branch push publishes an exact beta package
+### 1. Branch push publishes an exact managed-codex package
 
-Each push to the active beta branch publishes a prerelease npm version:
+Each push to the active `managed-codex` branch publishes a prerelease npm version:
 
 - package name: `superturtle`
-- dist-tag: `beta`
+- dist-tag: `managed-codex`
 - exact version shape: `<next-stable>-beta.<run-number>.<run-attempt>`
 
 Example:
@@ -48,26 +48,26 @@ Example:
 
 Why:
 
-- `beta` stays a moving human-friendly alias
+- `managed-codex` stays a moving human-friendly alias
 - the exact prerelease version is what templates and sandboxes should actually consume
 - `latest` remains untouched
 
-### 2. Successful beta publish repoints the beta E2B template
+### 2. Successful publish repoints the managed-codex E2B template
 
-After npm publish succeeds, CI rebuilds the beta template channel with the exact package version:
+After npm publish succeeds, CI rebuilds the managed-codex template channel with the exact package version:
 
 - template name stays `superturtle-managed-runtime`
 - stable channel stays `latest`
-- beta channel is `beta`
+- managed-codex channel is `managed-codex`
 - install spec is exact, for example `superturtle@0.2.6-beta.148.1`
 
 This keeps the template reproducible while still letting cold starts pick up the newest branch runtime.
 
-### 3. Cold boots use the beta template; warm boots verify runtime freshness
+### 3. Cold boots use the managed-codex template; warm boots verify runtime freshness
 
 For developer testing:
 
-- new sandboxes should come from `superturtle-managed-runtime:beta`
+- new sandboxes should come from `superturtle-managed-runtime:managed-codex`
 - reused sandboxes should compare their remote manifest against the desired runtime install spec before cutover
 
 The reuse check should be based on:
@@ -80,7 +80,7 @@ The reuse check should be based on:
 If the spec does not match, we should either:
 
 1. run an in-place runtime update inside the sandbox, or
-2. recycle the sandbox and recreate from the beta template
+2. recycle the sandbox and recreate from the managed-codex template
 
 Preferred policy:
 
@@ -90,23 +90,23 @@ Preferred policy:
 
 That preserves fast repeat `/teleport` while keeping the runtime artifact exact.
 
-### 4. Teleport and managed onboarding both expose an explicit beta selector
+### 4. Teleport and managed onboarding both expose an explicit managed-codex selector
 
-We should treat beta targeting as configuration, not hidden behavior.
+We should treat managed-codex targeting as configuration, not hidden behavior.
 
 Near-term knobs:
 
-- `SUPERTURTLE_E2B_TEMPLATE_CHANNEL=beta`
+- `SUPERTURTLE_E2B_TEMPLATE_CHANNEL=managed-codex`
 - `SUPERTURTLE_RUNTIME_INSTALL_SPEC=superturtle@<exact-beta-version>`
 
 Near-term product behavior:
 
-- managed onboarding can stay on `latest` by default and use `beta` only for operator/dev testing
-- local teleport/dev helpers can opt into `beta` explicitly
+- managed onboarding can stay on `latest` by default and use `managed-codex` only for operator/dev testing
+- local teleport/dev helpers can opt into `managed-codex` explicitly
 
 Longer-term CLI UX:
 
-- `superturtle teleport --runtime-channel beta`
+- `superturtle teleport --runtime-channel managed-codex`
 - `superturtle teleport --runtime-version 0.2.6-beta.148.1`
 
 ## Runtime Contract Changes
@@ -134,19 +134,19 @@ Target default:
 
 ## Operational Rules
 
-- Do not build beta templates from a local tarball.
-- Do not point E2B at the floating `beta` dist-tag inside the template.
+- Do not build managed-codex templates from a local tarball.
+- Do not point E2B at the floating `managed-codex` dist-tag inside the template.
 - Do keep `latest` stable and operator-safe.
 - Do record the exact runtime version/spec used for each sandbox.
 - Do allow sandbox reuse when the manifest still matches.
 
 ## Recommended CI Shape
 
-### Workflow A: branch beta runtime
+### Workflow A: branch managed-codex runtime
 
 Trigger:
 
-- push to the active beta branch
+- push to the active `managed-codex` branch
 - manual dispatch for republish/recovery
 
 Steps:
@@ -154,11 +154,10 @@ Steps:
 1. compute exact prerelease version from `super_turtle/package.json`
 2. write that version into the checked-out package manifest
 3. run `bash tests/npm-package-smoke.sh`
-4. `npm publish --tag beta`
-5. optionally add a branch-scoped dist-tag like `beta-unify-superturtle-layout`
-6. rebuild `superturtle-managed-runtime:beta` with:
+4. `npm publish --tag managed-codex`
+5. rebuild `superturtle-managed-runtime:managed-codex` with:
    - `SUPERTURTLE_E2B_TEMPLATE_VERSION=v<exact-version>`
-   - `SUPERTURTLE_E2B_TEMPLATE_CHANNEL=beta`
+   - `SUPERTURTLE_E2B_TEMPLATE_CHANNEL=managed-codex`
    - `SUPERTURTLE_RUNTIME_INSTALL_SPEC=superturtle@<exact-version>`
 
 ### Workflow B: stable release
@@ -179,8 +178,8 @@ For local testing without waiting on CI:
 ```bash
 cd super_turtle
 node scripts/prepare-beta-release.mjs
-npm publish --tag beta
-SUPERTURTLE_E2B_TEMPLATE_CHANNEL=beta \
+npm publish --tag managed-codex
+SUPERTURTLE_E2B_TEMPLATE_CHANNEL=managed-codex \
 SUPERTURTLE_E2B_TEMPLATE_VERSION=v$(node -p "require('./package.json').version") \
 SUPERTURTLE_RUNTIME_INSTALL_SPEC=superturtle@$(node -p "require('./package.json').version") \
 bun run e2b:template:build
@@ -194,7 +193,7 @@ git checkout -- super_turtle/package.json
 
 ## Immediate Follow-Up Work
 
-1. Make the beta publish workflow the branch default for E2B testing.
+1. Make the managed-codex publish workflow the branch default for E2B testing.
 2. Add a remote self-update check before webhook cutover.
 3. Add a user-facing beta/runtime selector to teleport commands once the low-level path is stable.
 4. Decide how much auth bootstrap should remain in the local `/teleport` path versus moving behind managed onboarding only.

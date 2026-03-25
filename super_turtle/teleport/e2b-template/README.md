@@ -39,7 +39,7 @@ SUPERTURTLE_CODEX_INSTALL_SPEC=@openai/codex \
 bun run e2b:template:build
 ```
 
-## Beta runtime loop
+## Managed Codex runtime loop
 
 Use an exact prerelease package version inside the template when testing E2B runtime changes.
 
@@ -47,7 +47,7 @@ Example:
 
 ```bash
 SUPERTURTLE_E2B_TEMPLATE_NAME=superturtle-managed-runtime \
-SUPERTURTLE_E2B_TEMPLATE_CHANNEL=beta \
+SUPERTURTLE_E2B_TEMPLATE_CHANNEL=managed-codex \
 SUPERTURTLE_E2B_TEMPLATE_VERSION=v0.2.6-beta.148.1 \
 SUPERTURTLE_E2B_TEMPLATE_TAGS=sha-abc1234 \
 SUPERTURTLE_RUNTIME_INSTALL_SPEC=superturtle@0.2.6-beta.148.1 \
@@ -57,8 +57,8 @@ bun run e2b:template:build
 Guidelines:
 
 - Keep `latest` for stable/operator-safe builds.
-- Use `beta` for branch/runtime testing.
-- Prefer exact prerelease versions over the floating `beta` dist-tag so template builds stay reproducible.
+- Use `managed-codex` for branch/runtime testing.
+- Prefer exact prerelease versions over the floating `managed-codex` dist-tag so template builds stay reproducible.
 - The published npm package is the runtime artifact. Do not build E2B templates from a local repo tarball.
 
 ## Maintenance model

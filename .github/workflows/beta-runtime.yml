@@ -1,24 +1,23 @@
-name: Beta Runtime
+name: Managed Codex Runtime
 
 on:
   push:
     branches:
-      - unify-superturtle-layout
+      - managed-codex
   workflow_dispatch:
 
 concurrency:
-  group: beta-runtime-${{ github.ref }}
+  group: managed-codex-runtime-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  publish-beta-package:
+  publish-managed-codex-package:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: super_turtle
     outputs:
       should_publish: ${{ steps.preflight.outputs.should_publish }}
-      branch_dist_tag: ${{ steps.version.outputs.branch_dist_tag }}
       package_version: ${{ steps.version.outputs.package_version }}
       runtime_install_spec: ${{ steps.version.outputs.runtime_install_spec }}
       sha_tag: ${{ steps.version.outputs.sha_tag }}
@@ -47,20 +46,14 @@ jobs:
       - if: steps.preflight.outputs.should_publish == 'true'
         run: bash tests/npm-package-smoke.sh
       - if: steps.preflight.outputs.should_publish == 'true'
-        run: npm publish --tag beta --access public
+        run: npm publish --tag managed-codex --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - if: steps.preflight.outputs.should_publish == 'true'
-        run: npm dist-tag add "superturtle@${PACKAGE_VERSION}" "${BRANCH_DIST_TAG}"
-        env:
-          BRANCH_DIST_TAG: ${{ steps.version.outputs.branch_dist_tag }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
 
-  publish-beta-template:
-    if: ${{ needs.publish-beta-package.result == 'success' && needs.publish-beta-package.outputs.should_publish == 'true' }}
+  publish-managed-codex-template:
+    if: ${{ needs.publish-managed-codex-package.result == 'success' && needs.publish-managed-codex-package.outputs.should_publish == 'true' }}
     needs:
-      - publish-beta-package
+      - publish-managed-codex-package
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -85,7 +78,7 @@ jobs:
         run: bun run e2b:template:build
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          SUPERTURTLE_E2B_TEMPLATE_CHANNEL: ${{ needs.publish-beta-package.outputs.template_channel }}
-          SUPERTURTLE_E2B_TEMPLATE_TAGS: ${{ needs.publish-beta-package.outputs.sha_tag }}
-          SUPERTURTLE_E2B_TEMPLATE_VERSION: ${{ needs.publish-beta-package.outputs.template_version_tag }}
-          SUPERTURTLE_RUNTIME_INSTALL_SPEC: ${{ needs.publish-beta-package.outputs.runtime_install_spec }}
+          SUPERTURTLE_E2B_TEMPLATE_CHANNEL: ${{ needs.publish-managed-codex-package.outputs.template_channel }}
+          SUPERTURTLE_E2B_TEMPLATE_TAGS: ${{ needs.publish-managed-codex-package.outputs.sha_tag }}
+          SUPERTURTLE_E2B_TEMPLATE_VERSION: ${{ needs.publish-managed-codex-package.outputs.template_version_tag }}
+          SUPERTURTLE_RUNTIME_INSTALL_SPEC: ${{ needs.publish-managed-codex-package.outputs.runtime_install_spec }}

@@ -53,7 +53,7 @@ Publishing model:
 - keep the npm package name as `superturtle`
 - do not create a separate npm package for each iteration
 - publish a new prerelease version for each iteration from `managed-codex`
-- use a moving branch dist-tag for convenience, but install exact versions in E2B
+- use a single moving dist-tag `managed-codex` for convenience, but install exact versions in E2B
 
 Important npm rule:
 
@@ -62,7 +62,7 @@ Important npm rule:
 Recommended versioning/runtime flow:
 
 - publish versions like `0.2.9-beta.<run>.<attempt>` or another branch-scoped prerelease form
-- optionally move a dist-tag such as `beta-managed-codex` to the newest published version
+- move the dist-tag `managed-codex` to the newest published version
 - have E2B templates and sandboxes install an exact version such as `superturtle@0.2.9-beta.143.1`
 - do not point E2B at a floating dist-tag inside the template
 

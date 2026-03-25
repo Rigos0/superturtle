@@ -28,15 +28,6 @@ function parsePositiveInt(rawValue, fallback) {
   return fallback;
 }
 
-function slugify(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "branch";
-}
-
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 const currentVersion = String(packageJson.version || "").trim();
 const parsedVersion = parseSemver(currentVersion);
@@ -46,10 +37,8 @@ const baseVersion = parsedVersion.prerelease
 
 const runNumber = parsePositiveInt(process.env.GITHUB_RUN_NUMBER, Math.floor(Date.now() / 1000));
 const runAttempt = parsePositiveInt(process.env.GITHUB_RUN_ATTEMPT, 1);
-const branchName = String(process.env.GITHUB_REF_NAME || "local").trim() || "local";
 const shortSha = String(process.env.GITHUB_SHA || "local").trim().slice(0, 7) || "local";
 const packageVersion = `${baseVersion}-beta.${runNumber}.${runAttempt}`;
-const branchDistTag = `beta-${slugify(branchName)}`;
 
 packageJson.version = packageVersion;
 fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf-8");
@@ -57,6 +46,5 @@ fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "
 process.stdout.write(`package_version=${packageVersion}\n`);
 process.stdout.write(`runtime_install_spec=superturtle@${packageVersion}\n`);
 process.stdout.write(`template_version_tag=v${packageVersion}\n`);
-process.stdout.write(`template_channel=beta\n`);
+process.stdout.write(`template_channel=managed-codex\n`);
 process.stdout.write(`sha_tag=sha-${shortSha}\n`);
-process.stdout.write(`branch_dist_tag=${branchDistTag}\n`);
