@@ -4,8 +4,6 @@
 
 export {
   handleNew,
-  handleStatus,
-  handleLooplogs,
   handleUsage,
   handleModel,
   handleSwitch,

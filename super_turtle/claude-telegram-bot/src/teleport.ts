@@ -64,16 +64,10 @@ export const TELEPORT_AGENT_TEXT_ONLY_MESSAGE =
   "This remote SuperTurtle currently supports text chat only.";
 
 export const TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS = new Set([
-  "status",
-  "looplogs",
-  "pinologs",
   "debug",
   "restart",
 ]);
 export const TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS = new Set([
-  "status",
-  "looplogs",
-  "pinologs",
   "debug",
   "restart",
   "stop",

@@ -79,9 +79,6 @@ const LOCAL_TELEGRAM_COMMANDS = [
   { command: "stop", description: "Stop current work" },
   { command: "model", description: "Change Codex model or effort" },
   { command: "usage", description: "Show subscription usage" },
-  { command: "status", description: "Show detailed status" },
-  { command: "looplogs", description: "Show main loop logs" },
-  { command: "pinologs", description: "Show Pino logs" },
   { command: "resume", description: "Resume a past session" },
   { command: "sub", description: "Manage SubTurtles" },
   { command: "cron", description: "Show scheduled jobs" },
@@ -90,9 +87,6 @@ const LOCAL_TELEGRAM_COMMANDS = [
 ] as const;
 
 const TELEPORT_REMOTE_CONTROL_COMMANDS = [
-  { command: "status", description: "Show detailed status" },
-  { command: "looplogs", description: "Show main loop logs" },
-  { command: "pinologs", description: "Show Pino logs" },
   { command: "debug", description: "Show debug state" },
   { command: "restart", description: "Restart the bot" },
 ] as const;

@@ -26,8 +26,6 @@ import {
 import { unlinkSync, readFileSync, existsSync, writeFileSync, openSync, closeSync, mkdirSync } from "fs";
 import {
   handleNew,
-  handleStatus,
-  handleLooplogs,
   handleUsage,
   handleModel,
   handleSwitch,
@@ -46,7 +44,6 @@ import {
   handleCallback,
 } from "./handlers";
 import { resetAllDriverSessions, syncLiveSubturtleBoard } from "./handlers/commands";
-import { handlePinologs } from "./handlers/commands";
 import { TELEGRAM_COMMANDS } from "./handlers/commands";
 import { enqueueBusyDeferredCronJob, pruneQueuedDueCronJobIds } from "./cron-deferred-queue";
 import { drainDeferredQueue, isCronJobQueued } from "./deferred-queue";
@@ -471,7 +468,7 @@ bot.use(async (ctx, next) => {
 });
 
 // Canonical command ingress events for replay/debug.
-// Logs both /slash commands and bare-word commands (e.g. "status").
+// Logs both /slash commands and bare-word commands.
 // Note: bare-word commands are also logged in the bot.hears() handler below,
 // but this middleware catches slash commands early in the pipeline.
 bot.use(async (ctx, next) => {
@@ -550,14 +547,11 @@ bot.use(
 
 /**
  * Map of bare command names (lowercase) to their handlers.
- * Used for both slash commands AND bare-word matching (e.g. "status" = "/status").
+ * Used for both slash commands and bare-word matching.
  */
 const COMMAND_HANDLERS: Record<string, (ctx: Context) => Promise<void> | void> = {
   new: handleNew,
   stop: handleStopCommand,
-  status: handleStatus,
-  looplogs: handleLooplogs,
-  pinologs: handlePinologs,
   usage: handleUsage,
   model: handleModel,
   switch: handleSwitch,
@@ -575,6 +569,14 @@ const COMMAND_HANDLERS: Record<string, (ctx: Context) => Promise<void> | void> =
 
 /** Set of all bare command names for fast lookup. */
 export const BARE_COMMAND_NAMES = new Set(Object.keys(COMMAND_HANDLERS));
+const UNWIRED_COMMAND_NAMES = new Set([
+  "context",
+  "teleport",
+  "home",
+  "status",
+  "looplogs",
+  "pinologs",
+]);
 
 /**
  * Check if text is a bare command word (case-insensitive, exact match after trim).
@@ -583,6 +585,11 @@ export const BARE_COMMAND_NAMES = new Set(Object.keys(COMMAND_HANDLERS));
 export function matchBareCommand(text: string): string | null {
   const normalized = text.trim().toLowerCase();
   return BARE_COMMAND_NAMES.has(normalized) ? normalized : null;
+}
+
+function matchUnwiredCommand(text: string): string | null {
+  const normalized = text.trim().toLowerCase();
+  return UNWIRED_COMMAND_NAMES.has(normalized) ? normalized : null;
 }
 
 function getCommandNameFromText(text: string | undefined): string | null {
@@ -630,7 +637,7 @@ bot.use(async (ctx, next) => {
 
 // ============== Message Handlers ==============
 
-// Bare-word command matching (e.g. "status" works like "/status").
+// Bare-word command matching for the currently supported command surface.
 // Case-insensitive, exact match only — "restart now" won't match.
 // Uses bot.hears() so it runs before the generic text handler.
 const bareCommandPattern = new RegExp(
@@ -652,6 +659,26 @@ bot.hears(bareCommandPattern, (ctx) => {
     });
     return COMMAND_HANDLERS[matched]!(ctx);
   }
+});
+
+bot.on("message:text", async (ctx, next) => {
+  const rawText = ctx.message?.text ?? "";
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    await next();
+    return;
+  }
+
+  const slashCommand = trimmed.startsWith("/")
+    ? trimmed.slice(1).split(/\s+/)[0]?.split("@")[0]?.toLowerCase() || null
+    : null;
+  const unwired = slashCommand || matchUnwiredCommand(trimmed);
+  if (!unwired || !UNWIRED_COMMAND_NAMES.has(unwired)) {
+    await next();
+    return;
+  }
+
+  await ctx.reply(`ℹ️ /${unwired} is no longer available.`);
 });
 
 // Text messages
