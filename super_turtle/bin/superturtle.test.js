@@ -9,6 +9,33 @@ afterEach(() => {
 });
 
 describe("superturtle service runner helpers", () => {
+  it("uses the direct run-loop command for macOS tmux starts", () => {
+    const command = __test__.buildTmuxStartCommand({
+      cwd: "/tmp/project",
+      logPath: "/tmp/superturtle-loop.log",
+      restartOnCrash: "1",
+      platform: "darwin",
+      commandExists: (commandName) => commandName === "caffeinate",
+    });
+
+    expect(command).toContain('export CLAUDE_WORKING_DIR="/tmp/project"');
+    expect(command).toContain('export SUPERTURTLE_RESTART_ON_CRASH="1"');
+    expect(command).toContain('exec caffeinate -s ./run-loop.sh 2>&1 | tee -a "/tmp/superturtle-loop.log"');
+    expect(command).not.toContain("service run");
+  });
+
+  it("keeps the service runner for linux tmux starts", () => {
+    const command = __test__.buildTmuxStartCommand({
+      cwd: "/tmp/project",
+      logPath: "/tmp/superturtle-loop.log",
+      restartOnCrash: "1",
+      platform: "linux",
+    });
+
+    expect(command).toContain("service run");
+    expect(command).not.toContain("./run-loop.sh");
+  });
+
   it("spawns the service child detached on non-Windows platforms", () => {
     const opts = __test__.buildServiceChildSpawnOptions({ TEST_ENV: "1" });
     expect(opts.cwd).toContain("/super_turtle/claude-telegram-bot");

@@ -347,6 +347,26 @@ function buildPlatformServiceCommand({
   return { keepAwakeCommand, serviceCommand };
 }
 
+function buildTmuxStartCommand({
+  cwd,
+  logPath,
+  restartOnCrash,
+  platform = os.platform(),
+  commandExists = shellCommandExists,
+}) {
+  if (platform === "darwin") {
+    return buildPlatformServiceCommand({
+      cwd,
+      logPath,
+      restartOnCrash,
+      platform,
+      commandExists,
+    }).serviceCommand;
+  }
+
+  return `${JSON.stringify(process.execPath)} ${JSON.stringify(__filename)} service run`;
+}
+
 function getCloudLeaseStatePath(cwd) {
   return resolve(cwd, ".superturtle", "cloud-runtime-lease.json");
 }
@@ -1270,7 +1290,12 @@ async function start() {
     return;
   }
 
-  const serviceCmd = `${JSON.stringify(process.execPath)} ${JSON.stringify(__filename)} service run`;
+  const serviceCmd = buildTmuxStartCommand({
+    cwd,
+    logPath: logPaths.loop,
+    restartOnCrash: env.SUPERTURTLE_RESTART_ON_CRASH || "1",
+    platform: process.platform,
+  });
   console.log("Starting Super Turtle bot...");
 
   const startProc = spawnSync(
@@ -2175,6 +2200,7 @@ module.exports = {
   __test__: {
     buildServiceCommand,
     buildPlatformServiceCommand,
+    buildTmuxStartCommand,
     getKeepAwakeCommand,
     buildServiceChildSpawnOptions,
     terminateChildProcessGroup,
