@@ -44,6 +44,32 @@ superturtle status
 superturtle doctor
 ```
 
+## Managed Codex runtime publishing
+
+The `managed-codex` branch is the working branch for the SuperTurtle Cloud managed runtime that is Codex-only.
+
+Publishing model:
+
+- keep the npm package name as `superturtle`
+- do not create a separate npm package for each iteration
+- publish a new prerelease version for each iteration from `managed-codex`
+- use a moving branch dist-tag for convenience, but install exact versions in E2B
+
+Important npm rule:
+
+- npm versions are immutable, so each iteration must publish a new version
+
+Recommended versioning/runtime flow:
+
+- publish versions like `0.2.9-beta.<run>.<attempt>` or another branch-scoped prerelease form
+- optionally move a dist-tag such as `beta-managed-codex` to the newest published version
+- have E2B templates and sandboxes install an exact version such as `superturtle@0.2.9-beta.143.1`
+- do not point E2B at a floating dist-tag inside the template
+
+When to split into a separate package:
+
+- only do that if the managed runtime becomes a genuinely different artifact with a different CLI surface, dependency set, or shipped file set
+
 ## Notes for the turtle
 
 - Prefer `.superturtle/.env` for live config
