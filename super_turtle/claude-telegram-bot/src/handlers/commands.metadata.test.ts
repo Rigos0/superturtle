@@ -25,7 +25,6 @@ describe("TELEGRAM_COMMANDS", () => {
       "stop",
       "model",
       "usage",
-      "context",
       "status",
       "looplogs",
       "pinologs",

@@ -7,7 +7,6 @@ export {
   handleStatus,
   handleLooplogs,
   handleUsage,
-  handleContext,
   handleModel,
   handleSwitch,
   handleResume,
