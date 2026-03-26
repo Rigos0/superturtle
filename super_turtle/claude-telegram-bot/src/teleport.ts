@@ -66,11 +66,13 @@ export const TELEPORT_AGENT_TEXT_ONLY_MESSAGE =
 export const TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS = new Set([
   "debug",
   "restart",
+  "update",
 ]);
 export const TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS = new Set([
   "debug",
   "restart",
   "stop",
+  "update",
 ]);
 
 export function isTeleportRemoteRuntime(): boolean {

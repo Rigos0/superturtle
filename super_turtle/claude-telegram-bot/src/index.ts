@@ -6,12 +6,13 @@
 
 import type { Context } from "grammy";
 import { sequentialize } from "@grammyjs/runner";
-import { basename } from "path";
+import { basename, dirname } from "path";
 import {
   WORKING_DIR,
   CTL_PATH,
   ALLOWED_USERS,
   RESTART_FILE,
+  SELF_UPDATE_STATE_FILE,
   CLAUDE_CLI_AVAILABLE,
   CODEX_AVAILABLE,
   CODEX_CLI_AVAILABLE,
@@ -34,6 +35,7 @@ import {
   handleCron,
   handleDebug,
   handleRestart,
+  handleUpdate,
   handleStopCommand,
   handleText,
   handleVoice,
@@ -187,6 +189,84 @@ function summarizeCronError(error: unknown): string {
     .replace(/\s+/g, " ")
     .trim();
   return message.length > 300 ? `${message.slice(0, 297)}...` : message;
+}
+
+type PendingSelfUpdateState = {
+  status?: string;
+  requested_spec?: string;
+  target_version?: string | null;
+  chat_id?: number;
+  message_id?: number;
+  requested_at?: string;
+  completed_at?: string;
+  notified_at?: string;
+  error?: string;
+};
+
+function readPendingSelfUpdateState(): PendingSelfUpdateState | null {
+  if (!existsSync(SELF_UPDATE_STATE_FILE)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(SELF_UPDATE_STATE_FILE, "utf-8"));
+    return parsed && typeof parsed === "object" ? (parsed as PendingSelfUpdateState) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingSelfUpdateState(state: PendingSelfUpdateState): void {
+  mkdirSync(dirname(SELF_UPDATE_STATE_FILE), { recursive: true });
+  writeFileSync(SELF_UPDATE_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+}
+
+function summarizeSelfUpdateFailure(error: string | undefined): string {
+  const message = String(error || "unknown error").replace(/\s+/g, " ").trim();
+  if (!message) {
+    return "unknown error";
+  }
+  return message.length > 160 ? `${message.slice(0, 157)}...` : message;
+}
+
+async function finalizePendingSelfUpdateMessage(): Promise<void> {
+  const state = readPendingSelfUpdateState();
+  if (!state?.status || state.notified_at) {
+    return;
+  }
+  if (state.status !== "starting" && state.status !== "failed") {
+    return;
+  }
+
+  const requestedAtMs = Date.parse(state.requested_at || "");
+  if (Number.isFinite(requestedAtMs) && Date.now() - requestedAtMs > 15 * 60 * 1000) {
+    return;
+  }
+
+  if (!Number.isInteger(state.chat_id) || !Number.isInteger(state.message_id)) {
+    return;
+  }
+  const chatId = state.chat_id as number;
+  const messageId = state.message_id as number;
+
+  const successText = `✅ Runtime updated${state.requested_spec ? ` to ${state.requested_spec}` : ""}`;
+  const failureText = `⚠️ Runtime update failed${state.requested_spec ? ` for ${state.requested_spec}` : ""}.\n${summarizeSelfUpdateFailure(state.error)}`;
+  const text = state.status === "failed" ? failureText : successText;
+
+  try {
+    await bot.api.editMessageText(chatId, messageId, text);
+  } catch (error) {
+    const message = String(error).toLowerCase();
+    if (!message.includes("message is not modified")) {
+      throw error;
+    }
+  }
+
+  writePendingSelfUpdateState({
+    ...state,
+    status: state.status === "failed" ? "failed" : "succeeded",
+    completed_at: new Date().toISOString(),
+    notified_at: new Date().toISOString(),
+  });
 }
 
 async function sendStartupNotifications(): Promise<void> {
@@ -599,6 +679,7 @@ const COMMAND_HANDLERS: Record<string, (ctx: Context) => Promise<void> | void> =
   cron: handleCron,
   debug: handleDebug,
   restart: handleRestart,
+  update: handleUpdate,
 };
 
 /** Set of all bare command names for fast lookup. */
@@ -1301,6 +1382,12 @@ if (existsSync(RESTART_FILE)) {
     // Attempt cleanup of restart file; ignore if it doesn't exist or unlink fails
     try { unlinkSync(RESTART_FILE); } catch {}
   }
+}
+
+try {
+  await finalizePendingSelfUpdateMessage();
+} catch (e) {
+  botLog.warn({ err: e }, "Failed to update self-update status message");
 }
 
 await sendStartupNotifications();
