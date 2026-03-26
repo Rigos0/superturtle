@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kiln Cloud | Static landing page concept</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #07111f;
+        --bg-deep: #020811;
+        --panel: rgba(10, 20, 35, 0.84);
+        --panel-strong: rgba(12, 23, 40, 0.94);
+        --line: rgba(138, 176, 214, 0.18);
+        --line-strong: rgba(138, 176, 214, 0.34);
+        --text: #f5eddc;
+        --muted: #95a7be;
+        --accent: #ff7a1a;
+        --accent-soft: rgba(255, 122, 26, 0.16);
+        --signal: #9ef75d;
+        --signal-soft: rgba(158, 247, 93, 0.14);
+        --glow: #6ee1ff;
+        --shadow: 0 28px 90px rgba(0, 0, 0, 0.34);
+        --radius: 28px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+        background: radial-gradient(
+            circle at top left,
+            rgba(255, 122, 26, 0.14),
+            transparent 28%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(110, 225, 255, 0.16),
+            transparent 26%
+          ),
+          linear-gradient(160deg, #09111f 0%, #07111f 42%, #020811 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: linear-gradient(
+            rgba(255, 255, 255, 0.025) 1px,
+            transparent 1px
+          ),
+          linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.025) 1px,
+            transparent 1px
+          );
+        background-size: 88px 88px;
+        mask-image: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.8),
+          transparent 86%
+        );
+        pointer-events: none;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page-shell {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 24px 0 80px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 40px;
+        padding: 18px 22px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(4, 11, 21, 0.78);
+        backdrop-filter: blur(18px);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .brand-mark {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        background: linear-gradient(
+          135deg,
+          var(--signal) 0%,
+          var(--accent) 100%
+        );
+        box-shadow: 0 0 24px rgba(255, 122, 26, 0.42);
+      }
+
+      .nav {
+        display: inline-flex;
+        gap: 18px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .nav a:hover,
+      .nav a:focus-visible {
+        color: var(--text);
+      }
+
+      .hero,
+      .section-card {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: linear-gradient(
+          180deg,
+          rgba(12, 23, 40, 0.82),
+          rgba(5, 12, 23, 0.92)
+        );
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+        gap: 28px;
+        padding: clamp(28px, 5vw, 48px);
+      }
+
+      .hero::after,
+      .section-card::after {
+        content: "";
+        position: absolute;
+        inset: auto -10% -40% auto;
+        width: 320px;
+        height: 320px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(255, 122, 26, 0.18),
+          transparent 62%
+        );
+        pointer-events: none;
+      }
+
+      .eyebrow,
+      .section-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+        color: var(--signal);
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before,
+      .section-label::before {
+        content: "";
+        width: 34px;
+        height: 1px;
+        background: currentColor;
+      }
+
+      h1,
+      h2,
+      h3,
+      .metric-value {
+        margin: 0;
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        letter-spacing: -0.04em;
+      }
+
+      h1 {
+        max-width: 10ch;
+        font-size: clamp(3.4rem, 8vw, 6.8rem);
+        line-height: 0.92;
+      }
+
+      .hero-copy p,
+      .section-intro,
+      .card-copy,
+      .step-copy,
+      .pricing-copy {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .hero-copy p {
+        max-width: 42rem;
+        margin: 20px 0 0;
+        font-size: clamp(1.05rem, 2vw, 1.2rem);
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 28px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        padding: 0 18px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        font-weight: 600;
+      }
+
+      .button-primary {
+        background: linear-gradient(135deg, var(--accent) 0%, #ff9450 100%);
+        color: #140a02;
+      }
+
+      .button-secondary {
+        border-color: var(--line-strong);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .hero-rail {
+        display: grid;
+        gap: 18px;
+      }
+
+      .signal-panel,
+      .metric-grid,
+      .product-card,
+      .step-card,
+      .pricing-card,
+      .cta-card {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: rgba(3, 10, 19, 0.5);
+      }
+
+      .signal-panel {
+        padding: 22px;
+      }
+
+      .signal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .signal-chip {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--signal-soft);
+        color: var(--signal);
+        font-size: 0.82rem;
+      }
+
+      .mesh {
+        position: relative;
+        min-height: 228px;
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: radial-gradient(
+            circle at 20% 20%,
+            rgba(110, 225, 255, 0.16),
+            transparent 24%
+          ),
+          linear-gradient(
+            160deg,
+            rgba(255, 255, 255, 0.02),
+            rgba(255, 255, 255, 0.01)
+          );
+      }
+
+      .mesh::before,
+      .mesh::after {
+        content: "";
+        position: absolute;
+        inset: 18% 14%;
+        border-radius: 20px;
+        border: 1px solid rgba(158, 247, 93, 0.12);
+      }
+
+      .mesh::after {
+        inset: 32% 24%;
+        border-color: rgba(255, 122, 26, 0.14);
+      }
+
+      .node {
+        position: absolute;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel-strong);
+        font-size: 0.84rem;
+        color: var(--text);
+      }
+
+      .node-primary {
+        top: 18px;
+        left: 18px;
+      }
+
+      .node-edge {
+        top: 50%;
+        right: 20px;
+        transform: translateY(-50%);
+      }
+
+      .node-data {
+        bottom: 18px;
+        left: 28%;
+      }
+
+      .mesh-line {
+        position: absolute;
+        background: linear-gradient(
+          90deg,
+          rgba(110, 225, 255, 0.18),
+          rgba(158, 247, 93, 0.62)
+        );
+      }
+
+      .mesh-line-one {
+        top: 64px;
+        left: 102px;
+        width: 52%;
+        height: 1px;
+      }
+
+      .mesh-line-two {
+        left: 42%;
+        top: 86px;
+        width: 1px;
+        height: 45%;
+        background: linear-gradient(
+          rgba(255, 122, 26, 0.2),
+          rgba(255, 122, 26, 0.66)
+        );
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1px;
+        background: var(--line);
+      }
+
+      .metric {
+        padding: 18px;
+        background: rgba(7, 14, 25, 0.96);
+      }
+
+      .metric-value {
+        font-size: clamp(1.8rem, 4vw, 2.5rem);
+      }
+
+      .metric-label {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .content-grid {
+        display: grid;
+        gap: 24px;
+        margin-top: 24px;
+      }
+
+      .proof-grid,
+      .product-grid,
+      .steps-grid,
+      .pricing-grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .proof-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .steps-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .pricing-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .section-card {
+        padding: clamp(24px, 4vw, 34px);
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 22px;
+      }
+
+      .section-heading h2 {
+        font-size: clamp(2rem, 4vw, 3rem);
+      }
+
+      .section-intro {
+        max-width: 40rem;
+        margin: 12px 0 0;
+      }
+
+      .proof-card,
+      .product-card,
+      .step-card,
+      .pricing-card,
+      .cta-card {
+        padding: 22px;
+      }
+
+      .proof-card {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.03),
+          rgba(255, 255, 255, 0.015)
+        );
+      }
+
+      .proof-number {
+        display: inline-block;
+        margin-bottom: 14px;
+        color: var(--accent);
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        font-size: 1.4rem;
+      }
+
+      h3 {
+        font-size: 1.5rem;
+      }
+
+      .card-copy,
+      .step-copy,
+      .pricing-copy {
+        margin-top: 12px;
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .tag {
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        font-size: 0.84rem;
+      }
+
+      .step-index {
+        color: var(--glow);
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .pricing-card.featured {
+        border-color: rgba(255, 122, 26, 0.46);
+        background: linear-gradient(
+          180deg,
+          rgba(255, 122, 26, 0.12),
+          rgba(255, 122, 26, 0.04)
+        );
+      }
+
+      .price {
+        margin-top: 18px;
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        font-size: 2rem;
+      }
+
+      .cta-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 22px;
+      }
+
+      .cta-copy {
+        max-width: 38rem;
+      }
+
+      .cta-copy p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .footer-note {
+        margin-top: 18px;
+        color: rgba(149, 167, 190, 0.72);
+        font-size: 0.88rem;
+        text-align: right;
+      }
+
+      @media (max-width: 980px) {
+        .topbar,
+        .section-heading,
+        .cta-card {
+          align-items: flex-start;
+        }
+
+        .hero,
+        .proof-grid,
+        .product-grid,
+        .steps-grid,
+        .pricing-grid,
+        .cta-card {
+          grid-template-columns: 1fr;
+        }
+
+        .metric-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .nav {
+          display: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .page-shell {
+          width: min(100vw - 20px, 1180px);
+          padding-top: 10px;
+        }
+
+        .topbar,
+        .hero,
+        .section-card,
+        .signal-panel,
+        .proof-card,
+        .product-card,
+        .step-card,
+        .pricing-card,
+        .cta-card {
+          border-radius: 22px;
+        }
+
+        h1 {
+          max-width: none;
+          font-size: clamp(2.8rem, 16vw, 4.3rem);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="#top">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>Kiln Cloud</span>
+        </a>
+        <nav class="nav" aria-label="Primary">
+          <a href="#proof">Proof</a>
+          <a href="#products">Products</a>
+          <a href="#flow">Flow</a>
+          <a href="#pricing">Pricing</a>
+        </nav>
+      </header>
+
+      <main>
+        <!-- Initial concept pass: the layout and visual system are established here,
+             with tighter messaging reserved for a later writing-focused iteration. -->
+        <section class="hero" id="top">
+          <div class="hero-copy">
+            <span class="eyebrow">Developer cloud launch concept</span>
+            <h1>Infrastructure that ships with less drag.</h1>
+            <p>
+              Kiln Cloud is framed as a leaner AWS alternative: fewer
+              control-plane steps, opinionated global primitives, and a visual
+              language built around forged metal, signal paths, and launch
+              readiness.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#pricing"
+                >Request launch access</a
+              >
+              <a class="button button-secondary" href="#products"
+                >Inspect platform map</a
+              >
+            </div>
+          </div>
+
+          <div class="hero-rail">
+            <aside class="signal-panel" aria-label="Platform structure">
+              <div class="signal-header">
+                <strong>Platform map</strong>
+                <span class="signal-chip">Control plane reduced</span>
+              </div>
+              <div class="mesh" aria-hidden="true">
+                <span class="node node-primary">Compute fabric</span>
+                <span class="node node-edge">Edge relay</span>
+                <span class="node node-data">State core</span>
+                <span class="mesh-line mesh-line-one"></span>
+                <span class="mesh-line mesh-line-two"></span>
+              </div>
+            </aside>
+
+            <div class="metric-grid" aria-label="Positioning snapshots">
+              <div class="metric">
+                <div class="metric-value">&lt;5m</div>
+                <div class="metric-label">
+                  Path from repo connect to live region
+                </div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">3</div>
+                <div class="metric-label">
+                  Core product pillars on the first screen
+                </div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">1</div>
+                <div class="metric-label">
+                  Single launch CTA carried through the page
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="content-grid">
+          <section class="section-card" id="proof">
+            <div class="section-heading">
+              <div>
+                <span class="section-label">Proof band</span>
+                <h2>Trust signals come before feature sprawl.</h2>
+                <p class="section-intro">
+                  The structure reserves an early band for credibility:
+                  migration posture, performance proof, and cost predictability.
+                </p>
+              </div>
+            </div>
+
+            <div class="proof-grid">
+              <article class="proof-card">
+                <span class="proof-number">01</span>
+                <h3>Migration lane</h3>
+                <p class="card-copy">
+                  Space for a concise story about moving container, queue, and
+                  object workloads off a larger cloud without a year-long
+                  rewrite.
+                </p>
+              </article>
+              <article class="proof-card">
+                <span class="proof-number">02</span>
+                <h3>Latency proof</h3>
+                <p class="card-copy">
+                  Space for benchmark-style claims, region geometry, and
+                  developer experience proof points.
+                </p>
+              </article>
+              <article class="proof-card">
+                <span class="proof-number">03</span>
+                <h3>Cost posture</h3>
+                <p class="card-copy">
+                  Space for a simple thesis on pricing clarity before the
+                  detailed plans appear later in the page.
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section class="section-card" id="products">
+            <div class="section-heading">
+              <div>
+                <span class="section-label">Product pillars</span>
+                <h2>A page shape built around four primitives.</h2>
+                <p class="section-intro">
+                  These cards define the information architecture for the later
+                  copy pass: compute, state, edge delivery, and deployment
+                  workflow.
+                </p>
+              </div>
+            </div>
+
+            <div class="product-grid">
+              <article class="product-card">
+                <h3>Compute fabric</h3>
+                <p class="card-copy">
+                  The hero product card for workloads that need faster cold
+                  starts and cleaner regional placement.
+                </p>
+                <div class="tag-row">
+                  <span class="tag">Containers</span>
+                  <span class="tag">GPU bursts</span>
+                  <span class="tag">Jobs</span>
+                </div>
+              </article>
+              <article class="product-card">
+                <h3>State core</h3>
+                <p class="card-copy">
+                  The data layer placeholder for managed Postgres, object
+                  storage, and event streams with fewer moving parts.
+                </p>
+                <div class="tag-row">
+                  <span class="tag">Postgres</span>
+                  <span class="tag">Blobs</span>
+                  <span class="tag">Queues</span>
+                </div>
+              </article>
+              <article class="product-card">
+                <h3>Edge relay</h3>
+                <p class="card-copy">
+                  The network and delivery card for global entry points,
+                  caching, and private service links.
+                </p>
+                <div class="tag-row">
+                  <span class="tag">Anycast</span>
+                  <span class="tag">CDN</span>
+                  <span class="tag">Zero trust</span>
+                </div>
+              </article>
+              <article class="product-card">
+                <h3>Launch pipeline</h3>
+                <p class="card-copy">
+                  The workflow card that ties source control, previews,
+                  rollbacks, and policy checks into one operational loop.
+                </p>
+                <div class="tag-row">
+                  <span class="tag">Preview envs</span>
+                  <span class="tag">Policy</span>
+                  <span class="tag">Rollback</span>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="section-card" id="flow">
+            <div class="section-heading">
+              <div>
+                <span class="section-label">Flow</span>
+                <h2>The launch narrative follows a four-step rail.</h2>
+                <p class="section-intro">
+                  This sequence gives the page a practical rhythm instead of a
+                  generic feature dump.
+                </p>
+              </div>
+            </div>
+
+            <div class="steps-grid">
+              <article class="step-card">
+                <div class="step-index">Step 01</div>
+                <h3>Connect</h3>
+                <p class="step-copy">
+                  Bring in a repo, image, or Terraform state without starting
+                  from scratch.
+                </p>
+              </article>
+              <article class="step-card">
+                <div class="step-index">Step 02</div>
+                <h3>Shape</h3>
+                <p class="step-copy">
+                  Choose capacity rails, data services, and security boundaries
+                  in a smaller surface area.
+                </p>
+              </article>
+              <article class="step-card">
+                <div class="step-index">Step 03</div>
+                <h3>Launch</h3>
+                <p class="step-copy">
+                  Promote through preview and production with a single operating
+                  model.
+                </p>
+              </article>
+              <article class="step-card">
+                <div class="step-index">Step 04</div>
+                <h3>Scale</h3>
+                <p class="step-copy">
+                  Expand across regions, edge nodes, and teams without rewriting
+                  the story of the page.
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section class="section-card" id="pricing">
+            <div class="section-heading">
+              <div>
+                <span class="section-label">Pricing posture</span>
+                <h2>The page reserves a clean pricing arc near the finish.</h2>
+                <p class="section-intro">
+                  Plan shells are in place so the next iteration can add
+                  concrete pricing language and stronger CTA pressure.
+                </p>
+              </div>
+            </div>
+
+            <div class="pricing-grid">
+              <article class="pricing-card">
+                <h3>Builder</h3>
+                <div class="price">Usage-led</div>
+                <p class="pricing-copy">
+                  Entry plan shell for side projects, prototypes, and small
+                  teams.
+                </p>
+              </article>
+              <article class="pricing-card featured">
+                <h3>Launch</h3>
+                <div class="price">Predictable core</div>
+                <p class="pricing-copy">
+                  Center plan shell for production apps that want committed
+                  spend without enterprise sprawl.
+                </p>
+              </article>
+              <article class="pricing-card">
+                <h3>Sovereign</h3>
+                <div class="price">Custom envelope</div>
+                <p class="pricing-copy">
+                  Enterprise plan shell for data residency, dedicated support,
+                  and procurement workflows.
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section class="cta-card">
+            <div class="cta-copy">
+              <span class="section-label">Launch CTA</span>
+              <h2>One final decision point, not five competing asks.</h2>
+              <p>
+                The concept closes on a single signup motion so the eventual
+                copy can stay decisive and product-led.
+              </p>
+            </div>
+            <a class="button button-primary" href="#top"
+              >Join the early access list</a
+            >
+          </section>
+        </div>
+      </main>
+
+      <div class="footer-note">
+        Static concept pass for a developer-first cloud brand.
+      </div>
+    </div>
+  </body>
+</html>
