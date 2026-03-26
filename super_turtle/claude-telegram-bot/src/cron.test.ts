@@ -207,6 +207,34 @@ describe("loadJobs()", () => {
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.id).toBe("job-valid");
   });
+
+  it("skips jobs scheduled more than 45 minutes in the future", () => {
+    Date.now = () => 1_000;
+
+    writeFileSync(
+      fixtureJobsFile,
+      JSON.stringify([
+        {
+          id: "job-valid",
+          prompt: "soon enough",
+          type: "one-shot",
+          fire_at: 1_000 + 30 * 60 * 1000,
+          created_at: "2026-02-01T00:00:00.000Z",
+        },
+        {
+          id: "job-too-far",
+          prompt: "too far",
+          type: "one-shot",
+          fire_at: 1_000 + 46 * 60 * 1000,
+          created_at: "2026-02-01T00:00:00.000Z",
+        },
+      ])
+    );
+
+    const jobs = loadJobs();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.id).toBe("job-valid");
+  });
 });
 
 describe("addJob() and removeJob()", () => {
@@ -267,6 +295,18 @@ describe("addJob() and removeJob()", () => {
       supervision_mode: "silent",
       fire_at: 90_000,
     });
+  });
+
+  it("rejects one-shot jobs scheduled more than 45 minutes ahead", () => {
+    expect(() => addJob("later", "one-shot", 46 * 60 * 1000)).toThrow(
+      "Cron jobs more than 45 minutes in the future are not supported in this runtime"
+    );
+  });
+
+  it("rejects recurring jobs with intervals longer than 45 minutes", () => {
+    expect(() => addJob("later", "recurring", undefined, 46 * 60 * 1000)).toThrow(
+      "Cron jobs more than 45 minutes in the future are not supported in this runtime"
+    );
   });
 
   it("removes existing jobs and handles missing IDs gracefully", () => {

@@ -17,6 +17,9 @@ import { join } from "path";
 import { SUPERTURTLE_DATA_DIR } from "./config";
 import { cronLog } from "./logger";
 
+const MAX_CRON_SCHEDULE_AHEAD_MS = 45 * 60 * 1000;
+const MAX_CRON_SCHEDULE_AHEAD_MINUTES = 45;
+
 // Job type definition
 export type CronJobKind = "generic" | "subturtle_supervision";
 export type CronSupervisionMode = "silent";
@@ -59,6 +62,17 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function ensureSupportedCronWindow(windowMs: number, label: string): void {
+  if (!Number.isFinite(windowMs) || windowMs <= 0) {
+    throw new Error(`${label} must be a positive number`);
+  }
+  if (windowMs > MAX_CRON_SCHEDULE_AHEAD_MS) {
+    throw new Error(
+      `Cron jobs more than ${MAX_CRON_SCHEDULE_AHEAD_MINUTES} minutes in the future are not supported in this runtime`
+    );
+  }
+}
+
 function normalizeJob(raw: unknown): CronJob {
   if (!raw || typeof raw !== "object") {
     throw new Error("Job is not an object");
@@ -87,10 +101,19 @@ function normalizeJob(raw: unknown): CronJob {
     typeof value.interval_ms === "number" || value.interval_ms === null
       ? value.interval_ms
       : null;
+  if (typeof interval === "number") {
+    ensureSupportedCronWindow(interval, "Job interval_ms");
+  }
   const silent = typeof value.silent === "boolean" ? value.silent : undefined;
   const jobKind = normalizeCronJobKind(value.job_kind);
   const workerName = normalizeOptionalString(value.worker_name);
   const supervisionMode = normalizeCronSupervisionMode(value.supervision_mode);
+  const msUntilFire = value.fire_at - Date.now();
+  if (msUntilFire > MAX_CRON_SCHEDULE_AHEAD_MS) {
+    throw new Error(
+      `Cron jobs more than ${MAX_CRON_SCHEDULE_AHEAD_MINUTES} minutes in the future are not supported in this runtime`
+    );
+  }
 
   return {
     id: value.id,
@@ -170,6 +193,13 @@ export function addJob(
 ): CronJob {
   // Load existing jobs if not already loaded
   loadJobs();
+
+  if (typeof delay_ms === "number") {
+    ensureSupportedCronWindow(delay_ms, "delay_ms");
+  }
+  if (typeof interval_ms === "number") {
+    ensureSupportedCronWindow(interval_ms, "interval_ms");
+  }
 
   // Generate unique ID (simple: timestamp + random)
   const id = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
