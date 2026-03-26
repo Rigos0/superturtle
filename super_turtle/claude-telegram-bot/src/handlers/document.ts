@@ -49,7 +49,7 @@ const TEXT_EXTENSIONS = [
 ];
 
 // Supported Office document extensions
-const OFFICE_EXTENSIONS = [".docx", ".pptx"];
+const OFFICE_EXTENSIONS = [".docx", ".pptx", ".xlsx"];
 
 // Supported archive extensions
 const ARCHIVE_EXTENSIONS = [".zip", ".tar", ".tar.gz", ".tgz"];
@@ -138,6 +138,14 @@ async function extractText(
     return text.slice(0, 100000);
   }
 
+  if (
+    extension === ".xlsx" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ) {
+    const text = await extractXlsxText(filePath);
+    return text.slice(0, 100000);
+  }
+
   throw new Error(`Unsupported file type: ${extension || mimeType}`);
 }
 
@@ -217,6 +225,113 @@ async function extractPptxText(filePath: string): Promise<string> {
   } catch (error) {
     documentLog.error({ err: error, filePath }, "PPTX parsing failed");
     return "[PPTX parsing failed]";
+  }
+}
+
+function getXmlAttr(tag: string, attrName: string): string | null {
+  const escaped = attrName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`${escaped}="([^"]*)"`, "i").exec(tag);
+  return match?.[1] || null;
+}
+
+function columnLettersToIndex(cellRef: string | null): number {
+  if (!cellRef) return 0;
+  const letters = (cellRef.match(/^[A-Z]+/i)?.[0] || "").toUpperCase();
+  if (!letters) return 0;
+  let index = 0;
+  for (const char of letters) {
+    index = index * 26 + (char.charCodeAt(0) - 64);
+  }
+  return Math.max(0, index - 1);
+}
+
+function parseSharedStrings(xml: string): string[] {
+  const items: string[] = [];
+  const siMatches = xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g);
+  for (const match of siMatches) {
+    const text = stripXmlText(match[1] || "");
+    items.push(text);
+  }
+  return items;
+}
+
+async function extractXlsxText(filePath: string): Promise<string> {
+  try {
+    const workbookXml = await unzipFileEntry(filePath, "xl/workbook.xml");
+    const workbookRelsXml = await unzipFileEntry(filePath, "xl/_rels/workbook.xml.rels");
+    let sharedStrings: string[] = [];
+
+    try {
+      sharedStrings = parseSharedStrings(await unzipFileEntry(filePath, "xl/sharedStrings.xml"));
+    } catch {
+      sharedStrings = [];
+    }
+
+    const relMap = new Map<string, string>();
+    for (const match of workbookRelsXml.matchAll(/<Relationship\b([^>]*)\/>/g)) {
+      const attrs = match[1] || "";
+      const id = getXmlAttr(attrs, "Id");
+      const target = getXmlAttr(attrs, "Target");
+      if (id && target) {
+        relMap.set(id, target);
+      }
+    }
+
+    const sheets: string[] = [];
+    for (const match of workbookXml.matchAll(/<sheet\b([^>]*)\/>/g)) {
+      const attrs = match[1] || "";
+      const name = decodeXmlEntities(getXmlAttr(attrs, "name") || "Sheet");
+      const relId = getXmlAttr(attrs, "r:id");
+      const target = relId ? relMap.get(relId) : null;
+      if (!target) continue;
+
+      const sheetXml = await unzipFileEntry(filePath, `xl/${target.replace(/^\/+/, "")}`);
+      const rows: string[] = [];
+
+      for (const rowMatch of sheetXml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+        const rowXml = rowMatch[1] || "";
+        const cells = new Map<number, string>();
+
+        for (const cellMatch of rowXml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+          const cellAttrs = cellMatch[1] || "";
+          const cellBody = cellMatch[2] || "";
+          const cellRef = getXmlAttr(cellAttrs, "r");
+          const cellType = getXmlAttr(cellAttrs, "t");
+          const colIndex = columnLettersToIndex(cellRef);
+
+          let value = "";
+          if (cellType === "s") {
+            const sharedIndex = Number.parseInt(cellBody.match(/<v>([\s\S]*?)<\/v>/)?.[1] || "", 10);
+            value = Number.isFinite(sharedIndex) ? (sharedStrings[sharedIndex] || "") : "";
+          } else if (cellType === "inlineStr") {
+            value = stripXmlText(cellBody);
+          } else {
+            value = decodeXmlEntities(cellBody.match(/<v>([\s\S]*?)<\/v>/)?.[1] || "");
+          }
+
+          const trimmed = value.replace(/\r/g, "").trim();
+          if (trimmed) {
+            cells.set(colIndex, trimmed);
+          }
+        }
+
+        if (cells.size === 0) continue;
+        const width = Math.max(...cells.keys()) + 1;
+        const rowValues = Array.from({ length: width }, (_, index) => cells.get(index) || "");
+        rows.push(rowValues.join("\t").replace(/\t+$/g, ""));
+      }
+
+      if (rows.length > 0) {
+        sheets.push(`--- Sheet: ${name} ---\n${rows.join("\n")}`);
+      }
+    }
+
+    return sheets.length > 0
+      ? sheets.join("\n\n")
+      : "[XLSX workbook contains no extractable cell text]";
+  } catch (error) {
+    documentLog.error({ err: error, filePath }, "XLSX parsing failed");
+    return "[XLSX parsing failed]";
   }
 }
 

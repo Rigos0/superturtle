@@ -39,6 +39,53 @@ async function createPptx(slides: string[]): Promise<string> {
   return outputPath;
 }
 
+async function createXlsx(sharedStrings: string[], sheets: Array<{ name: string; xml: string }>): Promise<string> {
+  const root = mkdtempSync(join(tmpdir(), "superturtle-xlsx-"));
+  tempRoots.push(root);
+  const xlDir = join(root, "xl");
+  const worksheetsDir = join(xlDir, "worksheets");
+  const relsDir = join(xlDir, "_rels");
+  mkdirSync(worksheetsDir, { recursive: true });
+  mkdirSync(relsDir, { recursive: true });
+
+  const workbookXml = [
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
+    `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`,
+    `<sheets>`,
+    ...sheets.map((sheet, index) => `<sheet name="${sheet.name}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`),
+    `</sheets>`,
+    `</workbook>`,
+  ].join("");
+  writeFileSync(join(xlDir, "workbook.xml"), workbookXml, "utf-8");
+
+  const workbookRelsXml = [
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`,
+    ...sheets.map(
+      (_sheet, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+    ),
+    `</Relationships>`,
+  ].join("");
+  writeFileSync(join(relsDir, "workbook.xml.rels"), workbookRelsXml, "utf-8");
+
+  const sharedStringsXml = [
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
+    `<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">`,
+    ...sharedStrings.map((value) => `<si><t>${value}</t></si>`),
+    `</sst>`,
+  ].join("");
+  writeFileSync(join(xlDir, "sharedStrings.xml"), sharedStringsXml, "utf-8");
+
+  sheets.forEach((sheet, index) => {
+    writeFileSync(join(worksheetsDir, `sheet${index + 1}.xml`), sheet.xml, "utf-8");
+  });
+
+  const outputPath = join(root, "sample.xlsx");
+  await Bun.$`zip -qr ${outputPath} xl`.cwd(root).quiet();
+  return outputPath;
+}
+
 describe("document office extraction", () => {
   it("extracts text from docx files", async () => {
     const docxPath = await createDocx(
@@ -76,5 +123,36 @@ describe("document office extraction", () => {
     expect(text).toContain("Slide two");
     expect(text).toContain("--- Slide 1 ---");
     expect(text).toContain("--- Slide 2 ---");
+  });
+
+  it("extracts text from xlsx worksheets", async () => {
+    const xlsxPath = await createXlsx(
+      ["Department", "Spend", "Ops", "1200", "Sales", "900"],
+      [
+        {
+          name: "March Close",
+          xml: [
+            `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
+            `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`,
+            `<sheetData>`,
+            `<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>`,
+            `<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><v>1200</v></c></row>`,
+            `<row r="3"><c r="A3" t="s"><v>4</v></c><c r="B3"><v>900</v></c></row>`,
+            `</sheetData>`,
+            `</worksheet>`,
+          ].join(""),
+        },
+      ]
+    );
+
+    const text = await __test__.extractText(
+      xlsxPath,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    expect(text).toContain("--- Sheet: March Close ---");
+    expect(text).toContain("Department\tSpend");
+    expect(text).toContain("Ops\t1200");
+    expect(text).toContain("Sales\t900");
   });
 });
