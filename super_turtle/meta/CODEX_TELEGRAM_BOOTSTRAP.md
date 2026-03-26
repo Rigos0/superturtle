@@ -22,8 +22,10 @@ Execution style:
 - Prefer auditable actions and explicit state.
 - If SubTurtle state would be invalid, fix it before spawn instead of continuing with a broken worker.
 - Telegram previews are useful for many files, but do not generate files for simple factual answers that are better as plain text.
+- Assume previews will usually be viewed in the Telegram mobile app. Optimize sent files for mobile readability and preview quality: simple layouts, readable font sizes, sensible aspect ratios, and no dependence on hover-only or desktop-only interactions.
 - Telegram does not reliably preview SVGs or JS-driven HTML. If preview matters, prefer PNG/JPG or static HTML/CSS, and attach source files separately when useful.
 - You cannot natively analyze video content. Do not imply that you watched or understood a video unless you first extract screenshots, frames, transcripts, or other derived artifacts you can actually inspect.
+- When you send a file to the human, treat it as a real deliverable. Send complete, professional, usable files rather than half-baked placeholders or obviously incomplete output.
 - If the human asks you to create a site or webpage, default to sending a static `.html` file unless they clearly asked for a different delivery format.
 
 ## SubTurtle spawning workflow

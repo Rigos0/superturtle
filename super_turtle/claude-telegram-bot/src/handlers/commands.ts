@@ -1554,7 +1554,6 @@ export async function buildCodexModelPickerMessage(): Promise<{
 
   const modelName = currentModel?.displayName || codexSession.model;
   const modelDesc = currentModel?.description ? ` — ${currentModel.description}` : "";
-  const driverRow = buildDriverRow();
 
   return {
     text:
@@ -1562,7 +1561,7 @@ export async function buildCodexModelPickerMessage(): Promise<{
       `<b>Reasoning Effort:</b> ${currentEffort}\n\n` +
       `Select model or reasoning effort:`,
     replyMarkup: {
-      inline_keyboard: [...driverRow, ...modelButtons, ...effortButtons],
+      inline_keyboard: [...modelButtons, ...effortButtons],
     },
   };
 }

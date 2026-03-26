@@ -1179,7 +1179,9 @@ describe("handlers with mock Context", () => {
     expect(reply.text).not.toContain("Claude");
 
     const callbackData = getInlineKeyboard(reply).flat().map((button) => button.callback_data || "");
-    expect(callbackData).toContain("switch:codex");
+    expect(callbackData.some((value) => value.startsWith("codex_model:"))).toBe(true);
+    expect(callbackData.some((value) => value.startsWith("codex_effort:"))).toBe(true);
+    expect(callbackData).not.toContain("switch:codex");
     expect(callbackData).not.toContain("switch:codex_unavailable");
   }, 20_000);
 
