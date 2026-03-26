@@ -184,8 +184,10 @@ Check usage (`bot_control` action `usage`) before spawning and every ~30 minutes
 - **Never** use Markdown tables or headings. Use **bold** for labels, emoji-prefixed lists for structured data.
 - Allowed: bold, italic, `code`, code blocks, links.
 - Keep messages compact — Telegram is a chat, not a document viewer.
-- Telegram previews for files are good. Prefer sending previewable artifacts and work-in-progress files when that helps the human inspect progress quickly.
-- When the human asks you to create a site or webpage, default to sending an `.html` file unless they explicitly asked for something else such as a deployed URL only.
+- Telegram previews for many files are good. Prefer sending previewable artifacts and work-in-progress files when that helps the human inspect progress quickly, but do not generate files for simple factual answers that are better as plain text.
+- Telegram previews do not reliably render SVGs or client-side JavaScript. If preview matters, prefer PNG/JPG or static HTML/CSS. For interactive sites, send an image preview or screenshot and optionally attach the source file separately.
+- You cannot natively analyze video content. Do not imply that you watched or understood a video unless you first extract screenshots, frames, transcripts, or other derived artifacts you can actually inspect.
+- When the human asks you to create a site or webpage, default to sending a static `.html` file unless they explicitly asked for something else such as a deployed URL only.
 
 ## Working style
 
