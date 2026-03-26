@@ -23,6 +23,7 @@ import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
 import { isAudioFile, processAudioFile } from "./audio";
 import { eventLog, streamLog } from "../logger";
 import { getTeleportRemoteUnsupportedMessage, isTeleportRemoteRuntime } from "../teleport";
+import { stagePendingDocuments, type PendingDocumentBatch } from "../pending-document-inputs";
 
 const documentLog = streamLog.child({ handler: "document" });
 
@@ -662,6 +663,26 @@ async function processDocumentPaths(
   await processDocuments(ctx, documents, caption, userId, username, chatId, requestId);
 }
 
+export async function processPendingDocumentBatch(
+  ctx: Context,
+  batch: PendingDocumentBatch,
+  instruction: string,
+  userId: number,
+  username: string,
+  chatId: number,
+  requestId?: string
+): Promise<void> {
+  await processDocumentPaths(
+    ctx,
+    batch.paths,
+    instruction,
+    userId,
+    username,
+    chatId,
+    requestId
+  );
+}
+
 /**
  * Handle incoming document messages.
  */
@@ -821,6 +842,16 @@ export async function handleDocument(ctx: Context): Promise<void> {
     return;
   }
 
+  if (!mediaGroupId && !ctx.message?.caption?.trim()) {
+    const batch = stagePendingDocuments(chatId, [docPath]);
+    await ctx.reply(
+      batch.paths.length === 1
+        ? "📄 File received. Send a text message with instructions and I'll analyze it then."
+        : `📄 File added. You now have ${batch.paths.length} pending files. Send a text message with instructions when ready.`
+    );
+    return;
+  }
+
   // 6. Single document - process immediately
   if (!mediaGroupId) {
     documentLog.info(
@@ -879,7 +910,16 @@ export async function handleDocument(ctx: Context): Promise<void> {
     userId,
     username,
     (gctx, paths, caption, gUserId, gUsername, gChatId) =>
-      processDocumentPaths(gctx, paths, caption, gUserId, gUsername, gChatId, requestId)
+      caption?.trim()
+        ? processDocumentPaths(gctx, paths, caption, gUserId, gUsername, gChatId, requestId)
+        : (async () => {
+            const batch = stagePendingDocuments(gChatId, paths);
+            await gctx.reply(
+              batch.paths.length === paths.length
+                ? `📄 Received ${paths.length} files. Send a text message with instructions and I'll analyze them together.`
+                : `📄 Added ${paths.length} files. You now have ${batch.paths.length} pending files. Send a text message with instructions when ready.`
+            );
+          })()
   );
 }
 

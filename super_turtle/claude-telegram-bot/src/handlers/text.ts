@@ -40,6 +40,8 @@ import {
   runMessageWithActiveDriver,
 } from "./driver-routing";
 import { TELEPORT_CONTROL_MESSAGE, isTeleportRemoteControlMode } from "../teleport";
+import { consumePendingDocuments, peekPendingDocuments } from "../pending-document-inputs";
+import { processPendingDocumentBatch } from "./document";
 
 export interface HandleTextOptions {
   silent?: boolean;
@@ -147,6 +149,7 @@ export async function handleText(
 
   // 4. Store message for retry
   session.lastMessage = message;
+  const hasPendingDocuments = Boolean(peekPendingDocuments(chatId));
 
   // 5. If agent is already answering, queue this message to run after completion.
   if (isBackgroundRunActive()) {
@@ -167,6 +170,43 @@ export async function handleText(
       );
     }
     return;
+  }
+
+  if (hasPendingDocuments) {
+    const pendingDocuments = consumePendingDocuments(chatId);
+    if (pendingDocuments) {
+      try {
+        await processPendingDocumentBatch(
+          ctx,
+          pendingDocuments,
+          message,
+          userId,
+          username,
+          chatId,
+          requestId
+        );
+      } catch (error) {
+        const errorSummary = summarizeErrorMessage(error);
+        streamLog.error(
+          {
+            err: error,
+            errorSummary,
+            requestId,
+            userId,
+            username,
+            chatId,
+            stagedDocumentCount: pendingDocuments.paths.length,
+          },
+          "Error processing staged document batch from text instruction"
+        );
+        if (!silent) {
+          await ctx.reply(`❌ Error: ${errorSummary.slice(0, 200)}`);
+        }
+      } finally {
+        await drainDeferredQueue(ctx, chatId, makeDrainItemNotifier(ctx, chatId));
+      }
+      return;
+    }
   }
 
   // 6. Mark processing started
