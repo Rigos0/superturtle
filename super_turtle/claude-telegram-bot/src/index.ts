@@ -84,6 +84,7 @@ import {
 import { executeNonSilentCronJob } from "./cron-execution";
 import { UpdateDedupeCache } from "./update-dedupe";
 import { startTurtleGreetings } from "./turtle-greetings";
+import { sendTurtleSticker } from "./turtle-greetings";
 import {
   cleanupStaleRecurringSubturtleCron,
   processSilentSubturtleSupervision,
@@ -94,7 +95,12 @@ import {
 } from "./conductor-snapshot";
 import { botLog, cronLog, eventLog } from "./logger";
 import { getSequentializationKey } from "./update-sequencing";
-import { buildStartupNotificationMessage } from "./startup-notifications";
+import {
+  buildStartupNotificationMessage,
+  buildWarmWelcomeMessage,
+  hasSentStartupWelcome,
+  markStartupWelcomeSent,
+} from "./startup-notifications";
 import {
   shouldSuppressHandledWebhookConflict,
   startTelegramTransport,
@@ -116,6 +122,7 @@ import {
   getPersistedTelegramOwner,
   getPrimaryTelegramTarget,
 } from "./telegram-owner";
+import { isAuthorized } from "./security";
 
 // Re-export for any existing consumers
 export { bot };
@@ -292,6 +299,32 @@ async function sendStartupNotifications(): Promise<void> {
   }
 }
 
+async function sendWarmWelcomeIfNeeded(chatId: number, userId: number | null): Promise<boolean> {
+  if (hasSentStartupWelcome()) {
+    return false;
+  }
+
+  const projectName =
+    SUPERTURTLE_RUNTIME_ROLE === "teleport-remote" ? null : basename(WORKING_DIR);
+  const text = buildWarmWelcomeMessage({
+    projectName,
+    driver: session.activeDriver,
+  });
+
+  try {
+    try {
+      await sendTurtleSticker(bot, chatId);
+    } catch (error) {
+      botLog.warn({ err: error, chatId }, "Failed to send startup welcome sticker");
+    }
+    await bot.api.sendMessage(chatId, text);
+    markStartupWelcomeSent(chatId, userId);
+    return true;
+  } catch (error) {
+    botLog.warn({ err: error, chatId }, "Failed to send startup welcome notification");
+    return false;
+  }
+}
 function isAllowedInteractiveUpdate(ctx: import("grammy").Context): boolean {
   const userId = ctx.from?.id;
   if (!userId || !getAuthorizedTelegramUserIds().includes(userId)) {
@@ -693,6 +726,21 @@ for (const [name, handler] of Object.entries(COMMAND_HANDLERS)) {
   bot.command(name, handler);
 }
 
+bot.command("start", async (ctx) => {
+  const userId = ctx.from?.id;
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    return;
+  }
+
+  if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await ctx.reply("Unauthorized.");
+    return;
+  }
+
+  await sendWarmWelcomeIfNeeded(chatId, userId ?? null);
+});
+
 bot.use(async (ctx, next) => {
   if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
     await next();
@@ -705,14 +753,15 @@ bot.use(async (ctx, next) => {
     return;
   }
 
-  if (commandName === "teleport") {
-    await ctx.reply("ℹ️ Already running in E2B webhook mode. Use /home to return ownership to your PC.");
+  if (commandName === "start") {
+    await next();
     return;
   }
 
-  const allowedCommands = isTeleportRemoteAgentMode()
-    ? TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS
-    : TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS;
+  const allowedCommands = new Set(
+    getTelegramCommandsForRuntime("teleport-remote", isTeleportRemoteAgentMode() ? "agent" : "control")
+      .map(({ command }) => command)
+  );
 
   if (!allowedCommands.has(commandName)) {
     await ctx.reply(getTeleportRemoteUnsupportedMessage());
