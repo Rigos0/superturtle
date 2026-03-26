@@ -1,13 +1,27 @@
 # Keel Cloud Product Specification
 
-## Document Purpose
-This document defines the product direction for Keel Cloud, a new developer-focused cloud platform designed to compete with AWS by being simpler, more opinionated, and faster for small teams to ship on.
+- Status: final draft
+- Audience: product, design, engineering, and go-to-market teams
+- Use: source-of-truth spec for Keel Cloud's MVP definition and launch narrative
+
+## Executive Summary
+Keel Cloud is a developer-first application cloud for growing software teams that want production-grade backend infrastructure without taking on hyperscaler complexity. The product narrows the surface area on purpose: instead of exposing a sprawling set of raw infrastructure primitives, it provides a coherent path to deploy services, run jobs, provision core data systems, and operate them with consistent defaults.
+
+The target customer is a small to mid-size software team that has outgrown lightweight hosting but does not want to assemble and maintain an internal platform on AWS. Keel's differentiation is operational coherence: compute, networking, data, identity, observability, and billing should feel like one product from day one.
 
 ## Product Snapshot
 - Brand name: Keel Cloud
 - Category: developer-first application cloud
 - Positioning line: The opinionated cloud for teams shipping production software without building an infrastructure department.
 - Core promise: Keel gives modern software teams a paved path to run APIs, jobs, databases, and internal services in production with sane defaults and fewer platform decisions.
+
+## Decision Summary
+- Keel competes with AWS by reducing platform assembly work, not by matching service breadth.
+- The MVP is a complete application platform: app services, workers and jobs, managed Postgres, managed Redis, object storage, and first-party networking and operational fundamentals.
+- The resource model is application-centric: projects, environments, services, jobs, databases, caches, and buckets.
+- Security, observability, and deployment ergonomics are part of the core product, not optional add-ons.
+- Pricing should optimize for trust and explainability over raw meter granularity.
+- Launch sequencing should prioritize design partners, migration proof, and billing trust before broad distribution.
 
 ## Brand Definition
 ### Why "Keel"
@@ -76,8 +90,8 @@ Keel wins by removing cluster design, day-two operations, and platform assembly 
 - Expose control where it changes outcomes, not where it creates chores
 - Price for trust and predictability, not for confusion
 
-## Product Direction Outline
-The sections below are intentionally left for later backlog items in this spec.
+## Product Scope
+The sections below translate Keel's positioning into a concrete launch product. The goal is not to sketch a broad future platform, but to define an MVP that is narrow, production-capable, and internally coherent.
 
 ### MVP Services
 Keel Cloud's MVP should feel like a complete application platform, not a loose menu of infrastructure parts. The initial surface area should stay narrow enough that every service shares the same deployment model, networking model, access controls, observability, and billing language.
@@ -400,6 +414,22 @@ Requirements:
 - Fix operational rough edges before broad launch campaigns
 - Use every launch phase to sharpen the ICP rather than broadening it prematurely
 - Treat billing trust and migration success as launch blockers, not polish work
+
+## Cross-Functional Handoff
+### Product Implications
+- Keep the MVP resource model constrained and consistent across console, API, CLI, docs, and pricing.
+- Treat time-to-first-production-deploy, successful migration of a first real workload, and billing comprehension as top-level launch metrics.
+- Use design-partner feedback to validate completeness of the default path before expanding the catalog.
+
+### Design Implications
+- The product should feel calm, legible, and operations-aware rather than flashy or consumerized.
+- Environment boundaries, service topology, deploy history, and spend visibility should be first-class UX concepts.
+- Pricing and architecture guidance should be understandable from realistic workload examples, not from low-level infrastructure terminology.
+
+### Engineering Implications
+- Build around a unified control-plane model so services, jobs, databases, caches, and buckets inherit the same identity, networking, and observability patterns.
+- Default new resources to private connectivity and explicit exposure rules.
+- Prioritize reliability, rollback, backups, and auditability before adding new infrastructure primitives.
 
 ### Sample Customer Journey
 This journey illustrates Keel's ideal first adoption path for the primary ICP: a growing SaaS team with meaningful production traffic, one overextended senior engineer acting as the de facto platform owner, and a desire to get off a fragile hand-built stack.
