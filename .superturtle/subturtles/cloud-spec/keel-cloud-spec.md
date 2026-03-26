@@ -237,13 +237,169 @@ Implication:
 - The architecture roadmap should prioritize shared platform capabilities before expanding the service catalog
 
 ### Pricing Philosophy
-Pending
+Keel Cloud should use pricing as a trust-building product feature. The target customer is already fatigued by hyperscaler billing sprawl, so the model must feel legible before it feels optimized.
+
+#### Core Pricing Principles
+- Make the bill explainable by an engineering manager in one screenshot
+- Tie charges to user-visible platform concepts such as services, jobs, databases, and storage
+- Include essential platform capabilities in the base price instead of monetizing every operational concern separately
+- Optimize for predictable month-to-month spend over theoretical lowest possible unit cost
+- Avoid pricing traps that punish good architecture, such as charging extra for internal networking between platform components
+
+#### Recommended Packaging Model
+Keel should price around a small number of productized building blocks rather than exposing raw infrastructure meters wherever possible.
+
+Recommended structure:
+- App Services and Workers: priced by instance class and runtime usage, with autoscaling reflected in a simple compute-hours or service-hours model
+- Jobs: priced per execution tier with transparent duration bands so teams can estimate scheduled and bursty workloads
+- Managed Postgres: priced as clear plans by size and backup retention band, not by dozens of independent IOPS and storage knobs
+- Managed Redis: priced by memory tier with simple persistence options
+- Object Storage: usage-based for stored data and egress, but with generous included transfer for common application workloads
+- Platform seat or project fees: avoid in MVP unless they fund a clearly differentiated support or governance layer
+
+#### What Should Be Included by Default
+The MVP should bundle the fundamentals customers assume are part of a production platform:
+- TLS and custom domains
+- Logs, metrics, deploy history, and basic alerting
+- Secrets management
+- Private service networking
+- Backups for managed databases within a defined retention window
+- Staging environments up to a reasonable baseline quota
+
+This inclusion model reinforces the product thesis: Keel sells a coherent platform, not a low entry price followed by operational add-ons.
+
+#### Pricing Page Philosophy
+The public pricing page should answer three questions immediately:
+1. What does a small production team typically spend?
+2. What causes the bill to grow?
+3. What is included without surprise line items?
+
+The page should use archetypal workload examples such as "single API plus worker plus Postgres" and "multi-service SaaS app" so buyers can map pricing to their actual architecture.
+
+#### Strategic Pricing Stance
+Keel does not need to beat AWS on every raw unit. It needs to win on total cost of operation for small teams. The pricing story should explicitly frame savings in avoided platform labor, faster onboarding, fewer misconfigurations, and lower need for specialist infrastructure staffing.
+
+#### MVP Pricing Guardrails
+- No separate charges for internal service-to-service traffic within a project
+- No pricing dimensions that require customers to understand cloud networking internals
+- No enterprise custom pricing motion in the first launch wave unless tied to a specific design-partner agreement
+- Usage alerts and spend visibility should be present before aggressive scale makes surprise bills possible
 
 ### Go-To-Market Narrative
-Pending
+Keel Cloud should go to market as the cloud for teams that have outgrown hobby-hosting tools but reject the complexity tax of AWS. The narrative is not "all cloud, reimagined." It is "the handful of things modern product teams actually need, already assembled into a production platform."
+
+#### Core GTM Thesis
+The wedge is not IT transformation. It is engineering teams hitting the point where backend complexity starts stealing roadmap time. Keel wins when a team says:
+- "We need something more complete than our current deploy platform"
+- "We do not want to hire platform engineers yet"
+- "AWS can do this, but we do not want to assemble it ourselves"
+
+#### Primary Buyer Motion
+The initial motion should be founder-led and engineering-led:
+- Top-of-funnel audience: founders, CTOs, staff engineers, and engineering managers at small to mid-size software companies
+- Initial sale shape: self-serve evaluation supported by high-touch founder or solutions-engineer help for migration design
+- Conversion trigger: a team chooses Keel for a net-new service, staging environment overhaul, or migration off a brittle Render or AWS hand-built stack
+
+This is a product-led sale with informed human support, not a pure self-serve commodity signup and not a heavy enterprise field motion.
+
+#### Message Hierarchy
+Keel's messaging should ladder from pain to promise in a disciplined order:
+
+1. Too much cloud complexity is stealing engineering time.
+2. Most teams only need a focused set of production services.
+3. Keel makes those services work together by default.
+4. You get control where it matters without building an internal platform team.
+
+#### Category Framing
+Keel should position itself as a developer-first application cloud, not simply a PaaS. That framing gives room for databases, networking, workers, and object storage without implying hyperscaler breadth.
+
+#### Launch Channels
+Recommended initial channels:
+- Founder and operator networks for design-partner recruitment
+- Technical content aimed at migration stories, architecture simplification, and transparent pricing comparisons
+- Targeted outreach to startups already showing signs of AWS fatigue or backend-platform sprawl
+- Product Hunt, Hacker News, and engineering communities only after the onboarding path and core documentation are strong enough to survive scrutiny
+
+#### Proof Points Needed Early
+The GTM motion depends on evidence, not slogans. The first launch materials should include:
+- Architecture diagrams showing a realistic production app deployed on Keel
+- Side-by-side operational comparison versus a typical AWS setup for the same workload
+- Clear pricing examples for common team sizes and stack shapes
+- Two or three strong customer or design-partner stories focused on faster setup, lower ops burden, or smoother developer onboarding
+
+#### Competitive Story
+Against AWS, Keel should emphasize coherence, speed, and predictability. Against lighter platforms, it should emphasize completeness for real backend systems. The company should avoid claiming universal superiority; the sharper message is that Keel is the best default for a specific class of software teams.
 
 ### Launch Sequencing
-Pending
+Keel Cloud should launch in deliberate stages so the product earns trust before broadening distribution. The sequencing should mirror the product thesis: narrow scope, strong defaults, operational completeness.
+
+#### Phase 0: Design Partner Validation
+Goal:
+- Validate that the proposed resource model, deployment workflow, and pricing language solve real pain for the target ICP
+
+Requirements:
+- 5 to 10 design-partner teams with real staging or production workloads
+- Weekly product feedback loops with direct access to founders or core product/engineering leads
+- Manual migration assistance where needed to expose onboarding gaps quickly
+
+Exit criteria:
+- Repeated successful deployment patterns across app services, jobs, and managed Postgres
+- Evidence that customers understand the platform model without custom retraining
+- Clear objections and missing features ranked by frequency, not by loudest request
+
+#### Phase 1: Private Beta
+Goal:
+- Prove that a small number of external teams can onboard with documentation and light support instead of fully manual setup
+
+Scope:
+- Public marketing remains limited
+- Access is gated through waitlist approval
+- Reliability targets and support expectations are explicit and conservative
+
+Required assets:
+- Core docs for deploys, networking, database provisioning, rollback, and pricing
+- Opinionated quickstart for a representative web application stack
+- Basic usage visibility and billing previews
+
+Exit criteria:
+- Time-to-first-production-deploy is consistently short for the target customer profile
+- Most support issues are product or documentation fixes, not bespoke one-off infrastructure work
+- At least a handful of customers are running revenue-adjacent workloads with stable weekly usage
+
+#### Phase 2: Public Beta
+Goal:
+- Open the product to a broader developer audience while preserving credibility through a still-constrained surface area
+
+Scope:
+- Self-serve signup for the supported MVP product set
+- Public pricing page and migration guides
+- Broader launch marketing through content, communities, and selected partnerships
+
+Focus:
+- Tighten activation funnels
+- Improve in-product guidance and failure recovery
+- Turn early customer wins into repeatable sales and onboarding assets
+
+Exit criteria:
+- Activation, deployment success, and early retention metrics are healthy enough to scale acquisition
+- Core support load remains manageable without white-glove intervention as the default
+- Reliability and billing trust are strong enough that reference customers will speak publicly
+
+#### Phase 3: General Availability
+Goal:
+- Present Keel as a dependable default platform for the defined ICP, with strong product confidence and a clear roadmap
+
+Requirements:
+- Stable onboarding without founder intervention
+- Credible uptime, incident response, and support processes
+- Mature billing accuracy and customer-facing spend controls
+- A roadmap that deepens the platform rather than immediately expanding into hyperscaler sprawl
+
+#### Sequencing Principles
+- Add customer volume before adding major service breadth
+- Fix operational rough edges before broad launch campaigns
+- Use every launch phase to sharpen the ICP rather than broadening it prematurely
+- Treat billing trust and migration success as launch blockers, not polish work
 
 ### Sample Customer Journey
 Pending
