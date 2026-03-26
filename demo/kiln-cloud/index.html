@@ -838,28 +838,32 @@
             <span class="eyebrow">Developer cloud for lean platform teams</span>
             <h1>Ship globally without inheriting hyperscaler sprawl.</h1>
             <p>
-              Kiln Cloud gives product teams a tighter operating surface for
-              containers, stateful services, edge delivery, and rollout control.
-              You get regional power, predictable pricing, and a path from repo
-              to production that does not disappear under platform overhead.
+              Kiln Cloud gives product teams one operating surface for OCI
+              containers, managed Postgres, object storage, edge delivery, and
+              rollout control. You get regional capacity, private networking,
+              predictable pricing, and a repo-to-production path that stays
+              legible after the first service ships.
             </p>
             <ul class="hero-highlights" aria-label="Platform operating posture">
               <li class="highlight-item">
                 <span class="highlight-label">Repo to edge</span>
                 <span class="highlight-value"
-                  >Preview environments in a single control plane</span
+                  >Branch previews, managed TLS, and rollout history in one
+                  control plane</span
                 >
               </li>
               <li class="highlight-item">
                 <span class="highlight-label">Regional core</span>
                 <span class="highlight-value"
-                  >State, networking, and compute aligned by default</span
+                  >Compute, Postgres, queues, and storage share one network
+                  model</span
                 >
               </li>
               <li class="highlight-item">
                 <span class="highlight-label">Spend shape</span>
                 <span class="highlight-value"
-                  >Pricing stays legible before usage spikes arrive</span
+                  >Baseline capacity and egress are priced before overage math
+                  starts</span
                 >
               </li>
             </ul>
@@ -877,7 +881,7 @@
             <aside class="signal-panel" aria-label="Platform structure">
               <div class="signal-header">
                 <strong>Platform map</strong>
-                <span class="signal-chip">Control plane reduced</span>
+                <span class="signal-chip">OCI + Postgres first</span>
               </div>
               <div class="mesh" aria-hidden="true">
                 <span class="node node-primary">Compute fabric</span>
@@ -917,8 +921,8 @@
                 <h2>Trust signals come before feature sprawl.</h2>
                 <p class="section-intro">
                   Kiln Cloud leads with the three questions operators ask first:
-                  how fast can we move, how well does it perform, and how much
-                  surprise is left in the bill.
+                  how fast can we move, how well does traffic behave, and how
+                  much surprise is left in the bill.
                 </p>
               </div>
             </div>
@@ -929,9 +933,9 @@
                 <h3>Migration lane</h3>
                 <p class="card-copy">
                   Bring over container services, background jobs, Postgres, and
-                  S3-compatible object storage without redesigning the entire
-                  stack. Existing images, CI pipelines, and Terraform patterns
-                  still fit.
+                  S3-compatible object storage without redesigning the stack.
+                  Existing OCI images, CI pipelines, and Terraform modules still
+                  fit.
                 </p>
               </article>
               <article class="proof-card">
@@ -949,7 +953,7 @@
                 <p class="card-copy">
                   Flat regional pricing, explicit bandwidth rules, and spend
                   guardrails make the operating model legible before finance
-                  asks for the second spreadsheet.
+                  asks for a second spreadsheet.
                 </p>
               </article>
             </div>
@@ -963,7 +967,7 @@
                 <p class="section-intro">
                   The platform is organized around the surfaces teams actually
                   touch every week: runtime, data, delivery, and release
-                  control.
+                  controls.
                 </p>
               </div>
             </div>
@@ -973,8 +977,9 @@
                 <h3>Compute fabric</h3>
                 <p class="card-copy">
                   Run long-lived services, bursty jobs, and GPU-backed workers
-                  on regional pools with fast cold starts, image-level deploys,
-                  and autoscaling that stays understandable under pressure.
+                  on regional pools with OCI image deploys, per-service
+                  autoscaling, and pinned machine classes that stay
+                  understandable in incident review.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Containers</span>
@@ -985,9 +990,10 @@
               <article class="product-card">
                 <h3>State core</h3>
                 <p class="card-copy">
-                  Managed Postgres, durable object storage, and queue-backed
-                  event flows share the same network and access model, so state
-                  services stop feeling like separate vendors glued together.
+                  Managed Postgres with point-in-time recovery, durable object
+                  storage, and queue-backed event flows share the same network
+                  and identity model, so state services stop feeling like
+                  separate vendors glued together.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Postgres</span>
@@ -1011,9 +1017,10 @@
               <article class="product-card">
                 <h3>Launch pipeline</h3>
                 <p class="card-copy">
-                  Connect a repo once, generate preview environments on every
-                  branch, enforce policy before promotion, and roll forward or
-                  back from the same release timeline.
+                  Connect a repo or registry once, generate preview
+                  environments on every branch, enforce policy before
+                  promotion, and roll forward or back from the same release
+                  timeline.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Preview envs</span>
@@ -1030,8 +1037,9 @@
                 <span class="section-label">Flow</span>
                 <h2>The launch narrative follows a four-step rail.</h2>
                 <p class="section-intro">
-                  This sequence gives the page a practical rhythm instead of a
-                  generic feature dump.
+                  Teams can adopt the platform in stages: import workloads, set
+                  guardrails, promote cleanly, and expand without changing the
+                  operating model underneath them.
                 </p>
               </div>
             </div>
@@ -1065,8 +1073,8 @@
                 <div class="step-index">Step 04</div>
                 <h3>Scale</h3>
                 <p class="step-copy">
-                  Expand across regions, edge nodes, and teams without rewriting
-                  the story of the page.
+                  Expand across regions and services without splitting delivery,
+                  networking, and state into separate operating models.
                 </p>
               </article>
             </div>
@@ -1170,9 +1178,10 @@
               </h2>
               <p>
                 Kiln Cloud is opening with a narrow launch cohort for teams
-                moving off a larger cloud surface or replacing a brittle
-                patchwork of point services. Start with the system that hurts
-                most. The migration lane is part of the product story.
+                moving off a larger cloud surface or cleaning up brittle
+                multi-vendor platform drift. Start with the system that hurts
+                most. Launch onboarding includes the first migration plan and
+                production cutover support.
               </p>
               <div class="cta-actions">
                 <a class="button button-primary" href="#top"
