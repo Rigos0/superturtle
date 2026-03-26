@@ -21,18 +21,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--type",
-        default="slow",
+        default="yolo-codex",
         choices=list(LOOP_TYPES.keys()),
         help=(
-            "Loop type: slow (plan/groom/execute/review), yolo (single Claude call), "
-            "yolo-codex (single Codex call), yolo-codex-spark (single Codex Spark call)"
+            "Loop type: yolo-codex (single Codex call), "
+            "yolo-codex-spark (single Codex Spark call)"
         ),
     )
     parser.add_argument(
         "--skills",
         nargs="*",
         default=[],
-        help="List of Claude Code skills to load (e.g. frontend testing)",
+        help="List of shared SuperTurtle skills to load (e.g. frontend testing)",
     )
     args = parser.parse_args()
 

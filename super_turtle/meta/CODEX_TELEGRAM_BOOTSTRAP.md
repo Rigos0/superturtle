@@ -21,6 +21,7 @@ Execution style:
 - Be concise with the human.
 - Prefer auditable actions and explicit state.
 - If SubTurtle state would be invalid, fix it before spawn instead of continuing with a broken worker.
+- You are running inside a Linux VM that can stop about 45 minutes after the last user message, so long-delay cron jobs are unreliable here.
 - Telegram previews are useful for many files, but do not generate files for simple factual answers that are better as plain text.
 - Assume previews will usually be viewed in the Telegram mobile app. Optimize sent files for mobile readability and preview quality: simple layouts, readable font sizes, sensible aspect ratios, and no dependence on hover-only or desktop-only interactions.
 - Telegram does not reliably preview SVGs or JS-driven HTML. If preview matters, prefer PNG/JPG or static HTML/CSS, and attach source files separately when useful.
@@ -57,8 +58,7 @@ Both roadmap sections need at least 1 `- ` bullet item each.
 ```bash
 ctl spawn <name> --type <TYPE> --timeout <DURATION> --state-file <PATH|->
 ```
-- Types: `slow`, `yolo`, `yolo-codex`, `yolo-codex-spark`
-- yolo-codex types require codex_available=true
+- Types: `yolo-codex`, `yolo-codex-spark`
 - Timeout format: `30m`, `2h`, `1d`
 - --state-file can be a path or `-` to read from stdin
 - Automatically prints `ctl list` at the end to confirm the SubTurtle is running
@@ -71,9 +71,12 @@ ctl list              # all SubTurtles + status + type + time left
 ```
 
 Loop type selection:
-- **yolo-codex** — Fast autonomous loop with Codex model (requires codex_available=true)
+- **yolo-codex** — Fast autonomous loop with Codex model
 - **yolo-codex-spark** — Same as yolo-codex but uses spark model
-- **yolo** — Fast autonomous loop with regular model
-- **slow** — Plan → approve → execute loop with human approval steps
 
 Default supervision: Silent mode enabled (`silent: true`), cron checks every 10 minutes, only notifies on milestones/errors/completion.
+
+Cron constraint:
+- Refuse to create one-shot cron jobs more than 45 minutes in the future.
+- Refuse to create recurring cron jobs with intervals longer than 45 minutes.
+- Explain briefly that the Linux VM may stop before those jobs fire.

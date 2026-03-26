@@ -88,6 +88,13 @@ def test_main_dispatches_to_run_loop(monkeypatch, tmp_path) -> None:
     }
 
 
+def test_managed_loop_types_are_codex_only() -> None:
+    assert set(subturtle_loops.LOOP_TYPES.keys()) == {
+        "yolo-codex",
+        "yolo-codex-spark",
+    }
+
+
 def test_monorepo_import_path_smoke(tmp_path) -> None:
     _assert_imports_succeed(
         tmp_path,

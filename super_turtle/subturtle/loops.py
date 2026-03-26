@@ -320,8 +320,6 @@ def run_yolo_codex_spark_loop(
 
 
 LOOP_TYPES = {
-    "slow": run_slow_loop,
-    "yolo": run_yolo_loop,
     "yolo-codex": run_yolo_codex_loop,
     "yolo-codex-spark": run_yolo_codex_spark_loop,
 }
@@ -330,7 +328,7 @@ LOOP_TYPES = {
 def run_loop(
     state_dir: Path,
     name: str,
-    loop_type: str = "slow",
+    loop_type: str = "yolo-codex",
     skills: list[str] | None = None,
 ) -> None:
     """Dispatch to the appropriate loop function."""

@@ -29,7 +29,7 @@ Do not decompose when any of these apply:
 - Each SubTurtle should have 3-7 backlog items.
 - Naming format: `<project>-<feature>` (lowercase, hyphenated).
 - Example names: `dashboard-search`, `dashboard-filters`, `billing-void-endpoint`.
-- Respect runtime loop-type capabilities: when Codex is disabled/unavailable, decompose assuming Claude loop types (`yolo`/`slow`) only.
+- Respect runtime loop-type capabilities: in the managed Codex runtime, decompose assuming only `yolo-codex` and `yolo-codex-spark`.
 
 ## Decomposition Workflow
 
