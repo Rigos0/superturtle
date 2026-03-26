@@ -402,7 +402,108 @@ Requirements:
 - Treat billing trust and migration success as launch blockers, not polish work
 
 ### Sample Customer Journey
-Pending
+This journey illustrates Keel's ideal first adoption path for the primary ICP: a growing SaaS team with meaningful production traffic, one overextended senior engineer acting as the de facto platform owner, and a desire to get off a fragile hand-built stack.
+
+#### Team Profile
+- Company: B2B SaaS startup with 14 engineers
+- Product shape: web app, public API, background job processing, Postgres as system of record, Redis-backed queueing, and user-uploaded files
+- Current state: two services on AWS ECS, jobs on ad hoc workers, RDS Postgres, S3, and a mix of Terraform plus manual console fixes
+- Main pain: deployments are slow to reason about, onboarding infra knowledge is tribal, and cloud spend feels opaque relative to system size
+
+#### Stage 1: Trigger Event
+The team hits a familiar threshold: a new enterprise customer requires higher reliability for imports, background jobs are failing silently, and the engineer who understands the deployment stack is becoming a bottleneck. The CTO does not want to hire a platform engineer yet, but the current AWS setup is already consuming too much roadmap time.
+
+Keel enters consideration because the team is not asking for more cloud power. It is asking for a narrower, more understandable platform that still supports a real backend architecture.
+
+#### Stage 2: Evaluation
+The staff engineer signs up for Keel and starts with a staging environment for a new internal admin service. The evaluation experience succeeds if the team can answer a few questions quickly:
+- How do services, jobs, Postgres, Redis, and buckets fit into one project model?
+- What would a production topology for their app look like on Keel?
+- What would it roughly cost if they moved their main API, worker, and database?
+
+The team uses an opinionated quickstart, reviews a reference architecture, and maps its existing stack to Keel primitives without needing to understand underlying network assembly. This is the moment where pricing clarity and product coherence matter as much as raw feature depth.
+
+#### Stage 3: First Real Deployment
+The team deploys one API service and one worker from Git, provisions a managed Postgres database for staging, and configures a private bucket for uploaded test files. The deploy experience is intentionally repetitive:
+- Build and release flows for services and workers behave the same way
+- Secrets, logs, metrics, and rollback history are available from one place
+- Private service networking works by default, without VPC design work
+
+Within a day, a second engineer who did not set up the environment can inspect logs, roll back a deploy, and understand the topology. That is a key product outcome: Keel reduces infrastructure dependency on one internal expert.
+
+#### Stage 4: Production Migration
+After a stable staging trial, the team migrates its production worker and a lower-risk internal API to Keel first, leaving the core customer API on AWS temporarily. This partial migration is important because it lowers adoption risk and lets the team validate:
+- deploy reliability under real background load
+- database backup and restore confidence
+- visibility into service health and run history
+- billing predictability for a production-like workload
+
+Once that slice proves stable, the team moves the primary API and begins treating Keel as the default target for new services.
+
+#### Stage 5: Steady-State Success
+Three months later, the team has standardized on Keel for new backend workloads. The engineering manager sees the practical wins:
+- onboarding a new backend engineer no longer requires a private walkthrough of AWS networking and deploy scripts
+- routine changes ship faster because the platform path is consistent across services
+- incidents are easier to triage because runtime history, logs, and configuration live in one operating model
+- cloud spend is easier to forecast at the service level
+
+Keel is now valuable not because it exposed more infrastructure flexibility, but because it removed recurring platform decisions from a team that could not afford them.
 
 ### Risks
-Pending
+Keel's strategy is strong only if the product stays coherent while proving it can handle real production workloads. The major risks are not abstract market risks alone; they are execution risks tied directly to the promise of simplicity with credibility.
+
+#### 1. Falling Into an In-Between Product Gap
+Keel can fail by being too limited for serious backend teams while also being more operationally demanding than lightweight platforms. If the MVP does not clearly cover real multi-service production workloads, buyers may still default to AWS for safety or choose a simpler platform for speed.
+
+Mitigation:
+- keep the MVP centered on a complete backend path, not isolated features
+- validate the full service bundle with design partners before broad launch
+- prioritize completeness of operations over adding adjacent SKUs
+
+#### 2. Reliability Trust Gap
+The positioning depends on customers trusting Keel with revenue-adjacent systems. A single high-profile reliability failure or unclear incident response posture early on could overwhelm the simplicity narrative.
+
+Mitigation:
+- launch with conservative scale assumptions and explicit support boundaries
+- invest early in backup, rollback, observability, and incident handling fundamentals
+- treat reliability work as product scope, not internal plumbing
+
+#### 3. Scope Creep Driven by AWS Comparisons
+Customers and internal teams will naturally compare Keel to hyperscaler breadth. If product strategy becomes reactive to feature-gap pressure, the platform can lose the opinionated coherence that makes it valuable.
+
+Mitigation:
+- use the ICP and product thesis as hard filters for roadmap expansion
+- add services only when shared platform capabilities are already strong
+- frame "not supported" as a deliberate strategy, not a temporary embarrassment
+
+#### 4. Migration Friction Undermines the Wedge
+The GTM motion assumes teams can adopt Keel incrementally. If migration requires large rewrites, brittle cutovers, or deep manual support, the initial customer acquisition model becomes too expensive and too slow.
+
+Mitigation:
+- support partial migrations and net-new service adoption first
+- provide reference architectures, import guides, and predictable deployment workflows
+- design APIs and runtime behaviors around familiar container and object storage standards
+
+#### 5. Pricing Simplicity That Hides Real Cost
+If Keel's pricing is simple in presentation but materially misaligned with customer workloads, trust will erode quickly. The product promise requires customers to feel both clarity and fairness.
+
+Mitigation:
+- test pricing examples against real design-partner usage patterns
+- expose spend visibility and usage alerts before scale surprises happen
+- keep bills mapped to recognizable platform objects rather than opaque internal meters
+
+#### 6. Over-Reliance on a Narrow Buyer Segment
+The primary ICP is focused, which is strategically useful, but it creates concentration risk if Keel overfits to a very specific startup profile and cannot expand adjacent to it.
+
+Mitigation:
+- document which adjacent segments show pull during beta rather than assuming broad applicability
+- build shared platform primitives that can support nearby use cases without changing the core message
+- delay market expansion until retention is strong inside the primary ICP
+
+#### 7. Internal Complexity Leaking Through the Product
+Keel may rely on mature infrastructure underneath, but if underlying operational complexity leaks into the customer experience through inconsistent behavior, confusing failures, or product-specific exceptions, the entire differentiation weakens.
+
+Mitigation:
+- enforce a consistent control-plane model across all MVP services
+- remove product seams that expose implementation detail differences between service types
+- use internal platform reviews to challenge any feature that adds configuration debt without clear user value

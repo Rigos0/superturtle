@@ -1,5 +1,5 @@
 # Current task
-Add a sample customer journey and major risks for the Keel Cloud spec.
+Polish the Markdown into a final reusable spec.
 # End goal with specs
 Produce a polished Markdown spec for a new cloud platform brand that competes with AWS by being simpler, opinionated, and developer-first. The spec must define the brand name, ICP, problem statement, product pillars, MVP services, architecture principles, pricing philosophy, go-to-market narrative, launch sequencing, risks, and a short sample customer journey. The output should be directly reusable by product, design, and engineering.
 # Roadmap (Completed)
@@ -13,5 +13,5 @@ Produce a polished Markdown spec for a new cloud platform brand that competes wi
 - [x] Define the product name, audience, and positioning
 - [x] Specify the MVP product surface and architecture principles
 - [x] Write the pricing, GTM, and launch sequencing sections
-- [ ] Add a sample customer journey and major risks <- current
-- [ ] Polish the Markdown into a final reusable spec
+- [x] Add a sample customer journey and major risks
+- [ ] Polish the Markdown into a final reusable spec <- current
