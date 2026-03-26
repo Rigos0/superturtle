@@ -17,6 +17,7 @@ export {
   handleTeleport,
   handleHome,
   handleRestart,
+  handleUpdate,
   handleStopCommand,
 } from "./commands";
 export { handleText } from "./text";

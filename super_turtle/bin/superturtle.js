@@ -52,6 +52,9 @@ const SUPERTURTLE_DIRNAME = ".superturtle";
 const SUPERTURTLE_SUBTURTLES_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "subturtles");
 const SUPERTURTLE_TELEPORT_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "teleport");
 const SUPERTURTLE_SERVICE_PID_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "service.pid");
+const SUPERTURTLE_SELF_UPDATE_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "self-update.json");
+const SUPERTURTLE_SELF_UPDATE_LOG_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "self-update.log");
+const SUPERTURTLE_MANAGED_RUNTIME_RELATIVE_PATH = join(SUPERTURTLE_DIRNAME, "managed-runtime.json");
 const PROJECT_CONFIG_RELATIVE_PATH = join(".superturtle", "project.json");
 const PROJECT_ENV_RELATIVE_PATH = join(".superturtle", ".env");
 const PROJECT_ENV_EXAMPLE_RELATIVE_PATH = join(".superturtle", ".env.example");
@@ -426,12 +429,225 @@ function clearServicePid(cwd) {
   return path;
 }
 
+function getSelfUpdateStatePath(cwd) {
+  return resolve(cwd, SUPERTURTLE_SELF_UPDATE_RELATIVE_PATH);
+}
+
+function getSelfUpdateLogPath(cwd) {
+  return resolve(cwd, SUPERTURTLE_SELF_UPDATE_LOG_RELATIVE_PATH);
+}
+
+function getManagedRuntimeManifestPath(cwd) {
+  return resolve(cwd, SUPERTURTLE_MANAGED_RUNTIME_RELATIVE_PATH);
+}
+
+function readJsonFile(path) {
+  if (!fs.existsSync(path)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonFile(path, payload) {
+  fs.mkdirSync(dirname(path), { recursive: true });
+  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+  fs.renameSync(tmpPath, path);
+  return path;
+}
+
+function appendSelfUpdateLog(cwd, message) {
+  const logPath = getSelfUpdateLogPath(cwd);
+  fs.mkdirSync(dirname(logPath), { recursive: true });
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${message}\n`, "utf-8");
+  return logPath;
+}
+
+function parseExactRuntimeInstallSpec(rawValue) {
+  if (typeof rawValue !== "string") {
+    return null;
+  }
+  const trimmed = rawValue.trim();
+  const match = /^superturtle@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(trimmed);
+  if (!match || !match[1]) {
+    return null;
+  }
+  return {
+    installSpec: trimmed,
+    version: match[1],
+  };
+}
+
+function shellEscape(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 function isPidRunning(pid) {
   return Number.isInteger(pid) && pid > 0 && spawnSync("kill", ["-0", String(pid)], { stdio: "ignore" }).status === 0;
 }
 
 function signalPid(pid, signal = "TERM") {
   return spawnSync("kill", [`-${signal}`, String(pid)], { stdio: "ignore" });
+}
+
+function parseSelfUpdateRunnerArgs(argv = process.argv.slice(4)) {
+  const options = {
+    cwd: "",
+    installSpec: "",
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--cwd") {
+      options.cwd = argv[index + 1] || "";
+      index += 1;
+      continue;
+    }
+    if (arg === "--spec") {
+      options.installSpec = argv[index + 1] || "";
+      index += 1;
+    }
+  }
+  return options;
+}
+
+async function waitForServiceRunnerShutdown(cwd, servicePid, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const trackedPid = readServicePid(cwd);
+    if (!isPidRunning(servicePid) && (!trackedPid || trackedPid !== servicePid)) {
+      return;
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  throw new Error(`Timed out waiting for service runner ${servicePid} to stop.`);
+}
+
+function updateManagedRuntimeManifest(cwd, installSpec, version) {
+  const manifestPath = getManagedRuntimeManifestPath(cwd);
+  const existing = readJsonFile(manifestPath);
+  const nextPayload =
+    existing && typeof existing === "object" && !Array.isArray(existing) ? { ...existing } : {};
+  nextPayload.runtime_install_spec = installSpec;
+  nextPayload.runtime_version = version;
+  nextPayload.updated_at = new Date().toISOString();
+  writeJsonFile(manifestPath, nextPayload);
+  return manifestPath;
+}
+
+function launchDetachedServiceRunner(cwd) {
+  const child = spawn(
+    "bash",
+    [
+      "-lc",
+      `export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH" && cd ${shellEscape(cwd)} && exec superturtle service run`,
+    ],
+    {
+      cwd,
+      env: { ...process.env, CLAUDE_WORKING_DIR: cwd },
+      stdio: "ignore",
+      detached: true,
+    }
+  );
+  child.unref();
+  return child;
+}
+
+async function serviceSelfUpdateRunner() {
+  const options = parseSelfUpdateRunnerArgs();
+  const cwd = options.cwd ? getBoundProjectRoot(options.cwd) : getBoundProjectRoot(process.cwd());
+  const parsedSpec = parseExactRuntimeInstallSpec(options.installSpec);
+  if (!parsedSpec) {
+    throw new Error("Usage: superturtle service self-update-runner --cwd <project> --spec superturtle@<exact-version>");
+  }
+
+  const statePath = getSelfUpdateStatePath(cwd);
+  const initialState = readJsonFile(statePath);
+  if (!initialState || typeof initialState !== "object" || Array.isArray(initialState)) {
+    throw new Error(`Missing self-update state file at ${statePath}.`);
+  }
+
+  const servicePid = Number.isInteger(initialState.service_pid)
+    ? initialState.service_pid
+    : readServicePid(cwd);
+  if (!Number.isInteger(servicePid) || servicePid <= 0) {
+    throw new Error("Missing service runner pid for self-update handoff.");
+  }
+
+  const writeState = (patch) => {
+    const current = readJsonFile(statePath);
+    const nextState =
+      current && typeof current === "object" && !Array.isArray(current)
+        ? { ...current, ...patch }
+        : { ...initialState, ...patch };
+    writeJsonFile(statePath, nextState);
+    return nextState;
+  };
+
+  const restartAvailableRuntime = () => {
+    appendSelfUpdateLog(cwd, "Launching replacement service runner.");
+    const child = launchDetachedServiceRunner(cwd);
+    appendSelfUpdateLog(cwd, `Replacement service runner launched with pid ${child.pid}.`);
+  };
+
+  appendSelfUpdateLog(cwd, `Starting self-update to ${parsedSpec.installSpec}.`);
+  writeState({
+    status: "installing",
+    requested_spec: parsedSpec.installSpec,
+    target_version: parsedSpec.version,
+    helper_pid: process.pid,
+  });
+
+  try {
+    appendSelfUpdateLog(cwd, `Stopping service runner pid ${servicePid}.`);
+    signalPid(servicePid, "TERM");
+    await waitForServiceRunnerShutdown(cwd, servicePid);
+    appendSelfUpdateLog(cwd, "Previous service runner stopped cleanly.");
+
+    const install = spawnSync(
+      "bash",
+      [
+        "-lc",
+        `export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH" && bun install -g ${shellEscape(parsedSpec.installSpec)}`,
+      ],
+      {
+        cwd,
+        env: { ...process.env, CLAUDE_WORKING_DIR: cwd },
+        stdio: "pipe",
+      }
+    );
+    if (install.error) {
+      throw new Error(`bun install failed: ${install.error.message}`);
+    }
+    if (install.status !== 0) {
+      const stderr = install.stderr?.toString().trim();
+      const stdout = install.stdout?.toString().trim();
+      throw new Error(stderr || stdout || `bun install exited with code ${install.status}.`);
+    }
+
+    updateManagedRuntimeManifest(cwd, parsedSpec.installSpec, parsedSpec.version);
+    appendSelfUpdateLog(cwd, `Installed ${parsedSpec.installSpec}.`);
+    writeState({
+      status: "starting",
+      completed_at: new Date().toISOString(),
+      error: null,
+      service_pid: null,
+    });
+    restartAvailableRuntime();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    appendSelfUpdateLog(cwd, `Self-update failed: ${message}`);
+    writeState({
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      error: message,
+    });
+    restartAvailableRuntime();
+    throw error;
+  }
 }
 
 function getRuntimeOwnerType(env) {
@@ -2083,7 +2299,14 @@ if (require.main === module) {
         serviceRun().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
         break;
       }
-      console.error("Usage: superturtle service run");
+      if (process.argv[3] === "self-update-runner") {
+        serviceSelfUpdateRunner().catch((err) => {
+          console.error(err instanceof Error ? err.message : err);
+          process.exit(1);
+        });
+        break;
+      }
+      console.error("Usage: superturtle service run | superturtle service self-update-runner --cwd <project> --spec superturtle@<exact-version>");
       process.exit(1);
       break;
     case "stop":
@@ -2184,6 +2407,7 @@ Logs:
 
 Service:
   superturtle service run
+  superturtle service self-update-runner --cwd <project> --spec superturtle@<exact-version>
 
 Cloud:
   superturtle cloud status
@@ -2206,5 +2430,7 @@ module.exports = {
     getKeepAwakeCommand,
     buildServiceChildSpawnOptions,
     terminateChildProcessGroup,
+    parseExactRuntimeInstallSpec,
+    parseSelfUpdateRunnerArgs,
   },
 };

@@ -22,6 +22,7 @@ import {
   WORKING_DIR,
   ALLOWED_USERS,
   RESTART_FILE,
+  SELF_UPDATE_STATE_FILE,
   TELEGRAM_SAFE_LIMIT,
   BUTTON_LABEL_MAX_LENGTH,
   CODEX_AVAILABLE,
@@ -37,6 +38,10 @@ import {
   TELEPORT_COMMANDS_ENABLED,
   SUPERTURTLE_REMOTE_MODE,
   SUPERTURTLE_RUNTIME_ROLE,
+  SUPERTURTLE_MANAGED_CLOUD,
+  SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG,
+  SUPERTURTLE_RUNTIME_UPDATE_PACKAGE,
+  SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL,
   SUPERTURTLE_DATA_DIR,
   SUPERTURTLE_SUBTURTLES_DIR,
   getCodexUnavailableReason,
@@ -97,11 +102,44 @@ const TELEPORT_REMOTE_CONTROL_COMMANDS = [
   { command: "pinologs", description: "Show Pino logs" },
   { command: "debug", description: "Show debug state" },
   { command: "restart", description: "Restart the bot" },
+  { command: "update", description: "Update the remote runtime" },
 ] as const;
 const TELEPORT_REMOTE_AGENT_COMMANDS = [
   { command: "stop", description: "Stop current work" },
   ...TELEPORT_REMOTE_CONTROL_COMMANDS,
 ] as const;
+const UPDATE_USAGE_TEXT = "Usage: /update | /update managed-codex | /update superturtle@0.2.9-beta.143.1";
+const SELF_UPDATE_SERVICE_PID_PATH = join(SUPERTURTLE_DATA_DIR, "service.pid");
+const SELF_UPDATE_STALE_MS = 15 * 60 * 1000;
+
+type SelfUpdateState = {
+  status: "pending" | "installing" | "starting" | "succeeded" | "failed";
+  requested_spec: string;
+  current_version: string | null;
+  target_version: string | null;
+  chat_id: number;
+  message_id: number;
+  requested_at: string;
+  completed_at?: string;
+  notified_at?: string;
+  error?: string;
+  helper_pid?: number | null;
+  service_pid?: number | null;
+};
+
+type ParsedSelfUpdateSpec = {
+  installSpec: string;
+  version: string;
+};
+
+type ParsedSelfUpdateRequest =
+  | ({ kind: "exact" } & ParsedSelfUpdateSpec)
+  | { kind: "dist-tag"; distTag: string };
+
+type ResolvedSelfUpdateTarget = ParsedSelfUpdateSpec & {
+  source: "exact" | "dist-tag";
+  distTag?: string;
+};
 
 function getVisibleTelegramCommands(commands: readonly BotCommand[]): readonly BotCommand[] {
   if (TELEPORT_COMMANDS_ENABLED) {
@@ -110,10 +148,27 @@ function getVisibleTelegramCommands(commands: readonly BotCommand[]): readonly B
   return commands.filter((entry) => entry.command !== "teleport" && entry.command !== "home");
 }
 
+function useManagedCloudCommandSurface(
+  runtimeRole: "local" | "teleport-remote",
+  remoteMode: "control" | "agent"
+): boolean {
+  return SUPERTURTLE_MANAGED_CLOUD && runtimeRole === "teleport-remote" && remoteMode === "agent";
+}
+
+function withRemoteUpdateCommand(commands: readonly BotCommand[]): readonly BotCommand[] {
+  if (commands.some((command) => command.command === "update")) {
+    return commands;
+  }
+  return [...commands, TELEPORT_REMOTE_CONTROL_COMMANDS[TELEPORT_REMOTE_CONTROL_COMMANDS.length - 1]!];
+}
+
 export function getTelegramCommandsForRuntime(
   runtimeRole: "local" | "teleport-remote" = SUPERTURTLE_RUNTIME_ROLE,
   remoteMode: "control" | "agent" = SUPERTURTLE_REMOTE_MODE
 ): readonly BotCommand[] {
+  if (useManagedCloudCommandSurface(runtimeRole, remoteMode)) {
+    return getVisibleTelegramCommands(withRemoteUpdateCommand(LOCAL_TELEGRAM_COMMANDS));
+  }
   if (runtimeRole === "teleport-remote") {
     return getVisibleTelegramCommands(
       remoteMode === "agent"
@@ -456,6 +511,204 @@ function atomicWriteText(path: string, content: string): void {
   const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmpPath, content, "utf-8");
   renameSync(tmpPath, path);
+}
+
+export function parseExactSelfUpdateSpec(rawValue: string | undefined): ParsedSelfUpdateSpec | null {
+  if (!rawValue) {
+    return null;
+  }
+  const trimmed = rawValue.trim();
+  const match = /^superturtle@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(trimmed);
+  if (!match?.[1]) {
+    return null;
+  }
+  return {
+    installSpec: trimmed,
+    version: match[1],
+  };
+}
+
+function normalizeSelfUpdateDistTag(rawValue: string | undefined): string | null {
+  if (!rawValue) {
+    return null;
+  }
+  const trimmed = rawValue.trim();
+  return /^[a-z0-9][a-z0-9._-]*$/i.test(trimmed) ? trimmed : null;
+}
+
+export function parseSelfUpdateRequest(
+  rawValue: string | undefined,
+  defaultDistTag: string = SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG
+): ParsedSelfUpdateRequest | null {
+  const exact = parseExactSelfUpdateSpec(rawValue);
+  if (exact) {
+    return { kind: "exact", ...exact };
+  }
+
+  const trimmed = rawValue?.trim() || "";
+  if (!trimmed) {
+    const distTag = normalizeSelfUpdateDistTag(defaultDistTag);
+    return distTag ? { kind: "dist-tag", distTag } : null;
+  }
+
+  const packageTagMatch = /^superturtle@([a-z0-9][a-z0-9._-]*)$/i.exec(trimmed);
+  if (packageTagMatch?.[1]) {
+    return { kind: "dist-tag", distTag: packageTagMatch[1] };
+  }
+
+  const distTag = normalizeSelfUpdateDistTag(trimmed);
+  return distTag ? { kind: "dist-tag", distTag } : null;
+}
+
+async function resolveSelfUpdateTarget(
+  request: ParsedSelfUpdateRequest,
+  options: {
+    fetchImpl?: typeof fetch;
+    registryUrl?: string;
+    packageName?: string;
+  } = {}
+): Promise<ResolvedSelfUpdateTarget> {
+  if (request.kind === "exact") {
+    return {
+      ...request,
+      source: "exact",
+    };
+  }
+
+  const fetchImpl = options.fetchImpl || fetch;
+  const registryUrl = (options.registryUrl || SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL).replace(/\/+$/, "");
+  const packageName = options.packageName || SUPERTURTLE_RUNTIME_UPDATE_PACKAGE;
+  const endpoint = `${registryUrl}/-/package/${encodeURIComponent(packageName)}/dist-tags`;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, { method: "GET" });
+  } catch (error) {
+    throw new Error(
+      `Failed to reach npm registry for dist-tag ${request.distTag}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`npm registry returned HTTP ${response.status} while resolving dist-tag ${request.distTag}.`);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    throw new Error(
+      `npm registry returned invalid JSON while resolving dist-tag ${request.distTag}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const version =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)[request.distTag]
+      : null;
+  if (typeof version !== "string" || !version.trim()) {
+    throw new Error(`npm dist-tag ${request.distTag} is not published for ${packageName}.`);
+  }
+
+  const installSpec = `${packageName}@${version.trim()}`;
+  const exact = parseExactSelfUpdateSpec(installSpec);
+  if (!exact) {
+    throw new Error(`npm dist-tag ${request.distTag} resolved to unsupported spec ${installSpec}.`);
+  }
+
+  return {
+    ...exact,
+    source: "dist-tag",
+    distTag: request.distTag,
+  };
+}
+
+function getCurrentRuntimeVersion(): string | null {
+  try {
+    const raw = readFileSync(join(BOT_DIR, "..", "package.json"), "utf-8");
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.version === "string" && parsed.version.trim().length > 0
+      ? parsed.version.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSelfUpdateState(): SelfUpdateState | null {
+  if (!existsSync(SELF_UPDATE_STATE_FILE)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(SELF_UPDATE_STATE_FILE, "utf-8"));
+    if (
+      typeof parsed?.status === "string" &&
+      typeof parsed?.requested_spec === "string" &&
+      typeof parsed?.requested_at === "string" &&
+      typeof parsed?.chat_id === "number" &&
+      typeof parsed?.message_id === "number"
+    ) {
+      return parsed as SelfUpdateState;
+    }
+  } catch {}
+  return null;
+}
+
+function writeSelfUpdateState(state: SelfUpdateState): void {
+  atomicWriteText(SELF_UPDATE_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+function isPidRunning(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  const proc = Bun.spawnSync(["kill", "-0", String(pid)], {
+    cwd: WORKING_DIR,
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  return proc.exitCode === 0;
+}
+
+function isSelfUpdateInProgress(state: SelfUpdateState | null, nowMs: number = Date.now()): boolean {
+  if (!state) {
+    return false;
+  }
+  if (!["pending", "installing", "starting"].includes(state.status)) {
+    return false;
+  }
+  if (typeof state.helper_pid === "number" && isPidRunning(state.helper_pid)) {
+    return true;
+  }
+  const requestedAtMs = Date.parse(state.requested_at);
+  return Number.isFinite(requestedAtMs) && nowMs - requestedAtMs >= 0 && nowMs - requestedAtMs <= SELF_UPDATE_STALE_MS;
+}
+
+function readServiceRunnerPid(): number | null {
+  if (!existsSync(SELF_UPDATE_SERVICE_PID_PATH)) {
+    return null;
+  }
+  const raw = readFileSync(SELF_UPDATE_SERVICE_PID_PATH, "utf-8").trim();
+  if (!/^\d+$/.test(raw)) {
+    return null;
+  }
+  const pid = Number.parseInt(raw, 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+function readCommandArgumentText(text: string | undefined): string {
+  if (!text) {
+    return "";
+  }
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) {
+    return "";
+  }
+  const firstSpace = trimmed.indexOf(" ");
+  if (firstSpace < 0) {
+    return "";
+  }
+  return trimmed.slice(firstSpace + 1).trim();
 }
 
 function liveSubturtleBoardPath(chatId: number): string {
@@ -2562,6 +2815,148 @@ export async function handleRestart(ctx: Context): Promise<void> {
 
   // Exit current process after replacement is spawned.
   process.exit(0);
+}
+
+/**
+ * /update - Install an exact SuperTurtle package version inside the remote sandbox.
+ */
+export async function handleUpdate(ctx: Context): Promise<void> {
+  const userId = ctx.from?.id;
+  const chatId = ctx.chat?.id;
+
+  if (!isAuthorized(userId, ALLOWED_USERS)) {
+    await ctx.reply("Unauthorized.");
+    return;
+  }
+
+  if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
+    await ctx.reply("ℹ️ Self-update is only supported inside the remote E2B runtime.");
+    return;
+  }
+
+  const request = parseSelfUpdateRequest(readCommandArgumentText(ctx.message?.text));
+  if (!request) {
+    await ctx.reply(
+      `⚠️ ${UPDATE_USAGE_TEXT}\nDefault update channel: ${SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG}.`
+    );
+    return;
+  }
+
+  let resolvedTarget: ResolvedSelfUpdateTarget;
+  try {
+    resolvedTarget = await resolveSelfUpdateTarget(request);
+  } catch (error) {
+    await ctx.reply(
+      `⚠️ Failed to resolve the remote runtime target.\n${error instanceof Error ? error.message : String(error)}`
+    );
+    return;
+  }
+
+  if (isAnyDriverRunning() || isBackgroundRunActive()) {
+    await ctx.reply("⚠️ Stop current work before updating the remote runtime.");
+    return;
+  }
+
+  if (listSubturtles().some((turtle) => turtle.status === "running")) {
+    await ctx.reply("⚠️ Stop running SubTurtles before updating the remote runtime.");
+    return;
+  }
+
+  const existingState = readSelfUpdateState();
+  if (isSelfUpdateInProgress(existingState)) {
+    await ctx.reply(
+      `ℹ️ A runtime update is already in progress${existingState?.requested_spec ? ` (${existingState.requested_spec})` : ""}.`
+    );
+    return;
+  }
+
+  const servicePid = readServiceRunnerPid();
+  if (!servicePid || !isPidRunning(servicePid)) {
+    await ctx.reply("⚠️ Could not find the remote service runner. Try /restart first, then retry /update.");
+    return;
+  }
+
+  const currentVersion = getCurrentRuntimeVersion();
+  if (currentVersion && resolvedTarget.version === currentVersion) {
+    await ctx.reply(
+      resolvedTarget.source === "dist-tag"
+        ? `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec} (current ${resolvedTarget.distTag} target).`
+        : `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec}.`
+    );
+    return;
+  }
+
+  const sourceLine =
+    resolvedTarget.source === "dist-tag"
+      ? `\n• Resolved from npm dist-tag \`${resolvedTarget.distTag}\` to ${resolvedTarget.installSpec}.`
+      : "";
+  const message = await ctx.reply(
+    `⬆️ Updating remote runtime to ${resolvedTarget.installSpec}...${sourceLine}\n• The turtle will restart after the new package is installed.`
+  );
+
+  if (!chatId || !message.message_id) {
+    await ctx.reply("⚠️ Could not persist update state because Telegram did not return message metadata.");
+    return;
+  }
+
+  const updateState: SelfUpdateState = {
+    status: "pending",
+    requested_spec: resolvedTarget.installSpec,
+    current_version: currentVersion,
+    target_version: resolvedTarget.version,
+    chat_id: chatId,
+    message_id: message.message_id,
+    requested_at: nowIso(),
+    service_pid: servicePid,
+    helper_pid: null,
+  };
+  writeSelfUpdateState(updateState);
+
+  const nodeExec = Bun.which("node") || process.execPath;
+  const helperScriptPath = join(BOT_DIR, "..", "bin", "superturtle.js");
+
+  try {
+    const helper = Bun.spawn(
+      [
+        nodeExec,
+        helperScriptPath,
+        "service",
+        "self-update-runner",
+        "--cwd",
+        WORKING_DIR,
+        "--spec",
+        resolvedTarget.installSpec,
+      ],
+      {
+        cwd: WORKING_DIR,
+        env: {
+          ...process.env,
+          CLAUDE_WORKING_DIR: WORKING_DIR,
+          SUPER_TURTLE_DIR: join(BOT_DIR, ".."),
+        },
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: true,
+      }
+    );
+    helper.unref();
+    writeSelfUpdateState({
+      ...updateState,
+      helper_pid: typeof helper.pid === "number" ? helper.pid : null,
+    });
+  } catch (error) {
+    writeSelfUpdateState({
+      ...updateState,
+      status: "failed",
+      completed_at: nowIso(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await ctx.reply("⚠️ Failed to launch the runtime updater. The current bot process is still running.");
+    return;
+  }
+
+  await Bun.sleep(500);
 }
 
 

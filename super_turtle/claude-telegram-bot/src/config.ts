@@ -75,6 +75,12 @@ export const SUPER_TURTLE_DIR = process.env.SUPER_TURTLE_DIR
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 export const E2B_API_KEY = process.env.E2B_API_KEY || "";
 export const TELEPORT_COMMANDS_ENABLED = E2B_API_KEY.trim().length > 0;
+export const SUPERTURTLE_MANAGED_CLOUD =
+  process.env.SUPERTURTLE_MANAGED_CLOUD?.trim().toLowerCase() === "true";
+export const SUPERTURTLE_RUNTIME_UPDATE_PACKAGE =
+  process.env.SUPERTURTLE_RUNTIME_UPDATE_PACKAGE?.trim() || "superturtle";
+export const SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL =
+  process.env.SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL?.trim() || "https://registry.npmjs.org";
 
 export type ClaudeEffortLevel = "low" | "medium" | "high";
 export type CodexEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -173,6 +179,23 @@ export const SUPERTURTLE_REMOTE_MODE: SuperTurtleRemoteMode = (() => {
     `Invalid SUPERTURTLE_REMOTE_MODE="${value}". Falling back to "control".`
   );
   return "control";
+})();
+export const SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = (() => {
+  const explicit = process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const templateChannel = process.env.SUPERTURTLE_E2B_TEMPLATE_CHANNEL?.trim();
+  if (templateChannel) {
+    return templateChannel;
+  }
+
+  if (SUPERTURTLE_RUNTIME_ROLE === "teleport-remote") {
+    return "managed-codex";
+  }
+
+  return "latest";
 })();
 
 function migrateLegacyRuntimeLayout(projectRoot: string): void {
@@ -541,6 +564,7 @@ export const RATE_LIMIT_WINDOW = parseInt(
 
 export const SESSION_FILE = `/tmp/claude-telegram-${TOKEN_PREFIX}-session.json`;
 export const RESTART_FILE = `/tmp/claude-telegram-${TOKEN_PREFIX}-restart.json`;
+export const SELF_UPDATE_STATE_FILE = `${SUPERTURTLE_DATA_DIR}/self-update.json`;
 export const TEMP_DIR = `/tmp/telegram-bot-${TOKEN_PREFIX}`;
 
 // Temp paths that are always allowed for bot operations.

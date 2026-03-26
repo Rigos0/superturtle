@@ -70,6 +70,7 @@ export const TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS = new Set([
   "pinologs",
   "debug",
   "restart",
+  "update",
 ]);
 export const TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS = new Set([
   "home",
@@ -79,6 +80,7 @@ export const TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS = new Set([
   "debug",
   "restart",
   "stop",
+  "update",
 ]);
 
 export function isTeleportRemoteRuntime(): boolean {
