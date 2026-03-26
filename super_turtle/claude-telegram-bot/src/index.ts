@@ -1191,7 +1191,7 @@ if (deferRemoteStartupTasks) {
 
 if (
   SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote" &&
-  process.env.TURTLE_GREETINGS !== "false" &&
+  process.env.TURTLE_GREETINGS === "true" &&
   getPrimaryTelegramTarget()
 ) {
   startTurtleGreetings(bot, () => getPrimaryTelegramTarget()?.chatId ?? null);
