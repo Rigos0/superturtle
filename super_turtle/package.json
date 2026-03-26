@@ -1,6 +1,6 @@
 {
   "name": "superturtle",
-  "version": "0.2.9-beta.1774479379.1",
+  "version": "0.2.9-beta.1774484629.1",
   "description": "Code from anywhere with your voice. Autonomous coding system controlled from Telegram.",
   "scripts": {
     "e2b:template:build": "node teleport/e2b-template/build.mjs",
