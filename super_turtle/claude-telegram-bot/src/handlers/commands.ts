@@ -684,6 +684,88 @@ function readServiceRunnerPid(): number | null {
   return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
+type ProcessInfo = {
+  pid: number;
+  ppid: number;
+  command: string;
+};
+
+function readProcessInfo(pid: number): ProcessInfo | null {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return null;
+  }
+
+  const proc = Bun.spawnSync(["ps", "-o", "ppid=", "-o", "command=", "-p", String(pid)], {
+    cwd: WORKING_DIR,
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  if (proc.exitCode !== 0) {
+    return null;
+  }
+
+  const output = proc.stdout.toString().trim();
+  if (!output) {
+    return null;
+  }
+
+  const match = output.match(/^(\d+)\s+(.*)$/s);
+  if (!match) {
+    return null;
+  }
+
+  const ppid = Number.parseInt(match[1] ?? "", 10);
+  if (!Number.isInteger(ppid) || ppid < 0) {
+    return null;
+  }
+
+  return {
+    pid,
+    ppid,
+    command: (match[2] ?? "").trim(),
+  };
+}
+
+function isServiceRunnerCommand(command: string): boolean {
+  if (!command) {
+    return false;
+  }
+
+  const normalized = command.toLowerCase();
+  return (
+    normalized.includes(" service run") &&
+    (normalized.includes("superturtle") || normalized.includes("superturtle.js"))
+  );
+}
+
+function findAncestorServiceRunnerPid(startPid: number = process.pid): number | null {
+  let currentPid = startPid;
+
+  for (let depth = 0; depth < 12; depth += 1) {
+    const info = readProcessInfo(currentPid);
+    if (!info) {
+      return null;
+    }
+    if (isServiceRunnerCommand(info.command) && isPidRunning(info.pid)) {
+      return info.pid;
+    }
+    if (!Number.isInteger(info.ppid) || info.ppid <= 1 || info.ppid === currentPid) {
+      return null;
+    }
+    currentPid = info.ppid;
+  }
+
+  return null;
+}
+
+function discoverServiceRunnerPid(): number | null {
+  const fromPidFile = readServiceRunnerPid();
+  if (fromPidFile && isPidRunning(fromPidFile)) {
+    return fromPidFile;
+  }
+  return findAncestorServiceRunnerPid();
+}
+
 function readCommandArgumentText(text: string | undefined): string {
   if (!text) {
     return "";
@@ -2589,8 +2671,8 @@ export async function handleUpdate(ctx: Context): Promise<void> {
     return;
   }
 
-  const servicePid = readServiceRunnerPid();
-  if (!servicePid || !isPidRunning(servicePid)) {
+  const servicePid = discoverServiceRunnerPid();
+  if (!servicePid) {
     await ctx.reply("⚠️ Could not find the remote service runner. Try /restart first, then retry /update.");
     return;
   }

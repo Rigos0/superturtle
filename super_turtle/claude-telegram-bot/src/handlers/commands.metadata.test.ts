@@ -61,7 +61,7 @@ describe("TELEGRAM_COMMANDS", () => {
     });
     const names = TELEGRAM_COMMANDS.map((entry: { command: string }) => entry.command);
 
-    expect(names).toEqual(["stop", "debug", "restart"]);
+    expect(names).toEqual(["stop", "debug", "restart", "update"]);
   });
 
   it("uses the full local command set for managed cloud agent runtimes", async () => {
@@ -82,6 +82,7 @@ describe("TELEGRAM_COMMANDS", () => {
       "cron",
       "debug",
       "restart",
+      "update",
     ]);
   });
 });

@@ -168,20 +168,7 @@ async function sendGreeting(bot: Bot, chatId: number, definition: GreetingDefini
 
   try {
     const stickerCode = pickRandom(definition.stickerCodes);
-    const stickerUrl = TURTLE_COMBOS[stickerCode];
-
-    if (!stickerUrl) {
-      throw new Error(`No turtle sticker URL found for code ${stickerCode}`);
-    }
-
-    const response = await fetch(stickerUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to download turtle sticker (${response.status})`);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const sticker = new InputFile(buffer, "turtle.webp");
-    await bot.api.sendSticker(chatId, sticker);
+    await sendTurtleSticker(bot, chatId, stickerCode);
   } catch (error) {
     botLog.warn({ err: error, greetingType: definition.type, chatId }, "Turtle greeting sticker send failed");
   }
@@ -191,6 +178,22 @@ async function sendGreeting(bot: Bot, chatId: number, definition: GreetingDefini
   } catch (error) {
     botLog.warn({ err: error, greetingType: definition.type, chatId }, "Turtle greeting message send failed");
   }
+}
+
+export async function sendTurtleSticker(bot: Bot, chatId: number, stickerCode = "1f422"): Promise<void> {
+  const stickerUrl = TURTLE_COMBOS[stickerCode];
+  if (!stickerUrl) {
+    throw new Error(`No turtle sticker URL found for code ${stickerCode}`);
+  }
+
+  const response = await fetch(stickerUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download turtle sticker (${response.status})`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const sticker = new InputFile(buffer, "turtle.webp");
+  await bot.api.sendSticker(chatId, sticker);
 }
 
 function scheduleGreeting(

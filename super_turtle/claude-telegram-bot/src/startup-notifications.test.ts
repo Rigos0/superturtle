@@ -68,7 +68,7 @@ describe("startup notifications", () => {
         driver: "codex",
         randomValue: 0,
       })
-    ).toBe("🐢 Turtle process started in /agentic. Driver: Codex. Listening for messages.");
+    ).toBe("🐢 Turtle process started for agentic. Driver: Codex. Listening for messages.");
   });
 
   it("formats a concise startup message for Claude", () => {
@@ -78,7 +78,17 @@ describe("startup notifications", () => {
         driver: "claude",
         randomValue: 0.9999,
       })
-    ).toBe("🐢 Turtle process started in /agentic. Driver: Claude. Ready on the wire.");
+    ).toBe("🐢 Turtle process started for agentic. Driver: Claude. Ready on the wire.");
+  });
+
+  it("omits the project label when no friendly project name should be shown", () => {
+    expect(
+      buildStartupNotificationMessage({
+        projectName: null,
+        driver: "codex",
+        randomValue: 0,
+      })
+    ).toBe("🐢 Turtle process started. Driver: Codex. Listening for messages.");
   });
 
   it("clamps opener selection when the random value is out of range", () => {
@@ -92,13 +102,22 @@ describe("startup notifications", () => {
         projectName: "agentic",
         driver: "codex",
       })
-    ).toContain("Welcome to SuperTurtle in /agentic.");
+    ).toContain("Welcome to SuperTurtle for agentic.");
     expect(
       buildWarmWelcomeMessage({
         projectName: "agentic",
         driver: "codex",
       })
     ).toContain("spin up SubTurtles for longer tasks");
+  });
+
+  it("uses a generic warm welcome when the runtime should not expose the workdir", () => {
+    expect(
+      buildWarmWelcomeMessage({
+        projectName: null,
+        driver: "codex",
+      })
+    ).toContain("Welcome to SuperTurtle.");
   });
 
   it("persists the one-time startup welcome marker", async () => {

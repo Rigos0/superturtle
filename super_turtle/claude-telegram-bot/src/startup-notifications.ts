@@ -155,6 +155,11 @@ function getDriverLabel(driver: DriverId | string): string {
   return driver === "codex" ? "Codex" : "Claude";
 }
 
+function formatProjectContext(projectName?: string | null): string {
+  const normalized = projectName?.trim() || "";
+  return normalized ? ` for ${normalized}` : "";
+}
+
 export function pickStartupNotificationOpener(randomValue = Math.random()): string {
   const normalized = Number.isFinite(randomValue) ? randomValue : 0;
   const index = Math.max(
@@ -168,20 +173,20 @@ export function pickStartupNotificationOpener(randomValue = Math.random()): stri
 }
 
 export function buildStartupNotificationMessage(options: {
-  projectName: string;
+  projectName?: string | null;
   driver: DriverId | string;
   randomValue?: number;
 }): string {
   const opener = pickStartupNotificationOpener(options.randomValue);
-  return `🐢 Turtle process started in /${options.projectName}. Driver: ${getDriverLabel(options.driver)}. ${opener}`;
+  return `🐢 Turtle process started${formatProjectContext(options.projectName)}. Driver: ${getDriverLabel(options.driver)}. ${opener}`;
 }
 
 export function buildWarmWelcomeMessage(options: {
-  projectName: string;
+  projectName?: string | null;
   driver: DriverId | string;
 }): string {
   return [
-    `🐢 Welcome to SuperTurtle in /${options.projectName}.`,
+    `🐢 Welcome to SuperTurtle${formatProjectContext(options.projectName)}.`,
     `I’m online with ${getDriverLabel(options.driver)} and ready to work from Telegram.`,
     "",
     "What I can do:",
