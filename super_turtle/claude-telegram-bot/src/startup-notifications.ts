@@ -1,3 +1,13 @@
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
+import { dirname } from "path";
+import { SUPERTURTLE_DATA_DIR, TOKEN_PREFIX } from "./config";
 import type { DriverId } from "./drivers/types";
 
 export const STARTUP_NOTIFICATION_OPENERS = [
@@ -33,6 +43,114 @@ export const STARTUP_NOTIFICATION_OPENERS = [
   "Ready on the wire.",
 ] as const;
 
+const STARTUP_WELCOME_SCHEMA_VERSION = 1;
+
+export const STARTUP_WELCOME_STATE_PATH = `${SUPERTURTLE_DATA_DIR}/startup-welcome.json`;
+
+export interface StartupWelcomeRecord {
+  schema_version: number;
+  bot_token_prefix: string;
+  sent_at: string;
+  chat_id: number;
+  user_id: number | null;
+}
+
+let cachedStartupWelcome: StartupWelcomeRecord | null | undefined;
+
+function isFiniteInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value);
+}
+
+function parseStartupWelcomeRecord(raw: unknown): StartupWelcomeRecord | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  if (record.schema_version !== STARTUP_WELCOME_SCHEMA_VERSION) {
+    return null;
+  }
+  if (record.bot_token_prefix !== TOKEN_PREFIX) {
+    return null;
+  }
+  if (!isFiniteInteger(record.chat_id)) {
+    return null;
+  }
+  if (record.user_id !== null && !isFiniteInteger(record.user_id)) {
+    return null;
+  }
+  if (typeof record.sent_at !== "string" || !record.sent_at.trim()) {
+    return null;
+  }
+
+  return {
+    schema_version: STARTUP_WELCOME_SCHEMA_VERSION,
+    bot_token_prefix: TOKEN_PREFIX,
+    sent_at: record.sent_at,
+    chat_id: record.chat_id,
+    user_id: record.user_id === null ? null : record.user_id,
+  };
+}
+
+function writeStartupWelcomeRecord(record: StartupWelcomeRecord): void {
+  mkdirSync(dirname(STARTUP_WELCOME_STATE_PATH), { recursive: true });
+  const tempPath = `${STARTUP_WELCOME_STATE_PATH}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
+  renameSync(tempPath, STARTUP_WELCOME_STATE_PATH);
+}
+
+export function clearStartupWelcomeCache(): void {
+  cachedStartupWelcome = undefined;
+}
+
+export function getStartupWelcomeState(): StartupWelcomeRecord | null {
+  if (cachedStartupWelcome !== undefined) {
+    return cachedStartupWelcome;
+  }
+
+  if (!existsSync(STARTUP_WELCOME_STATE_PATH)) {
+    cachedStartupWelcome = null;
+    return cachedStartupWelcome;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(STARTUP_WELCOME_STATE_PATH, "utf-8"));
+    cachedStartupWelcome = parseStartupWelcomeRecord(parsed);
+    return cachedStartupWelcome;
+  } catch {
+    cachedStartupWelcome = null;
+    return cachedStartupWelcome;
+  }
+}
+
+export function hasSentStartupWelcome(): boolean {
+  return getStartupWelcomeState() !== null;
+}
+
+export function markStartupWelcomeSent(
+  chatId: number,
+  userId: number | null,
+  sentAt = new Date().toISOString()
+): StartupWelcomeRecord {
+  const record: StartupWelcomeRecord = {
+    schema_version: STARTUP_WELCOME_SCHEMA_VERSION,
+    bot_token_prefix: TOKEN_PREFIX,
+    sent_at: sentAt,
+    chat_id: chatId,
+    user_id: userId,
+  };
+  writeStartupWelcomeRecord(record);
+  cachedStartupWelcome = record;
+  return record;
+}
+
+export function deleteStartupWelcomeStateForTests(): void {
+  clearStartupWelcomeCache();
+  try {
+    unlinkSync(STARTUP_WELCOME_STATE_PATH);
+  } catch {}
+}
+
 function getDriverLabel(driver: DriverId | string): string {
   return driver === "codex" ? "Codex" : "Claude";
 }
@@ -56,4 +174,22 @@ export function buildStartupNotificationMessage(options: {
 }): string {
   const opener = pickStartupNotificationOpener(options.randomValue);
   return `🐢 Turtle process started in /${options.projectName}. Driver: ${getDriverLabel(options.driver)}. ${opener}`;
+}
+
+export function buildWarmWelcomeMessage(options: {
+  projectName: string;
+  driver: DriverId | string;
+}): string {
+  return [
+    `🐢 Welcome to SuperTurtle in /${options.projectName}.`,
+    `I’m online with ${getDriverLabel(options.driver)} and ready to work from Telegram.`,
+    "",
+    "What I can do:",
+    "• edit code, run commands, debug failures, and explain the repo",
+    "• handle text, voice, screenshots, photos, documents, and audio",
+    "• spin up SubTurtles for longer tasks and report milestones back here",
+    "",
+    "Useful commands: /usage, /switch, /new, /resume, /sub, /stop",
+    "Send a task in plain English and I’ll take it from there.",
+  ].join("\n");
 }

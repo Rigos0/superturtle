@@ -88,7 +88,12 @@ import {
 } from "./conductor-snapshot";
 import { botLog, cronLog, eventLog } from "./logger";
 import { getSequentializationKey } from "./update-sequencing";
-import { buildStartupNotificationMessage } from "./startup-notifications";
+import {
+  buildStartupNotificationMessage,
+  buildWarmWelcomeMessage,
+  hasSentStartupWelcome,
+  markStartupWelcomeSent,
+} from "./startup-notifications";
 import {
   shouldSuppressHandledWebhookConflict,
   startTelegramTransport,
@@ -194,6 +199,11 @@ async function sendStartupNotifications(): Promise<void> {
     return;
   }
 
+  const sentWelcome = await sendWarmWelcomeIfNeeded(target.chatId, target.userId);
+  if (sentWelcome) {
+    return;
+  }
+
   const projectName = basename(WORKING_DIR);
   const text = buildStartupNotificationMessage({
     projectName,
@@ -203,6 +213,27 @@ async function sendStartupNotifications(): Promise<void> {
     await bot.api.sendMessage(target.chatId, text);
   } catch (error) {
     botLog.warn({ err: error, chatId: target.chatId }, "Failed to send startup notification");
+  }
+}
+
+async function sendWarmWelcomeIfNeeded(chatId: number, userId: number | null): Promise<boolean> {
+  if (hasSentStartupWelcome()) {
+    return false;
+  }
+
+  const projectName = basename(WORKING_DIR);
+  const text = buildWarmWelcomeMessage({
+    projectName,
+    driver: session.activeDriver,
+  });
+
+  try {
+    await bot.api.sendMessage(chatId, text);
+    markStartupWelcomeSent(chatId, userId);
+    return true;
+  } catch (error) {
+    botLog.warn({ err: error, chatId }, "Failed to send startup welcome notification");
+    return false;
   }
 }
 
@@ -511,6 +542,7 @@ bot.use(async (ctx, next) => {
         { ownerUserId: owner.owner_user_id, ownerChatId: owner.owner_chat_id },
         "Claimed Telegram owner from first private message"
       );
+      await sendWarmWelcomeIfNeeded(owner.owner_chat_id, owner.owner_user_id);
     }
   }
 

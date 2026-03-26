@@ -126,6 +126,16 @@ For frontend projects, add as first backlog item: "Start dev server + cloudflare
 
 For screenshots: `bash {{SUPER_TURTLE_DIR}}/subturtle/browser-screenshot.sh <url> [output-path]` (Playwright headless, run `--help` for flags).
 
+## Preview tunnels
+
+When the human wants a reachable preview URL, prefer a detached local server plus a detached Cloudflare quick tunnel.
+
+- Default pattern for a static file or simple directory: start `python3 -m http.server <port> --bind 127.0.0.1 --directory <dir>` in the background, then start `cloudflared tunnel --url http://127.0.0.1:<port>` in the background.
+- For frontend apps, prefer `{{SUPER_TURTLE_DIR}}/subturtle/start-tunnel.sh` because it already handles the dev server, cloudflared tunnel, and `.tunnel-url` handoff.
+- Do not use `localhost.run` or any interactive SSH tunnel as the default. Those URLs are often tied to the live terminal process and may die between turns.
+- Before replying with a tunnel URL, verify it yourself with `curl` or equivalent so you know the public link serves the intended content.
+- When you share the link, briefly say how it was started and why it should stay up.
+
 ## Supervision
 
 Every SubTurtle gets silent cron supervision auto-registered by `ctl spawn` (default: 10 minutes). The conductor handles milestone/stuck/completion detection from durable state — you don't need to poll.
