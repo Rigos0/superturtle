@@ -40,6 +40,7 @@
       body {
         margin: 0;
         min-height: 100vh;
+        overflow-x: hidden;
         color: var(--text);
         font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
         background: radial-gradient(
@@ -80,6 +81,11 @@
       a {
         color: inherit;
         text-decoration: none;
+      }
+
+      a:focus-visible {
+        outline: 2px solid var(--glow);
+        outline-offset: 3px;
       }
 
       .page-shell {
@@ -125,14 +131,28 @@
 
       .nav {
         display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: 18px;
         color: var(--muted);
         font-size: 0.95rem;
       }
 
+      .nav a {
+        padding: 8px 12px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        transition:
+          border-color 160ms ease,
+          color 160ms ease,
+          background-color 160ms ease;
+      }
+
       .nav a:hover,
       .nav a:focus-visible {
         color: var(--text);
+        border-color: var(--line);
+        background: rgba(255, 255, 255, 0.04);
       }
 
       .hero,
@@ -221,6 +241,37 @@
         max-width: 42rem;
         margin: 20px 0 0;
         font-size: clamp(1.05rem, 2vw, 1.2rem);
+      }
+
+      .hero-highlights {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin: 28px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .highlight-item {
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .highlight-label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.82rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .highlight-value {
+        display: block;
+        margin-top: 8px;
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        font-size: 1.05rem;
       }
 
       .hero-actions {
@@ -375,6 +426,9 @@
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 24px;
         background: var(--line);
       }
 
@@ -549,21 +603,23 @@
           align-items: flex-start;
         }
 
+        .topbar {
+          border-radius: 28px;
+        }
+
         .hero,
-        .proof-grid,
-        .product-grid,
-        .steps-grid,
-        .pricing-grid,
         .cta-card {
           grid-template-columns: 1fr;
         }
 
-        .metric-grid {
-          grid-template-columns: 1fr;
+        .proof-grid,
+        .steps-grid,
+        .pricing-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .nav {
-          display: none;
+        .pricing-card.featured {
+          grid-column: span 2;
         }
       }
 
@@ -588,6 +644,67 @@
         h1 {
           max-width: none;
           font-size: clamp(2.8rem, 16vw, 4.3rem);
+        }
+
+        .topbar {
+          padding: 16px 18px;
+        }
+
+        .nav {
+          gap: 10px;
+          font-size: 0.88rem;
+        }
+
+        .nav a {
+          padding: 7px 10px;
+        }
+
+        .hero-highlights,
+        .proof-grid,
+        .product-grid,
+        .steps-grid,
+        .pricing-grid,
+        .metric-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-actions {
+          flex-direction: column;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .pricing-card.featured {
+          grid-column: auto;
+        }
+
+        .cta-card {
+          text-align: left;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .eyebrow::before,
+        .section-label::before {
+          width: 22px;
+        }
+
+        .mesh {
+          min-height: 210px;
+        }
+
+        .node {
+          font-size: 0.78rem;
+        }
+
+        .node-edge {
+          right: 12px;
+        }
+
+        .node-data {
+          left: 22%;
         }
       }
     </style>
@@ -619,6 +736,26 @@
               from repo to production that does not disappear under platform
               overhead.
             </p>
+            <ul class="hero-highlights" aria-label="Platform operating posture">
+              <li class="highlight-item">
+                <span class="highlight-label">Repo to edge</span>
+                <span class="highlight-value"
+                  >Preview environments in a single control plane</span
+                >
+              </li>
+              <li class="highlight-item">
+                <span class="highlight-label">Regional core</span>
+                <span class="highlight-value"
+                  >State, networking, and compute aligned by default</span
+                >
+              </li>
+              <li class="highlight-item">
+                <span class="highlight-label">Spend shape</span>
+                <span class="highlight-value"
+                  >Pricing stays legible before usage spikes arrive</span
+                >
+              </li>
+            </ul>
             <div class="hero-actions">
               <a class="button button-primary" href="#pricing"
                 >Request launch access</a
