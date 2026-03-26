@@ -37,6 +37,7 @@ import {
   TELEPORT_COMMANDS_ENABLED,
   SUPERTURTLE_REMOTE_MODE,
   SUPERTURTLE_RUNTIME_ROLE,
+  SUPERTURTLE_MANAGED_CLOUD,
   SUPERTURTLE_DATA_DIR,
   SUPERTURTLE_SUBTURTLES_DIR,
   getCodexUnavailableReason,
@@ -102,10 +103,20 @@ function getVisibleTelegramCommands(commands: readonly BotCommand[]): readonly B
   return commands;
 }
 
+function useManagedCloudCommandSurface(
+  runtimeRole: "local" | "teleport-remote",
+  remoteMode: "control" | "agent"
+): boolean {
+  return SUPERTURTLE_MANAGED_CLOUD && runtimeRole === "teleport-remote" && remoteMode === "agent";
+}
+
 export function getTelegramCommandsForRuntime(
   runtimeRole: "local" | "teleport-remote" = SUPERTURTLE_RUNTIME_ROLE,
   remoteMode: "control" | "agent" = SUPERTURTLE_REMOTE_MODE
 ): readonly BotCommand[] {
+  if (useManagedCloudCommandSurface(runtimeRole, remoteMode)) {
+    return getVisibleTelegramCommands(LOCAL_TELEGRAM_COMMANDS);
+  }
   if (runtimeRole === "teleport-remote") {
     return getVisibleTelegramCommands(
       remoteMode === "agent"
@@ -2230,6 +2241,7 @@ export async function handleRestart(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
   const inRunLoop = process.env.SUPERTURTLE_RUN_LOOP === "1";
+  const inWebhookMode = (process.env.TELEGRAM_TRANSPORT || "").trim().toLowerCase() === "webhook";
 
   if (!isAuthorized(userId, ALLOWED_USERS)) {
     await ctx.reply("Unauthorized.");
@@ -2269,6 +2281,13 @@ export async function handleRestart(ctx: Context): Promise<void> {
       detached: true,
     });
     child.unref();
+  }
+
+  if (inWebhookMode) {
+    setTimeout(() => {
+      process.exit(0);
+    }, 0);
+    return;
   }
 
   // Exit current process after replacement is spawned.

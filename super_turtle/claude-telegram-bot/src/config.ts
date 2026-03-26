@@ -75,6 +75,8 @@ export const SUPER_TURTLE_DIR = process.env.SUPER_TURTLE_DIR
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 export const E2B_API_KEY = process.env.E2B_API_KEY || "";
 export const TELEPORT_COMMANDS_ENABLED = E2B_API_KEY.trim().length > 0;
+export const SUPERTURTLE_MANAGED_CLOUD =
+  process.env.SUPERTURTLE_MANAGED_CLOUD?.trim().toLowerCase() === "true";
 
 export type ClaudeEffortLevel = "low" | "medium" | "high";
 export type CodexEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";

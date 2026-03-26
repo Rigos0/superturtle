@@ -43,8 +43,12 @@ import {
   handleVideo,
   handleCallback,
 } from "./handlers";
-import { resetAllDriverSessions, syncLiveSubturtleBoard } from "./handlers/commands";
-import { TELEGRAM_COMMANDS } from "./handlers/commands";
+import {
+  getTelegramCommandsForRuntime,
+  resetAllDriverSessions,
+  syncLiveSubturtleBoard,
+  TELEGRAM_COMMANDS,
+} from "./handlers/commands";
 import { enqueueBusyDeferredCronJob, pruneQueuedDueCronJobIds } from "./cron-deferred-queue";
 import { drainDeferredQueue, isCronJobQueued } from "./deferred-queue";
 import { session } from "./session";
@@ -97,8 +101,6 @@ import {
   isTeleportRemoteControlMode,
   loadTeleportStateForCurrentProject,
   reconcileTeleportOwnershipForCurrentProject,
-  TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS,
-  TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS,
 } from "./teleport";
 import {
   claimTelegramOwnerIfUnclaimed,
@@ -623,9 +625,10 @@ bot.use(async (ctx, next) => {
     return;
   }
 
-  const allowedCommands = isTeleportRemoteAgentMode()
-    ? TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS
-    : TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS;
+  const allowedCommands = new Set(
+    getTelegramCommandsForRuntime("teleport-remote", isTeleportRemoteAgentMode() ? "agent" : "control")
+      .map(({ command }) => command)
+  );
 
   if (!allowedCommands.has(commandName)) {
     await ctx.reply(getTeleportRemoteUnsupportedMessage());

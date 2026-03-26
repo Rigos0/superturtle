@@ -17,6 +17,7 @@ type RestartProbePayload = {
   } | null;
   unrefCalled: boolean;
   exitCode: number | null;
+  timerScheduled: boolean;
 };
 
 type RestartProbeResult = {
@@ -26,13 +27,14 @@ type RestartProbeResult = {
   payload: RestartProbePayload | null;
 };
 
-async function probeRestart(): Promise<RestartProbeResult> {
+async function probeRestart(options: { transport?: "polling" | "webhook" } = {}): Promise<RestartProbeResult> {
   const env: Record<string, string> = {
     ...process.env,
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
     CLAUDE_WORKING_DIR: process.cwd(),
     SUPERTURTLE_RUN_LOOP: "0",
+    TELEGRAM_TRANSPORT: options.transport || "polling",
   };
 
   const script = `
@@ -45,6 +47,7 @@ async function probeRestart(): Promise<RestartProbeResult> {
     let spawnOpts = null;
     let unrefCalled = false;
     let exitCode = null;
+    let timerScheduled = false;
 
     Bun.write = async (path, data) => {
       writes.push({ path: String(path), data: String(data) });
@@ -52,6 +55,12 @@ async function probeRestart(): Promise<RestartProbeResult> {
     };
 
     Bun.sleep = async () => {};
+
+    globalThis.setTimeout = (fn) => {
+      timerScheduled = true;
+      fn();
+      return 1;
+    };
 
     Bun.spawn = (cmd, opts) => {
       spawnCmd = Array.isArray(cmd) ? cmd.map((part) => String(part)) : [String(cmd)];
@@ -94,6 +103,7 @@ async function probeRestart(): Promise<RestartProbeResult> {
       spawnOpts,
       unrefCalled,
       exitCode,
+      timerScheduled,
     }));
   `;
 
@@ -145,6 +155,21 @@ describe("/restart self-reexec", () => {
     expect(result.payload?.spawnOpts?.stderr).toBe("ignore");
     expect(result.payload?.spawnOpts?.cwd?.endsWith("/claude-telegram-bot")).toBe(true);
     expect(result.payload?.unrefCalled).toBe(true);
+    expect(result.payload?.exitCode).toBe(0);
+    expect(result.payload?.timerScheduled).toBe(false);
+  });
+
+  it("defers exit through a timer in webhook mode so the update can be acknowledged first", async () => {
+    const result = await probeRestart({ transport: "webhook" });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Restart probe failed:\n${result.stderr || result.stdout}`);
+    }
+
+    expect(result.payload).not.toBeNull();
+    expect(result.payload?.replies).toEqual(["🔄 Restarting bot..."]);
+    expect(result.payload?.spawnCmd.length).toBeGreaterThan(0);
+    expect(result.payload?.timerScheduled).toBe(true);
     expect(result.payload?.exitCode).toBe(0);
   });
 });
