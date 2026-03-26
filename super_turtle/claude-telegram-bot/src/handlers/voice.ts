@@ -35,6 +35,8 @@ import {
 import { consumeHandledStopReply, handleStop } from "./stop";
 import { eventLog, streamLog } from "../logger";
 import { isTeleportRemoteRuntime, getTeleportRemoteUnsupportedMessage } from "../teleport";
+import { consumePendingDocuments, peekPendingDocuments } from "../pending-document-inputs";
+import { processPendingDocumentBatch } from "./document";
 
 const voiceLog = streamLog.child({ handler: "voice" });
 
@@ -161,6 +163,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
 
     // Clear drain suppression so this message's finally block can drain normally.
     unsuppressDrain(chatId);
+    const hasPendingDocuments = Boolean(peekPendingDocuments(chatId));
 
     // 10. If agent is already answering, queue transcript to run after completion.
     if (isBackgroundRunActive()) {
@@ -179,6 +182,22 @@ export async function handleVoice(ctx: Context): Promise<void> {
         `📝 Queued (#${queueSize}). I will run this once the current answer finishes.`
       );
       return;
+    }
+
+    if (hasPendingDocuments) {
+      const pendingDocuments = consumePendingDocuments(chatId);
+      if (pendingDocuments) {
+        await processPendingDocumentBatch(
+          ctx,
+          pendingDocuments,
+          transcript,
+          userId,
+          username,
+          chatId,
+          requestId
+        );
+        return;
+      }
     }
 
     // 10b. NOW mark processing started — after the queue check so our own flag
