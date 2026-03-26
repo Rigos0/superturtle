@@ -80,10 +80,161 @@ Keel wins by removing cluster design, day-two operations, and platform assembly 
 The sections below are intentionally left for later backlog items in this spec.
 
 ### MVP Services
-Pending
+Keel Cloud's MVP should feel like a complete application platform, not a loose menu of infrastructure parts. The initial surface area should stay narrow enough that every service shares the same deployment model, networking model, access controls, observability, and billing language.
+
+#### 1. App Services
+Long-running HTTP and gRPC services are the center of the platform.
+
+Scope:
+- Container-based deploys from Git or OCI images
+- Autoscaling based on concurrency and CPU thresholds
+- Rolling deploys with health checks and fast rollback
+- Environment promotion across dev, staging, and production
+- Built-in service metrics, logs, and deploy history
+
+Default opinion:
+- Every service gets a stable private address and optional public ingress
+- HTTPS, health checks, and zero-downtime rollout behavior are on by default
+- Runtime configuration is managed through first-party secrets and environment settings
+
+#### 2. Jobs and Workers
+The platform must support asynchronous application workloads without forcing teams into a separate infrastructure stack.
+
+Scope:
+- On-demand jobs for one-off or scheduled execution
+- Always-on worker processes for queue consumers and background processors
+- Cron scheduling with retry policy, timeout, and run history
+- Shared build and deploy model with App Services
+
+Default opinion:
+- Jobs inherit the same network, identity, and secrets model as services
+- Teams should not manage separate VM pools or bespoke schedulers
+
+#### 3. Managed Postgres
+Postgres is the default system of record for the target customer and should be a first-class product, not an add-on.
+
+Scope:
+- Provisioned Postgres instances sized for development and production
+- Automated backups, point-in-time recovery window, and upgrade management
+- Private connectivity from Keel services by default
+- Read replicas and advanced tuning are explicitly out of MVP scope unless they are required for baseline reliability
+
+Default opinion:
+- Sensible presets should cover most workloads without exposing every engine flag
+- Database creation, credentials, and rotation should fit the same workflow as the rest of the platform
+
+#### 4. Managed Redis
+Redis covers the most common caching, rate-limiting, and queue-backed app patterns.
+
+Scope:
+- Single-endpoint managed Redis for cache and ephemeral coordination use cases
+- Private-only connectivity from Keel workloads
+- Basic persistence and restart handling appropriate for app-platform usage
+
+Default opinion:
+- Position Redis as a performance and coordination primitive, not a primary database
+- Keep configuration limited to the handful of choices customers can reason about
+
+#### 5. Object Storage
+Applications need a simple place for file uploads, generated artifacts, and model inputs/outputs.
+
+Scope:
+- S3-compatible object storage buckets
+- Signed URL support
+- Lifecycle retention policies for common storage classes
+- Service-level access policies integrated with Keel identity
+
+Default opinion:
+- Buckets are project-scoped, private by default, and exposed publicly only through explicit configuration
+
+#### 6. Networking and Edge Ingress
+Networking is part of the product surface because customers experience it directly when they connect services together.
+
+Scope:
+- Project-scoped private service network
+- Public HTTP ingress with managed TLS and custom domains
+- Internal service-to-service discovery by stable name
+- Environment isolation between dev, staging, and production
+
+Default opinion:
+- No customer-managed VPC design in MVP
+- No manual load balancer assembly
+- Public exposure should be an exception applied at the service boundary, not the default state of the network
+
+#### 7. Platform Fundamentals Included in MVP
+These are not separate SKUs, but they are required to make the platform coherent.
+
+Included capabilities:
+- Secrets and configuration management
+- Centralized logs, metrics, and basic alerting
+- Identity, RBAC, audit trail, and project/environment permissions
+- Usage-aware billing visibility by project and service
+- CLI, API, and web console for the same core workflows
+
+#### Explicit MVP Non-Goals
+The first release should not attempt to match hyperscaler breadth.
+
+Out of scope:
+- General-purpose virtual machines
+- Customer-managed Kubernetes clusters
+- GPU inference and training infrastructure
+- Data warehouse, stream processing, or event bus products
+- Multi-region active-active architectures
+- Deep enterprise compliance and policy customization beyond basic auditability and access control
 
 ### Architecture Principles
-Pending
+Keel Cloud should behave like one product with a consistent control plane, not a collection of separately acquired services. The architecture needs to preserve that coherence even when it limits flexibility.
+
+#### Opinionated by Default, Extensible at the Edges
+The system should encode recommended patterns for deployment, networking, security, and operations. Customer choice should exist where it materially affects application outcomes, but the platform should avoid exposing low-level options that mainly create configuration debt.
+
+Implication:
+- Favor presets, guardrails, and constrained configuration surfaces over raw infrastructure knobs
+
+#### Application-Centric Resource Model
+Users should think in terms of projects, environments, services, jobs, databases, caches, and buckets rather than subnets, instances, and load balancers.
+
+Implication:
+- The control plane API, console, and CLI should share a single top-level resource model aligned to how teams ship software
+
+#### Secure by Construction
+Private networking, encrypted transport, secret isolation, and least-privilege access should be baseline behaviors rather than optional hardening steps.
+
+Implication:
+- New resources default to private reachability and explicit exposure rules
+- Identity between platform components should be first-party, short-lived where possible, and auditable
+
+#### Consistent Day-Two Operations
+Every MVP service should inherit the same operational patterns for deploys, logs, metrics, access control, backups where applicable, and incident investigation.
+
+Implication:
+- Customers should not have to learn a different operational interface for each service category
+
+#### Strong Environment Boundaries
+Development, staging, and production must be treated as first-class isolated environments with predictable promotion paths.
+
+Implication:
+- Cross-environment access should be explicit and rare
+- Promotion workflows should prefer immutable artifacts and configuration diffs over manual recreation
+
+#### Managed Control Plane, Boring Data Plane
+Keel can differentiate through product experience and control-plane intelligence while relying on proven underlying infrastructure patterns in the data plane.
+
+Implication:
+- Prefer mature open standards and commodity building blocks underneath a tightly integrated user experience
+- Avoid novel infrastructure designs that raise operational risk without clear user benefit
+
+#### Progressive Escape Hatches
+The MVP should not pretend every team can live inside a sealed box forever. It should provide a narrow path to integrate with external systems without undermining the default platform model.
+
+Implication:
+- Support outbound connectivity, image-based deploys, API automation, and object-storage compatibility before adding raw infrastructure products
+
+#### Reliability Over Breadth
+Keel should add new services only when it can make them feel operationally complete. A smaller, dependable surface is strategically better than a larger, inconsistent one.
+
+Implication:
+- The architecture roadmap should prioritize shared platform capabilities before expanding the service catalog
 
 ### Pricing Philosophy
 Pending
