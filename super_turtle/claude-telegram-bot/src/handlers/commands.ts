@@ -288,13 +288,18 @@ export function getSettingsOverviewLines(): string[] {
   return [`Codex 🟢 · ${escapeHtml(codexSession.model)} | ${escapeHtml(codexSession.reasoningEffort)}`];
 }
 
-export async function buildSessionOverviewLines(title: string): Promise<string[]> {
+export async function buildSessionOverviewLines(
+  title: string,
+  options: { includeUsage?: boolean } = {}
+): Promise<string[]> {
   const lines: string[] = [`<b>${title}</b>\n`, ...getSettingsOverviewLines(), ""];
-  const isSyntheticTestRuntime = (process.env.TELEGRAM_BOT_TOKEN || "") === "test-token";
-  const codexQuotaLines = isSyntheticTestRuntime || !CODEX_ENABLED
-    ? []
-    : await getCodexQuotaLines();
-  lines.push(formatUnifiedUsage([], codexQuotaLines, CODEX_ENABLED), "");
+  if (options.includeUsage !== false) {
+    const isSyntheticTestRuntime = (process.env.TELEGRAM_BOT_TOKEN || "") === "test-token";
+    const codexQuotaLines = isSyntheticTestRuntime || !CODEX_ENABLED
+      ? []
+      : await getCodexQuotaLines();
+    lines.push(formatUnifiedUsage([], codexQuotaLines, CODEX_ENABLED), "");
+  }
   return lines;
 }
 
@@ -1011,7 +1016,7 @@ export async function getSubTurtleElapsed(name: string): Promise<string> {
 }
 
 /**
- * /new - Start a fresh session with model info and usage.
+ * /new - Start a fresh session without waiting on usage fetches.
  */
 export async function handleNew(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -1023,7 +1028,9 @@ export async function handleNew(ctx: Context): Promise<void> {
 
   await resetAllDriverSessions({ stopRunning: true });
 
-  const lines = await buildSessionOverviewLines("New session");
+  const lines = await buildSessionOverviewLines("New chat started", {
+    includeUsage: false,
+  });
 
   await ctx.reply(lines.join("\n"), { parse_mode: "HTML" });
 }

@@ -911,6 +911,7 @@ describe("handlers with mock Context", () => {
     let stopTypingCalls = 0;
     let sessionKillCalls = 0;
     let codexKillCalls = 0;
+    let fetchCalls = 0;
 
     session.stopTyping = () => {
       stopTypingCalls += 1;
@@ -923,7 +924,10 @@ describe("handlers with mock Context", () => {
     }) as typeof codexSession.kill;
 
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      return new Response("{}", { status: 404 });
+    }) as unknown as typeof fetch;
     const restoreSpawnSync = mockClaudeCredentialLookupFailure();
 
     const { ctx, replies } = mockContext("/new");
@@ -936,9 +940,11 @@ describe("handlers with mock Context", () => {
 
     expect(replies).toHaveLength(1);
     expect(replies[0]!.extra?.parse_mode).toBe("HTML");
-    expect(replies[0]!.text).toContain("<b>New session</b>");
+    expect(replies[0]!.text).toContain("<b>New chat started</b>");
     expect(replies[0]!.text).not.toContain("<b>Commands:</b>");
     expect(replies[0]!.text).not.toContain("/new - Fresh session");
+    expect(replies[0]!.text).not.toContain("Usage");
+    expect(fetchCalls).toBe(0);
     expect(stopTypingCalls).toBe(1);
     expect(sessionKillCalls).toBe(1);
     expect(codexKillCalls).toBe(1);
