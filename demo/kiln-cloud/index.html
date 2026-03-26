@@ -608,17 +608,16 @@
       </header>
 
       <main>
-        <!-- Initial concept pass: the layout and visual system are established here,
-             with tighter messaging reserved for a later writing-focused iteration. -->
         <section class="hero" id="top">
           <div class="hero-copy">
-            <span class="eyebrow">Developer cloud launch concept</span>
-            <h1>Infrastructure that ships with less drag.</h1>
+            <span class="eyebrow">Developer cloud for lean platform teams</span>
+            <h1>Ship globally without inheriting hyperscaler sprawl.</h1>
             <p>
-              Kiln Cloud is framed as a leaner AWS alternative: fewer
-              control-plane steps, opinionated global primitives, and a visual
-              language built around forged metal, signal paths, and launch
-              readiness.
+              Kiln Cloud gives product teams a tighter operating surface for
+              containers, stateful services, edge delivery, and rollout
+              control. You get regional power, predictable pricing, and a path
+              from repo to production that does not disappear under platform
+              overhead.
             </p>
             <div class="hero-actions">
               <a class="button button-primary" href="#pricing"
@@ -647,21 +646,17 @@
 
             <div class="metric-grid" aria-label="Positioning snapshots">
               <div class="metric">
-                <div class="metric-value">&lt;5m</div>
-                <div class="metric-label">
-                  Path from repo connect to live region
-                </div>
+                <div class="metric-value">10m</div>
+                <div class="metric-label">From first import to live preview</div>
               </div>
               <div class="metric">
-                <div class="metric-value">3</div>
-                <div class="metric-label">
-                  Core product pillars on the first screen
-                </div>
+                <div class="metric-value">12</div>
+                <div class="metric-label">Launch regions on one backbone</div>
               </div>
               <div class="metric">
                 <div class="metric-value">1</div>
                 <div class="metric-label">
-                  Single launch CTA carried through the page
+                  Control plane across compute, data, and edge
                 </div>
               </div>
             </div>
@@ -675,8 +670,9 @@
                 <span class="section-label">Proof band</span>
                 <h2>Trust signals come before feature sprawl.</h2>
                 <p class="section-intro">
-                  The structure reserves an early band for credibility:
-                  migration posture, performance proof, and cost predictability.
+                  Kiln Cloud leads with the three questions operators ask
+                  first: how fast can we move, how well does it perform, and
+                  how much surprise is left in the bill.
                 </p>
               </div>
             </div>
@@ -686,25 +682,28 @@
                 <span class="proof-number">01</span>
                 <h3>Migration lane</h3>
                 <p class="card-copy">
-                  Space for a concise story about moving container, queue, and
-                  object workloads off a larger cloud without a year-long
-                  rewrite.
+                  Bring over container services, background jobs, Postgres, and
+                  S3-compatible object storage without redesigning the entire
+                  stack. Existing images, CI pipelines, and Terraform patterns
+                  still fit.
                 </p>
               </article>
               <article class="proof-card">
                 <span class="proof-number">02</span>
                 <h3>Latency proof</h3>
                 <p class="card-copy">
-                  Space for benchmark-style claims, region geometry, and
-                  developer experience proof points.
+                  Anycast ingress, warm regional capacity, and built-in caching
+                  keep user traffic close to the edge while private service
+                  links keep east-west traffic off the public internet.
                 </p>
               </article>
               <article class="proof-card">
                 <span class="proof-number">03</span>
                 <h3>Cost posture</h3>
                 <p class="card-copy">
-                  Space for a simple thesis on pricing clarity before the
-                  detailed plans appear later in the page.
+                  Flat regional pricing, explicit bandwidth rules, and spend
+                  guardrails make the operating model legible before finance
+                  asks for the second spreadsheet.
                 </p>
               </article>
             </div>
@@ -714,11 +713,11 @@
             <div class="section-heading">
               <div>
                 <span class="section-label">Product pillars</span>
-                <h2>A page shape built around four primitives.</h2>
+                <h2>Four primitives cover the majority of modern app ops.</h2>
                 <p class="section-intro">
-                  These cards define the information architecture for the later
-                  copy pass: compute, state, edge delivery, and deployment
-                  workflow.
+                  The platform is organized around the surfaces teams actually
+                  touch every week: runtime, data, delivery, and release
+                  control.
                 </p>
               </div>
             </div>
@@ -727,8 +726,9 @@
               <article class="product-card">
                 <h3>Compute fabric</h3>
                 <p class="card-copy">
-                  The hero product card for workloads that need faster cold
-                  starts and cleaner regional placement.
+                  Run long-lived services, bursty jobs, and GPU-backed workers
+                  on regional pools with fast cold starts, image-level deploys,
+                  and autoscaling that stays understandable under pressure.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Containers</span>
@@ -739,8 +739,9 @@
               <article class="product-card">
                 <h3>State core</h3>
                 <p class="card-copy">
-                  The data layer placeholder for managed Postgres, object
-                  storage, and event streams with fewer moving parts.
+                  Managed Postgres, durable object storage, and queue-backed
+                  event flows share the same network and access model, so state
+                  services stop feeling like separate vendors glued together.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Postgres</span>
@@ -751,8 +752,9 @@
               <article class="product-card">
                 <h3>Edge relay</h3>
                 <p class="card-copy">
-                  The network and delivery card for global entry points,
-                  caching, and private service links.
+                  Publish through global ingress with CDN caching, private
+                  service connectivity, managed TLS, and traffic policy controls
+                  that do not require a specialist team to maintain.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Anycast</span>
@@ -763,8 +765,9 @@
               <article class="product-card">
                 <h3>Launch pipeline</h3>
                 <p class="card-copy">
-                  The workflow card that ties source control, previews,
-                  rollbacks, and policy checks into one operational loop.
+                  Connect a repo once, generate preview environments on every
+                  branch, enforce policy before promotion, and roll forward or
+                  back from the same release timeline.
                 </p>
                 <div class="tag-row">
                   <span class="tag">Preview envs</span>
