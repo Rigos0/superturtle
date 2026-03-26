@@ -43,7 +43,8 @@
         overflow-x: hidden;
         color: var(--text);
         font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
-        background: radial-gradient(
+        background:
+          radial-gradient(
             circle at top left,
             rgba(255, 122, 26, 0.14),
             transparent 28%
@@ -60,10 +61,8 @@
         content: "";
         position: fixed;
         inset: 0;
-        background-image: linear-gradient(
-            rgba(255, 255, 255, 0.025) 1px,
-            transparent 1px
-          ),
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
           linear-gradient(
             90deg,
             rgba(255, 255, 255, 0.025) 1px,
@@ -343,7 +342,8 @@
         min-height: 228px;
         border-radius: 22px;
         border: 1px solid var(--line);
-        background: radial-gradient(
+        background:
+          radial-gradient(
             circle at 20% 20%,
             rgba(110, 225, 255, 0.16),
             transparent 24%
@@ -566,10 +566,70 @@
         );
       }
 
+      .plan-kicker {
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
       .price {
+        display: flex;
+        align-items: end;
+        gap: 8px;
         margin-top: 18px;
         font-family: "Space Grotesk", "Avenir Next", sans-serif;
         font-size: 2rem;
+      }
+
+      .price-unit {
+        color: var(--muted);
+        font-size: 0.95rem;
+        letter-spacing: 0;
+      }
+
+      .feature-list,
+      .cta-points {
+        margin: 18px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .feature-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .feature-item,
+      .cta-point {
+        position: relative;
+        padding-left: 18px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .feature-item::before,
+      .cta-point::before {
+        content: "";
+        position: absolute;
+        top: 0.72em;
+        left: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--signal), var(--glow));
+        transform: translateY(-50%);
+      }
+
+      .pricing-note {
+        margin-top: 18px;
+        color: rgba(149, 167, 190, 0.78);
+        font-size: 0.9rem;
+        line-height: 1.6;
       }
 
       .cta-card {
@@ -577,6 +637,12 @@
         align-items: center;
         justify-content: space-between;
         gap: 22px;
+        padding: clamp(24px, 4vw, 34px);
+        background: linear-gradient(
+          135deg,
+          rgba(6, 16, 29, 0.94),
+          rgba(13, 25, 43, 0.9)
+        );
       }
 
       .cta-copy {
@@ -587,6 +653,34 @@
         margin: 12px 0 0;
         color: var(--muted);
         line-height: 1.65;
+      }
+
+      .cta-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 22px;
+      }
+
+      .cta-aside {
+        min-width: min(100%, 280px);
+        max-width: 320px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .cta-aside strong {
+        display: block;
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+        font-size: 1.2rem;
+      }
+
+      .cta-aside p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        line-height: 1.6;
       }
 
       .footer-note {
@@ -610,6 +704,10 @@
         .hero,
         .cta-card {
           grid-template-columns: 1fr;
+        }
+
+        .cta-card {
+          flex-direction: column;
         }
 
         .proof-grid,
@@ -676,6 +774,16 @@
           width: 100%;
         }
 
+        .cta-actions {
+          flex-direction: column;
+        }
+
+        .cta-aside {
+          min-width: 0;
+          max-width: none;
+          width: 100%;
+        }
+
         .pricing-card.featured {
           grid-column: auto;
         }
@@ -731,10 +839,9 @@
             <h1>Ship globally without inheriting hyperscaler sprawl.</h1>
             <p>
               Kiln Cloud gives product teams a tighter operating surface for
-              containers, stateful services, edge delivery, and rollout
-              control. You get regional power, predictable pricing, and a path
-              from repo to production that does not disappear under platform
-              overhead.
+              containers, stateful services, edge delivery, and rollout control.
+              You get regional power, predictable pricing, and a path from repo
+              to production that does not disappear under platform overhead.
             </p>
             <ul class="hero-highlights" aria-label="Platform operating posture">
               <li class="highlight-item">
@@ -784,7 +891,9 @@
             <div class="metric-grid" aria-label="Positioning snapshots">
               <div class="metric">
                 <div class="metric-value">10m</div>
-                <div class="metric-label">From first import to live preview</div>
+                <div class="metric-label">
+                  From first import to live preview
+                </div>
               </div>
               <div class="metric">
                 <div class="metric-value">12</div>
@@ -807,9 +916,9 @@
                 <span class="section-label">Proof band</span>
                 <h2>Trust signals come before feature sprawl.</h2>
                 <p class="section-intro">
-                  Kiln Cloud leads with the three questions operators ask
-                  first: how fast can we move, how well does it perform, and
-                  how much surprise is left in the bill.
+                  Kiln Cloud leads with the three questions operators ask first:
+                  how fast can we move, how well does it perform, and how much
+                  surprise is left in the bill.
                 </p>
               </div>
             </div>
@@ -967,60 +1076,133 @@
             <div class="section-heading">
               <div>
                 <span class="section-label">Pricing posture</span>
-                <h2>The page reserves a clean pricing arc near the finish.</h2>
+                <h2>Three plans, one operating model, no mystery tax.</h2>
                 <p class="section-intro">
-                  Plan shells are in place so the next iteration can add
-                  concrete pricing language and stronger CTA pressure.
+                  The pricing posture stays simple on purpose: small teams can
+                  start with usage-led entry points, production apps can commit
+                  to a known base, and regulated buyers get a clear path to
+                  residency and support requirements.
                 </p>
               </div>
             </div>
 
             <div class="pricing-grid">
               <article class="pricing-card">
+                <span class="plan-kicker">For prototypes</span>
                 <h3>Builder</h3>
-                <div class="price">Usage-led</div>
+                <div class="price">
+                  $19 <span class="price-unit">/ month</span>
+                </div>
                 <p class="pricing-copy">
-                  Entry plan shell for side projects, prototypes, and small
-                  teams.
+                  A low-friction entry point for solo builders and internal
+                  tools that need real infra without enterprise ceremony.
                 </p>
+                <ul class="feature-list">
+                  <li class="feature-item">
+                    2 services and 1 shared Postgres instance
+                  </li>
+                  <li class="feature-item">
+                    100 GB edge egress included each month
+                  </li>
+                  <li class="feature-item">
+                    Preview environments billed only while running
+                  </li>
+                </ul>
               </article>
               <article class="pricing-card featured">
+                <span class="plan-kicker">Most teams start here</span>
                 <h3>Launch</h3>
-                <div class="price">Predictable core</div>
+                <div class="price">
+                  $450 <span class="price-unit">/ month</span>
+                </div>
                 <p class="pricing-copy">
-                  Center plan shell for production apps that want committed
-                  spend without enterprise sprawl.
+                  Predictable production capacity for teams that want a clear
+                  floor on spend before traffic ramps and regions multiply.
                 </p>
+                <ul class="feature-list">
+                  <li class="feature-item">
+                    4 vCPU baseline pool across 2 regions
+                  </li>
+                  <li class="feature-item">
+                    HA Postgres, object storage, and private service mesh
+                  </li>
+                  <li class="feature-item">
+                    2 TB egress included plus rollout guardrails
+                  </li>
+                </ul>
               </article>
               <article class="pricing-card">
+                <span class="plan-kicker">For regulated workloads</span>
                 <h3>Sovereign</h3>
-                <div class="price">Custom envelope</div>
+                <div class="price">
+                  Custom <span class="price-unit">annual envelope</span>
+                </div>
                 <p class="pricing-copy">
-                  Enterprise plan shell for data residency, dedicated support,
-                  and procurement workflows.
+                  A procurement-ready lane for companies that need regional
+                  controls, dedicated support, and opinionated migration help.
                 </p>
+                <ul class="feature-list">
+                  <li class="feature-item">
+                    Residency-aware deployment and policy controls
+                  </li>
+                  <li class="feature-item">
+                    Private networking, SSO, and audit export
+                  </li>
+                  <li class="feature-item">
+                    Named launch engineer and response SLA
+                  </li>
+                </ul>
               </article>
             </div>
+            <p class="pricing-note">
+              Every plan uses the same control plane. There is no separate
+              premium UI, per-seat tax, or surprise fee to unlock the delivery
+              workflow.
+            </p>
           </section>
 
           <section class="cta-card">
             <div class="cta-copy">
               <span class="section-label">Launch CTA</span>
-              <h2>One final decision point, not five competing asks.</h2>
+              <h2>
+                Bring one service, one region, and one week of production
+                pressure.
+              </h2>
               <p>
-                The concept closes on a single signup motion so the eventual
-                copy can stay decisive and product-led.
+                Kiln Cloud is opening with a narrow launch cohort for teams
+                moving off a larger cloud surface or replacing a brittle
+                patchwork of point services. Start with the system that hurts
+                most. The migration lane is part of the product story.
               </p>
+              <div class="cta-actions">
+                <a class="button button-primary" href="#top"
+                  >Request launch access</a
+                >
+                <a class="button button-secondary" href="#pricing"
+                  >Review pricing posture</a
+                >
+              </div>
             </div>
-            <a class="button button-primary" href="#top"
-              >Join the early access list</a
-            >
+            <aside class="cta-aside" aria-label="Launch cohort details">
+              <strong>Launch cohort includes</strong>
+              <ul class="cta-points">
+                <li class="cta-point">
+                  Architecture review with a migration plan in 5 business days
+                </li>
+                <li class="cta-point">
+                  Hands-on setup for the first production service and data path
+                </li>
+                <li class="cta-point">
+                  Shared Slack channel during cutover week
+                </li>
+              </ul>
+            </aside>
           </section>
         </div>
       </main>
 
       <div class="footer-note">
-        Static concept pass for a developer-first cloud brand.
+        Static concept pass for a developer-first cloud platform launch page.
       </div>
     </div>
   </body>

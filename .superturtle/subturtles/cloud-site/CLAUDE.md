@@ -1,5 +1,5 @@
 # Current task
-Add pricing/CTA sections and final polish to the static landing page concept.
+Verify the page reads credibly as a cloud-platform concept.
 # End goal with specs
 Produce a complete static HTML landing page with embedded CSS and light JS only if needed. The page should present a credible developer-focused cloud platform brand with a bold visual identity, clear messaging, pricing posture, product sections, and launch CTA. It must render well on desktop and mobile, avoid generic AI-looking design, and be suitable as a shareable concept page.
 # Roadmap (Completed)
@@ -13,5 +13,5 @@ Produce a complete static HTML landing page with embedded CSS and light JS only 
 - [x] Define the page structure and visual direction
 - [x] Write the hero, proof, and product section copy
 - [x] Implement the responsive HTML and CSS
-- [ ] Add pricing/CTA sections and final polish <- current
-- [ ] Verify the page reads credibly as a cloud-platform concept
+- [x] Add pricing/CTA sections and final polish
+- [ ] Verify the page reads credibly as a cloud-platform concept <- current
