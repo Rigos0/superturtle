@@ -14,6 +14,7 @@ import {
   auditLogRateLimit,
   generateRequestId,
   isStopIntent,
+  sanitizeUserVisibleErrorMessage,
   transcribeVoice,
   startTypingIndicator,
 } from "../utils";
@@ -252,7 +253,9 @@ export async function handleVoice(ctx: Context): Promise<void> {
         await ctx.reply("🛑 Query stopped.");
       }
     } else {
-      await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);
+      await ctx.reply(
+        `❌ Error: ${sanitizeUserVisibleErrorMessage(String(error)).slice(0, 200)}`
+      );
     }
   } finally {
     stopProcessing?.();

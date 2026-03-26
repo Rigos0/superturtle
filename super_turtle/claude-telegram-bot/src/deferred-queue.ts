@@ -3,7 +3,12 @@ import type { CronJob, CronJobKind, CronSupervisionMode } from "./cron";
 import { advanceRecurringJob, removeJob } from "./cron";
 import { executeNonSilentCronJob } from "./cron-execution";
 import { session } from "./session";
-import { auditLog, generateRequestId, startTypingIndicator } from "./utils";
+import {
+  auditLog,
+  generateRequestId,
+  sanitizeUserVisibleErrorMessage,
+  startTypingIndicator,
+} from "./utils";
 import { isAnyDriverRunning, runMessageWithActiveDriver } from "./handlers/driver-routing";
 import { StreamingState, createStatusCallback, getStreamingState } from "./handlers/streaming";
 import { eventLog } from "./logger";
@@ -385,7 +390,9 @@ export async function drainDeferredQueue(
           });
           const message = String(error).toLowerCase();
           if (!message.includes("abort") && !message.includes("cancel")) {
-            await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);
+            await ctx.reply(
+              `❌ Error: ${sanitizeUserVisibleErrorMessage(String(error)).slice(0, 200)}`
+            );
           }
           break;
         } finally {
@@ -454,7 +461,9 @@ export async function drainDeferredQueue(
         });
         const message = String(error).toLowerCase();
         if (!message.includes("abort") && !message.includes("cancel")) {
-          await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);
+          await ctx.reply(
+            `❌ Error: ${sanitizeUserVisibleErrorMessage(String(error)).slice(0, 200)}`
+          );
         }
         break;
       }

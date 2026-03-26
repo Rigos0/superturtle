@@ -2143,9 +2143,13 @@ export function createStatusCallback(
       } else if (statusType === "done") {
         const finalOutput = state.lastNotifiableOutput;
         const doneSummary =
-          finalOutput?.progressSummary ||
-          state.lastAnswerPreview ||
-          DEFAULT_PROGRESS_SUMMARY.Done;
+          finalOutput?.kind === "final_artifact"
+            ? (
+              finalOutput.progressSummary ||
+              state.lastAnswerPreview ||
+              DEFAULT_PROGRESS_SUMMARY.Done
+            )
+            : DEFAULT_PROGRESS_SUMMARY.Done;
 
         if (finalOutput?.kind === "final_artifact") {
           await promoteFinalSegmentNotification(ctx, state);

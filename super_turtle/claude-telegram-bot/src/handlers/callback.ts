@@ -24,6 +24,7 @@ import {
   auditLogAuth,
   auditLogError,
   generateRequestId,
+  sanitizeUserVisibleErrorMessage,
   startTypingIndicator,
 } from "../utils";
 import {
@@ -564,7 +565,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
       chat_id: chatId,
     });
   } catch (error) {
-    const errorSummary = String(error).slice(0, 200);
+    const errorSummary = sanitizeUserVisibleErrorMessage(String(error)).slice(0, 200);
     const retainStoppedProgress = async (): Promise<void> => {
       if (state.teardownCompleted) {
         return;

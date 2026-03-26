@@ -16,8 +16,9 @@ import {
   auditLogError,
   auditLogRateLimit,
   generateRequestId,
-  transcribeVoice,
+  sanitizeUserVisibleErrorMessage,
   startTypingIndicator,
+  transcribeVoice,
 } from "../utils";
 import { getDriverAuditType, isActiveDriverSessionActive, runMessageWithActiveDriver } from "./driver-routing";
 import { StreamingState, createStatusCallback } from "./streaming";
@@ -160,7 +161,9 @@ export async function processAudioFile(
         await ctx.reply("🛑 Query stopped.");
       }
     } else {
-      await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);
+      await ctx.reply(
+        `❌ Error: ${sanitizeUserVisibleErrorMessage(String(error)).slice(0, 200)}`
+      );
     }
   } finally {
     stopProcessing();

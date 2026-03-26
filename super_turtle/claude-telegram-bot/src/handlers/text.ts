@@ -15,6 +15,7 @@ import {
   checkInterrupt,
   generateRequestId,
   isStopIntent,
+  sanitizeUserVisibleErrorMessage,
   startTypingIndicator,
 } from "../utils";
 import {
@@ -55,7 +56,9 @@ function getErrorMessage(error: unknown): string {
 }
 
 function summarizeErrorMessage(error: unknown, maxLength = 240): string {
-  const compact = getErrorMessage(error).replace(/\s+/g, " ").trim();
+  const compact = sanitizeUserVisibleErrorMessage(
+    getErrorMessage(error).replace(/\s+/g, " ").trim()
+  );
   return compact.length > maxLength
     ? `${compact.slice(0, maxLength - 3)}...`
     : compact;

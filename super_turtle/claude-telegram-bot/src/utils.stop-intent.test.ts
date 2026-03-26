@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isStopIntent } from "./utils";
+import { isStopIntent, sanitizeUserVisibleErrorMessage } from "./utils";
 
 describe("isStopIntent", () => {
   it("matches direct stop commands", () => {
@@ -32,5 +32,23 @@ describe("isStopIntent", () => {
     expect(isStopIntent("can you deploy stop button")).toBe(false);
     expect(isStopIntent("stop by later")).toBe(false);
     expect(isStopIntent("cancel culture")).toBe(false);
+  });
+});
+
+describe("sanitizeUserVisibleErrorMessage", () => {
+  it("filters the recorded-session error tail", () => {
+    expect(
+      sanitizeUserVisibleErrorMessage(
+        "Request failed. Error: this session was recorded on another machine and cannot be resumed right now."
+      )
+    ).toBe("Request failed");
+  });
+
+  it("falls back when the filtered text would be empty", () => {
+    expect(
+      sanitizeUserVisibleErrorMessage(
+        "Error: this session was recorded elsewhere and is unavailable."
+      )
+    ).toBe("Something went wrong.");
   });
 });

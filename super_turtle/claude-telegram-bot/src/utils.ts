@@ -18,11 +18,31 @@ import {
 import { logger } from "./logger";
 
 const utilsLog = logger.child({ module: "utils" });
+const FILTERED_USER_VISIBLE_ERROR_PATTERNS = [
+  /\b(?:Error:\s*)?this session was recorded\b[\s\S]*$/i,
+];
 
 export function generateRequestId(prefix = "req"): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 8);
   return `${prefix}-${ts}-${rand}`;
+}
+
+export function sanitizeUserVisibleErrorMessage(
+  message: string,
+  fallback = "Something went wrong."
+): string {
+  let sanitized = message;
+  for (const pattern of FILTERED_USER_VISIBLE_ERROR_PATTERNS) {
+    sanitized = sanitized.replace(pattern, "");
+  }
+  sanitized = sanitized
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim()
+    .replace(/^[-:;,.\s]+|[-:;,.\s]+$/g, "")
+    .trim();
+  return sanitized || fallback;
 }
 
 // ============== OpenAI Client ==============

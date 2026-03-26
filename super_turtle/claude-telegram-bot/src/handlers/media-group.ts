@@ -10,7 +10,7 @@ import type { Message } from "grammy/types";
 import type { PendingMediaGroup } from "../types";
 import { MEDIA_GROUP_TIMEOUT } from "../config";
 import { rateLimiter } from "../security";
-import { auditLogRateLimit } from "../utils";
+import { auditLogRateLimit, sanitizeUserVisibleErrorMessage } from "../utils";
 import { session } from "../session";
 import { isAskUserPromptMessage } from "./streaming";
 import { streamLog } from "../logger";
@@ -236,6 +236,8 @@ export async function handleProcessingError(
       await ctx.reply("🛑 Query stopped.");
     }
   } else {
-    await ctx.reply(`❌ Error: ${errorStr.slice(0, 200)}`);
+    await ctx.reply(
+      `❌ Error: ${sanitizeUserVisibleErrorMessage(errorStr).slice(0, 200)}`
+    );
   }
 }

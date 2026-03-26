@@ -603,9 +603,94 @@ describe("streaming notifications", () => {
     expect(editCalls[1]?.[1]).toBe(1);
     expectCompletedProgressText(
       String(editCalls[1]?.[2]),
-      "Hello from Super Turtle"
+      "Reply ready."
     );
-    expect(editCalls[1]?.[3]).toEqual({ parse_mode: "HTML" });
+    expect(editCalls[1]?.[3]).toMatchObject({ parse_mode: "HTML" });
+  });
+
+  it("keeps the completed progress message generic when the final reply fits in one Telegram message", async () => {
+    const { StreamingState, createStatusCallback } = await loadFreshStreamingModule();
+    const replyCalls: Array<{ text: string; extra?: Record<string, unknown> }> = [];
+    const editMessageTextMock = mock(async () => {});
+    let nextMessageId = 1;
+
+    const ctx = {
+      chat: { id: 321 },
+      reply: mock(async (text: string, extra?: Record<string, unknown>) => {
+        replyCalls.push({ text, extra });
+        return {
+          chat: { id: 321 },
+          message_id: nextMessageId++,
+        };
+      }),
+      api: {
+        editMessageText: editMessageTextMock,
+        deleteMessage: mock(async () => {}),
+      },
+    } as unknown as Context;
+
+    const state = new StreamingState();
+    const statusCallback = createStatusCallback(ctx, state);
+    await state.progressUpdateChain;
+
+    await statusCallback("segment_end", "Short final reply", 0);
+    await statusCallback("done", "");
+
+    expect(replyCalls).toHaveLength(2);
+    expect(replyCalls[1]).toMatchObject({
+      text: "Short final reply",
+      extra: { parse_mode: "HTML" },
+    });
+    const completedEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
+    expectCompletedProgressText(String(completedEdit?.[2]), "Reply ready.");
+    expect(String(completedEdit?.[2])).not.toContain("Short final reply");
+  });
+
+  it("keeps the completed progress message generic when the final reply is chunked", async () => {
+    const { StreamingState, createStatusCallback } = await loadFreshStreamingModule();
+    const replyCalls: Array<{ text: string; extra?: Record<string, unknown> }> = [];
+    const editMessageTextMock = mock(async () => {});
+    let nextMessageId = 1;
+    const longReply = "A".repeat(4_500);
+
+    const ctx = {
+      chat: { id: 654321 },
+      reply: mock(async (text: string, extra?: Record<string, unknown>) => {
+        replyCalls.push({ text, extra });
+        return {
+          chat: { id: 654321 },
+          message_id: nextMessageId++,
+        };
+      }),
+      api: {
+        editMessageText: editMessageTextMock,
+        deleteMessage: mock(async () => {}),
+      },
+    } as unknown as Context;
+
+    const state = new StreamingState();
+    const statusCallback = createStatusCallback(ctx, state);
+    await state.progressUpdateChain;
+
+    await statusCallback("segment_end", longReply, 0);
+    await statusCallback("done", "");
+
+    expect(replyCalls).toHaveLength(3);
+    expect(replyCalls[0]).toMatchObject({
+      text: "\u200b",
+      extra: { disable_notification: true, parse_mode: "HTML" },
+    });
+    expect(replyCalls[1]?.text.length).toBeGreaterThan(0);
+    expect(replyCalls[1]?.extra).toMatchObject({
+      disable_notification: true,
+      parse_mode: "HTML",
+    });
+    expect(replyCalls[2]?.text.length).toBeGreaterThan(0);
+    expect(replyCalls[2]?.extra).toEqual({ parse_mode: "HTML" });
+
+    const completedEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
+    expectCompletedProgressText(String(completedEdit?.[2]), "Reply ready.");
+    expect(String(completedEdit?.[2])).not.toContain("AAA");
   });
 
   it("updates thinking and tool progress in the retained silent message", async () => {
@@ -849,13 +934,14 @@ describe("streaming notifications", () => {
 
     expect(state.progressSnapshots).toHaveLength(12);
     expect(state.progressSnapshots[0]?.progressState).toBe("Writing answer");
-    expect(state.progressSnapshots[0]?.summary).toContain("Answer draft 2");
-    expect(state.progressSnapshots[state.progressSnapshots.length - 1]?.progressState).toBe("Writing answer");
+    expect(state.progressSnapshots[0]?.summary).toContain("Answer draft 3");
+    expect(state.progressSnapshots[state.progressSnapshots.length - 1]?.progressState).toBe("Done");
     expect(state.progressSnapshots[state.progressSnapshots.length - 1]?.terminal).toBe(true);
     expect(state.selectedProgressSnapshotIndex).toBe(11);
 
     const finalEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
     expect(String(finalEdit?.[2])).toContain("12 / 12");
+    expect(String(finalEdit?.[2])).toContain("Reply ready.");
     expect((finalEdit?.[3] as any)?.reply_markup?.inline_keyboard).toEqual([
       [{ text: "⬅️", callback_data: "progress_nav:back" }],
     ]);
@@ -865,7 +951,7 @@ describe("streaming notifications", () => {
     const afterBackEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
     expect(String(afterBackEdit?.[2])).toContain("11 / 12");
     expect(String(afterBackEdit?.[2])).toContain("Elapsed ");
-    expect(String(afterBackEdit?.[2])).toContain("Answer draft 12");
+    expect(String(afterBackEdit?.[2])).toContain("Answer draft 13");
     expect((afterBackEdit?.[3] as any)?.reply_markup?.inline_keyboard).toEqual([
       [
         { text: "⬅️", callback_data: "progress_nav:back" },
@@ -887,7 +973,7 @@ describe("streaming notifications", () => {
     const afterNextEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
     expect(String(afterNextEdit?.[2])).toContain("12 / 12");
     expect(String(afterNextEdit?.[2])).toContain("Elapsed ");
-    expect(String(afterNextEdit?.[2])).toContain("Answer draft 13");
+    expect(String(afterNextEdit?.[2])).toContain("Reply ready.");
   });
 
   it("paces live progress edits so visible content stays on screen for at least 200ms", async () => {
