@@ -332,4 +332,156 @@ describe("/update handoff", () => {
 
     rmSync(tempRoot, { recursive: true, force: true });
   });
+
+  it("discovers the managed runtime wrapper when service.pid is stale", async () => {
+    const projectRoot = resolve(import.meta.dir, "../..");
+    const tempRoot = mkdtempSync(join(tmpdir(), "superturtle-update-"));
+    const workdir = join(tempRoot, "project");
+    const dataDir = join(workdir, ".superturtle");
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, "service.pid"), "924\n", "utf-8");
+
+    const marker = "__UPDATE_WRAPPER_PROBE__=";
+    const script = `
+      const { mkdirSync, writeFileSync, readFileSync } = await import("fs");
+      const { join } = await import("path");
+
+      process.env.TELEGRAM_BOT_TOKEN = "test-token";
+      process.env.TELEGRAM_ALLOWED_USERS = "123";
+      process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
+      process.env.SUPERTURTLE_RUNTIME_ROLE = "teleport-remote";
+      process.env.SUPERTURTLE_REMOTE_MODE = "agent";
+      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "managed-codex";
+      process.env.CODEX_ENABLED = "false";
+      process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
+
+      const dataDir = join(process.env.CLAUDE_WORKING_DIR, ".superturtle");
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(join(dataDir, "service.pid"), "924\\n", "utf-8");
+
+      let spawnCmd = [];
+      let unrefCalled = false;
+      const originalSpawnSync = Bun.spawnSync;
+      const processPid = process.pid;
+
+      Bun.sleep = async () => {};
+      globalThis.fetch = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          "managed-codex": "9.9.9-beta.4",
+        }),
+      });
+      Bun.spawnSync = ((cmd, opts) => {
+        const parts = Array.isArray(cmd) ? cmd.map((part) => String(part)) : [String(cmd)];
+        if (parts[0] === "kill" && parts[1] === "-0") {
+          if (parts[2] === "924") {
+            return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("") };
+          }
+          if (parts[2] === "938") {
+            return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+          }
+        }
+        if (parts[0] === "ps" && parts[1] === "-o" && parts[5] === "-p") {
+          const pid = parts[6];
+          if (pid === String(processPid)) {
+            return { exitCode: 0, stdout: Buffer.from("941 bun run src/index.ts\\n"), stderr: Buffer.from("") };
+          }
+          if (pid === "941") {
+            return { exitCode: 0, stdout: Buffer.from("938 /bin/bash /workspace/node_modules/superturtle/claude-telegram-bot/run-loop.sh\\n"), stderr: Buffer.from("") };
+          }
+          if (pid === "938") {
+            const command = [
+              "bash",
+              "-lc",
+              "exec systemd-inhibit --what=idle --who=superturtle --why='Bot running' --mode=block ./run-loop.sh",
+            ].join(" ");
+            return { exitCode: 0, stdout: Buffer.from(\`1 \${command}\\n\`), stderr: Buffer.from("") };
+          }
+        }
+        if (parts[0]?.endsWith("/subturtle/ctl") && parts[1] === "list") {
+          return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+        }
+        return originalSpawnSync(cmd, opts);
+      });
+
+      Bun.spawn = (cmd, _opts) => {
+        spawnCmd = Array.isArray(cmd) ? cmd.map((part) => String(part)) : [String(cmd)];
+        return {
+          pid: 9880,
+          unref: () => {
+            unrefCalled = true;
+          },
+        };
+      };
+
+      const { handleUpdate } = await import("./src/handlers/commands.ts");
+
+      const replies = [];
+      const ctx = {
+        from: { id: 123 },
+        chat: { id: 456 },
+        message: { text: "/update" },
+        reply: async (text) => {
+          replies.push(String(text));
+          return { message_id: 791 };
+        },
+      };
+
+      await handleUpdate(ctx);
+      const state = JSON.parse(readFileSync(join(dataDir, "self-update.json"), "utf-8"));
+      console.log(${JSON.stringify(marker)} + JSON.stringify({
+        replies,
+        state,
+        spawnCmd,
+        unrefCalled,
+      }));
+    `;
+
+    const proc = Bun.spawn({
+      cmd: ["bun", "--no-env-file", "-e", script],
+      cwd: projectRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        TELEGRAM_BOT_TOKEN: "test-token",
+        TELEGRAM_ALLOWED_USERS: "123",
+        CLAUDE_WORKING_DIR: workdir,
+        SUPERTURTLE_RUNTIME_ROLE: "teleport-remote",
+        SUPERTURTLE_REMOTE_MODE: "agent",
+        CODEX_ENABLED: "false",
+        CODEX_CLI_AVAILABLE_OVERRIDE: "false",
+      },
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    if (exitCode !== 0) {
+      throw new Error(`update wrapper probe failed:\\n${stderr || stdout}`);
+    }
+
+    const payloadLine = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.startsWith(marker));
+    expect(payloadLine).toBeTruthy();
+    const payload = JSON.parse(payloadLine!.slice(marker.length)) as {
+      replies: string[];
+      state: Record<string, unknown>;
+      spawnCmd: string[];
+      unrefCalled: boolean;
+    };
+
+    expect(payload.replies[0]).toContain("Updating remote runtime to superturtle@9.9.9-beta.4");
+    expect(payload.state.service_pid).toBe(938);
+    expect(payload.spawnCmd).toContain("self-update-runner");
+    expect(payload.unrefCalled).toBe(true);
+
+    rmSync(tempRoot, { recursive: true, force: true });
+  });
 });

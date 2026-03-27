@@ -880,9 +880,17 @@ function isServiceRunnerCommand(command: string): boolean {
   }
 
   const normalized = command.toLowerCase();
-  return (
+  if (
     normalized.includes(" service run") &&
     (normalized.includes("superturtle") || normalized.includes("superturtle.js"))
+  ) {
+    return true;
+  }
+
+  return (
+    normalized.includes("systemd-inhibit") &&
+    normalized.includes("run-loop.sh") &&
+    normalized.includes("superturtle")
   );
 }
 
