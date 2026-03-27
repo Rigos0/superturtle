@@ -2,7 +2,7 @@ const assert = require("assert");
 
 const { __test__ } = require("../bin/superturtle.js");
 
-(() => {
+(async () => {
   assert.deepStrictEqual(
     __test__.parseExactRuntimeInstallSpec("superturtle@0.2.9-beta.143.1"),
     {
@@ -25,4 +25,96 @@ const { __test__ } = require("../bin/superturtle.js");
       installSpec: "superturtle@0.2.9-beta.143.1",
     }
   );
-})();
+
+  assert.strictEqual(
+    __test__.getInstanceLockPathForEnv({ TELEGRAM_BOT_TOKEN: "12345:abc" }),
+    "/tmp/claude-telegram-bot.12345.instance.lock"
+  );
+
+  {
+    const signalCalls = [];
+    let servicePidFile = 100;
+    let lockPid = 300;
+    const livePids = new Set([200, 300]);
+    const result = await __test__.waitForServiceRunnerShutdown(
+      "/tmp/project",
+      100,
+      100,
+      {
+        projectEnv: { TELEGRAM_BOT_TOKEN: "12345:abc" },
+        initialTrackedPids: [100, 200, 300],
+        pollIntervalMs: 1,
+        softKillAfterMs: 0,
+        hardKillAfterMs: 50,
+      },
+      {
+        listProcesses: () => [
+          { pid: 200, ppid: 1, command: "/bin/bash run-loop.sh" },
+          { pid: 300, ppid: 200, command: "bun run src/index.ts" },
+        ],
+        isPidRunning: (pid) => livePids.has(pid),
+        readServicePid: () => servicePidFile,
+        signalPidSet: (pids, signal) => {
+          signalCalls.push({ pids: [...pids], signal });
+          if (signal === "TERM") {
+            livePids.clear();
+            servicePidFile = null;
+            lockPid = null;
+          }
+          return [...pids];
+        },
+        removeStaleInstanceLock: () => ({ removed: false, pid: lockPid }),
+        inspectInstanceLock: () => ({
+          path: "/tmp/claude-telegram-bot.12345.instance.lock",
+          exists: Number.isInteger(lockPid),
+          pid: lockPid,
+          alive: Number.isInteger(lockPid) && livePids.has(lockPid),
+        }),
+        sleep: async () => {},
+        logger: () => {},
+      }
+    );
+
+    assert.deepStrictEqual(signalCalls, [
+      { pids: [200, 300], signal: "TERM" },
+    ]);
+    assert.deepStrictEqual(result.trackedPids, [100, 200, 300]);
+  }
+
+  {
+    let tick = 0;
+    const replacement = await __test__.waitForReplacementServiceRunner(
+      "/tmp/project",
+      100,
+      100,
+      {
+        projectEnv: { TELEGRAM_BOT_TOKEN: "12345:abc" },
+        pollIntervalMs: 1,
+      },
+      {
+        readServicePid: () => (tick >= 1 ? 980 : null),
+        isPidRunning: (pid) => pid === 980 || pid === 1500,
+        removeStaleInstanceLock: () => ({ removed: false, pid: null }),
+        inspectInstanceLock: () => ({
+          path: "/tmp/claude-telegram-bot.12345.instance.lock",
+          exists: tick >= 2,
+          pid: tick >= 2 ? 1500 : null,
+          alive: tick >= 2,
+        }),
+        sleep: async () => {
+          tick += 1;
+        },
+        logger: () => {},
+      }
+    );
+
+    assert.deepStrictEqual(replacement, {
+      servicePid: 980,
+      instanceLockPath: "/tmp/claude-telegram-bot.12345.instance.lock",
+      lockPid: 1500,
+    });
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -185,8 +185,9 @@ export function buildWarmWelcomeMessage(options: {
   projectName?: string | null;
   driver: DriverId | string;
 }): string {
+  const projectLine = options.projectName?.trim() ? ` Working in ${options.projectName.trim()}.` : "";
   return [
-    `🐢 Welcome to SuperTurtle${formatProjectContext(options.projectName)}.`,
+    `Welcome, I am your turtle bot!${projectLine}`,
     `I’m online with ${getDriverLabel(options.driver)} and ready to work from Telegram.`,
     "",
     "What I can do:",
