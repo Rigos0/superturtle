@@ -609,6 +609,20 @@ function expandTrackedProcessIds(trackedPids, processes) {
   return collectDescendantProcessIds(processes, trackedPids);
 }
 
+function subtractPidSet(values, excluded) {
+  const next = new Set();
+  for (const pid of values || []) {
+    if (!Number.isInteger(pid) || pid <= 0) {
+      continue;
+    }
+    if (excluded && excluded.has(pid)) {
+      continue;
+    }
+    next.add(pid);
+  }
+  return next;
+}
+
 function removeStaleInstanceLock(lockPath, isPidRunningFn = isPidRunning) {
   if (!lockPath || !fs.existsSync(lockPath)) {
     return { removed: false, pid: null };
@@ -690,21 +704,31 @@ async function waitForServiceRunnerShutdown(
   const logger = deps.logger || (() => {});
 
   const deadline = Date.now() + timeoutMs;
+  const ignoredPids =
+    Array.isArray(options.ignoredPids) && options.ignoredPids.length > 0
+      ? options.ignoredPids.filter((pid) => Number.isInteger(pid) && pid > 0)
+      : [process.pid];
   const initialTrackedPids =
     Array.isArray(options.initialTrackedPids) && options.initialTrackedPids.length > 0
       ? options.initialTrackedPids
       : [servicePid];
-  let trackedPids = collectDescendantProcessIds(listProcessesFn(), initialTrackedPids);
+  let processes = listProcessesFn();
+  let ignoredPidSet = collectDescendantProcessIds(processes, ignoredPids);
+  let trackedPids = subtractPidSet(
+    collectDescendantProcessIds(processes, initialTrackedPids),
+    ignoredPidSet
+  );
   let softEscalated = false;
   let hardEscalated = false;
 
   logger(
-    `Tracking old runtime shutdown via ${instanceLockPath}; watched pids: ${Array.from(trackedPids).sort((a, b) => a - b).join(", ") || "none"}.`
+    `Tracking old runtime shutdown via ${instanceLockPath}; watched pids: ${Array.from(trackedPids).sort((a, b) => a - b).join(", ") || "none"}; ignored pids: ${Array.from(ignoredPidSet).sort((a, b) => a - b).join(", ") || "none"}.`
   );
 
   while (Date.now() < deadline) {
-    const processes = listProcessesFn();
-    trackedPids = expandTrackedProcessIds(trackedPids, processes);
+    processes = listProcessesFn();
+    ignoredPidSet = collectDescendantProcessIds(processes, ignoredPids);
+    trackedPids = subtractPidSet(expandTrackedProcessIds(trackedPids, processes), ignoredPidSet);
 
     const staleServicePid = removeStaleServicePidFn(cwd, isPidRunningFn);
     if (staleServicePid.removed) {
@@ -719,7 +743,7 @@ async function waitForServiceRunnerShutdown(
     let lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
     if (lockState.alive && Number.isInteger(lockState.pid) && lockState.pid > 0) {
       trackedPids.add(lockState.pid);
-      trackedPids = expandTrackedProcessIds(trackedPids, processes);
+      trackedPids = subtractPidSet(expandTrackedProcessIds(trackedPids, processes), ignoredPidSet);
     }
 
     const survivors = Array.from(trackedPids)
@@ -760,7 +784,8 @@ async function waitForServiceRunnerShutdown(
   }
 
   const finalProcesses = listProcessesFn();
-  trackedPids = expandTrackedProcessIds(trackedPids, finalProcesses);
+  const finalIgnoredPidSet = collectDescendantProcessIds(finalProcesses, ignoredPids);
+  trackedPids = subtractPidSet(expandTrackedProcessIds(trackedPids, finalProcesses), finalIgnoredPidSet);
   const finalSurvivors = Array.from(trackedPids)
     .filter((pid) => isPidRunningFn(pid))
     .sort((left, right) => left - right);
@@ -909,14 +934,21 @@ async function serviceSelfUpdateRunner() {
 
   try {
     const projectEnv = loadProjectEnv(cwd) || {};
-    const initialTrackedPids = Array.from(collectDescendantProcessIds(listProcesses(), [servicePid]));
+    const runningProcesses = listProcesses();
+    const ignoredPids = Array.from(collectDescendantProcessIds(runningProcesses, [process.pid]));
+    const initialTrackedPids = Array.from(
+      subtractPidSet(
+        collectDescendantProcessIds(runningProcesses, [servicePid]),
+        new Set(ignoredPids)
+      )
+    );
     appendSelfUpdateLog(
       cwd,
-      `Captured old runtime tree before shutdown: ${initialTrackedPids.sort((left, right) => left - right).join(", ") || "none"}.`
+      `Captured old runtime tree before shutdown: ${initialTrackedPids.sort((left, right) => left - right).join(", ") || "none"}. Ignoring updater pids: ${ignoredPids.sort((left, right) => left - right).join(", ") || "none"}.`
     );
     appendSelfUpdateLog(cwd, `Stopping service runner pid ${servicePid}.`);
     signalPid(servicePid, "TERM");
-    await waitForServiceRunnerShutdown(cwd, servicePid, 90_000, { projectEnv, initialTrackedPids }, {
+    await waitForServiceRunnerShutdown(cwd, servicePid, 90_000, { projectEnv, initialTrackedPids, ignoredPids }, {
       logger: (message) => appendSelfUpdateLog(cwd, message),
     });
     oldRuntimeStopped = true;
