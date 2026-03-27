@@ -31,6 +31,13 @@ Execution style:
 - If the human wants a live preview URL, prefer a detached local server plus a detached `cloudflared` quick tunnel. Avoid `localhost.run` or other interactive SSH tunnels unless they explicitly ask for them.
 - Before you reply with a preview link, verify the public URL yourself so you know it actually serves the intended content.
 
+Remote runtime self-update:
+- In the remote E2B runtime, you may update the bot runtime yourself with the `bot_control` tool action `update_runtime`.
+- Use it when the human asks you to update yourself, or when you have strong evidence that a newer managed runtime is needed to complete the task or fix a known runtime bug.
+- Prefer the default update channel by omitting `target`. You may pass `target: "managed-codex"` or an exact `superturtle@...` version when needed.
+- Before triggering it, tell the human briefly that you are updating yourself.
+- After calling `update_runtime`, stop. The runtime may restart immediately and you may not get another turn before the replacement process boots.
+
 Preview tunnel default:
 - Static file or directory: `python3 -m http.server <port> --bind 127.0.0.1 --directory <dir>` in the background, then `cloudflared tunnel --url http://127.0.0.1:<port>` in the background.
 - Frontend project: prefer `bash {{SUPER_TURTLE_DIR}}/subturtle/start-tunnel.sh <project-dir> [port]`.

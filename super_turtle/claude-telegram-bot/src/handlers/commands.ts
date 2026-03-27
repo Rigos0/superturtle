@@ -50,7 +50,7 @@ import { isAuthorized } from "../security";
 import { escapeHtml, convertMarkdownToHtml } from "../formatting";
 import { getJobs } from "../cron";
 import { isAnyDriverRunning, isBackgroundRunActive, wasBackgroundRunPreempted, stopActiveDriverQuery } from "./driver-routing";
-import { handleStop } from "./stop";
+import { handleStop, stopForegroundWork } from "./stop";
 import { clearPreparedSnapshots, getPreparedSnapshotCount } from "../cron-supervision-queue";
 import { getAllDeferredQueues } from "../deferred-queue";
 import { cmdLog } from "../logger";
@@ -117,6 +117,8 @@ type SelfUpdateState = {
   error?: string;
   helper_pid?: number | null;
   service_pid?: number | null;
+  interrupted_foreground_work?: boolean;
+  interrupted_background_run?: boolean;
 };
 
 type ParsedSelfUpdateSpec = {
@@ -132,6 +134,12 @@ type ResolvedSelfUpdateTarget = ParsedSelfUpdateSpec & {
   source: "exact" | "dist-tag";
   distTag?: string;
 };
+
+type SelfUpdateReplyMessage = {
+  message_id?: number;
+};
+
+type SelfUpdateReplyFn = (text: string) => Promise<SelfUpdateReplyMessage | null | undefined>;
 
 function getVisibleTelegramCommands(commands: readonly BotCommand[]): readonly BotCommand[] {
   if (TELEPORT_COMMANDS_ENABLED) {
@@ -548,7 +556,7 @@ export function parseSelfUpdateRequest(
   return distTag ? { kind: "dist-tag", distTag } : null;
 }
 
-async function resolveSelfUpdateTarget(
+export async function resolveSelfUpdateTarget(
   request: ParsedSelfUpdateRequest,
   options: {
     fetchImpl?: typeof fetch;
@@ -611,7 +619,7 @@ async function resolveSelfUpdateTarget(
   };
 }
 
-function getCurrentRuntimeVersion(): string | null {
+export function getCurrentRuntimeVersion(): string | null {
   try {
     const raw = readFileSync(join(BOT_DIR, "..", "package.json"), "utf-8");
     const parsed = JSON.parse(raw);
@@ -621,6 +629,146 @@ function getCurrentRuntimeVersion(): string | null {
   } catch {
     return null;
   }
+}
+
+export async function startRemoteSelfUpdate(options: {
+  chatId: number | null | undefined;
+  reply: SelfUpdateReplyFn;
+  request: ParsedSelfUpdateRequest;
+}): Promise<string> {
+  if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
+    const text = "ℹ️ Self-update is only supported inside the remote E2B runtime.";
+    await options.reply(text);
+    return text;
+  }
+
+  let resolvedTarget: ResolvedSelfUpdateTarget;
+  try {
+    resolvedTarget = await resolveSelfUpdateTarget(options.request);
+  } catch (error) {
+    const text =
+      `⚠️ Failed to resolve the remote runtime target.\n${error instanceof Error ? error.message : String(error)}`;
+    await options.reply(text);
+    return text;
+  }
+
+  if (listSubturtles().some((turtle) => turtle.status === "running")) {
+    const text = "⚠️ Stop running SubTurtles before updating the remote runtime.";
+    await options.reply(text);
+    return text;
+  }
+
+  const existingState = readSelfUpdateState();
+  if (isSelfUpdateInProgress(existingState)) {
+    const text =
+      `ℹ️ A runtime update is already in progress${existingState?.requested_spec ? ` (${existingState.requested_spec})` : ""}.`;
+    await options.reply(text);
+    return text;
+  }
+
+  const servicePid = discoverServiceRunnerPid();
+  if (!servicePid) {
+    const text = "⚠️ Could not find the remote service runner. Try /restart first, then retry /update.";
+    await options.reply(text);
+    return text;
+  }
+
+  const interruptedForegroundWork = isAnyDriverRunning();
+  const interruptedBackgroundRun = isBackgroundRunActive();
+  if (interruptedForegroundWork) {
+    await stopForegroundWork(options.chatId ?? undefined);
+  }
+
+  const currentVersion = getCurrentRuntimeVersion();
+  if (currentVersion && resolvedTarget.version === currentVersion) {
+    const text =
+      resolvedTarget.source === "dist-tag"
+        ? `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec} (current ${resolvedTarget.distTag} target).`
+        : `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec}.`;
+    await options.reply(text);
+    return text;
+  }
+
+  const sourceLine =
+    resolvedTarget.source === "dist-tag"
+      ? `\n• Resolved from npm dist-tag \`${resolvedTarget.distTag}\` to ${resolvedTarget.installSpec}.`
+      : "";
+  const interruptionLine =
+    interruptedForegroundWork || interruptedBackgroundRun
+      ? "\n• I may interrupt the current reply while I restart. If that happens, resend your last message after I come back."
+      : "";
+  const kickoffText =
+    `⬆️ Updating remote runtime to ${resolvedTarget.installSpec}...${sourceLine}\n• The turtle will restart after the new package is installed.${interruptionLine}`;
+  const message = await options.reply(kickoffText);
+
+  if (!options.chatId || !message?.message_id) {
+    const text = "⚠️ Could not persist update state because Telegram did not return message metadata.";
+    await options.reply(text);
+    return text;
+  }
+
+  const updateState: SelfUpdateState = {
+    status: "pending",
+    requested_spec: resolvedTarget.installSpec,
+    current_version: currentVersion,
+    target_version: resolvedTarget.version,
+    chat_id: options.chatId,
+    message_id: message.message_id,
+    requested_at: nowIso(),
+    service_pid: servicePid,
+    helper_pid: null,
+    interrupted_foreground_work: interruptedForegroundWork,
+    interrupted_background_run: interruptedBackgroundRun,
+  };
+  writeSelfUpdateState(updateState);
+
+  const nodeExec = Bun.which("node") || process.execPath;
+  const helperScriptPath = join(BOT_DIR, "..", "bin", "superturtle.js");
+
+  try {
+    const helper = Bun.spawn(
+      [
+        nodeExec,
+        helperScriptPath,
+        "service",
+        "self-update-runner",
+        "--cwd",
+        WORKING_DIR,
+        "--spec",
+        resolvedTarget.installSpec,
+      ],
+      {
+        cwd: WORKING_DIR,
+        env: {
+          ...process.env,
+          CLAUDE_WORKING_DIR: WORKING_DIR,
+          SUPER_TURTLE_DIR: join(BOT_DIR, ".."),
+        },
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: true,
+      }
+    );
+    helper.unref();
+    writeSelfUpdateState({
+      ...updateState,
+      helper_pid: typeof helper.pid === "number" ? helper.pid : null,
+    });
+  } catch (error) {
+    writeSelfUpdateState({
+      ...updateState,
+      status: "failed",
+      completed_at: nowIso(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const text = "⚠️ Failed to launch the runtime updater. The current bot process is still running.";
+    await options.reply(text);
+    return text;
+  }
+
+  await Bun.sleep(500);
+  return kickoffText;
 }
 
 function readSelfUpdateState(): SelfUpdateState | null {
@@ -2643,121 +2791,11 @@ export async function handleUpdate(ctx: Context): Promise<void> {
     return;
   }
 
-  let resolvedTarget: ResolvedSelfUpdateTarget;
-  try {
-    resolvedTarget = await resolveSelfUpdateTarget(request);
-  } catch (error) {
-    await ctx.reply(
-      `⚠️ Failed to resolve the remote runtime target.\n${error instanceof Error ? error.message : String(error)}`
-    );
-    return;
-  }
-
-  if (isAnyDriverRunning() || isBackgroundRunActive()) {
-    await ctx.reply("⚠️ Stop current work before updating the remote runtime.");
-    return;
-  }
-
-  if (listSubturtles().some((turtle) => turtle.status === "running")) {
-    await ctx.reply("⚠️ Stop running SubTurtles before updating the remote runtime.");
-    return;
-  }
-
-  const existingState = readSelfUpdateState();
-  if (isSelfUpdateInProgress(existingState)) {
-    await ctx.reply(
-      `ℹ️ A runtime update is already in progress${existingState?.requested_spec ? ` (${existingState.requested_spec})` : ""}.`
-    );
-    return;
-  }
-
-  const servicePid = discoverServiceRunnerPid();
-  if (!servicePid) {
-    await ctx.reply("⚠️ Could not find the remote service runner. Try /restart first, then retry /update.");
-    return;
-  }
-
-  const currentVersion = getCurrentRuntimeVersion();
-  if (currentVersion && resolvedTarget.version === currentVersion) {
-    await ctx.reply(
-      resolvedTarget.source === "dist-tag"
-        ? `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec} (current ${resolvedTarget.distTag} target).`
-        : `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec}.`
-    );
-    return;
-  }
-
-  const sourceLine =
-    resolvedTarget.source === "dist-tag"
-      ? `\n• Resolved from npm dist-tag \`${resolvedTarget.distTag}\` to ${resolvedTarget.installSpec}.`
-      : "";
-  const message = await ctx.reply(
-    `⬆️ Updating remote runtime to ${resolvedTarget.installSpec}...${sourceLine}\n• The turtle will restart after the new package is installed.`
-  );
-
-  if (!chatId || !message.message_id) {
-    await ctx.reply("⚠️ Could not persist update state because Telegram did not return message metadata.");
-    return;
-  }
-
-  const updateState: SelfUpdateState = {
-    status: "pending",
-    requested_spec: resolvedTarget.installSpec,
-    current_version: currentVersion,
-    target_version: resolvedTarget.version,
-    chat_id: chatId,
-    message_id: message.message_id,
-    requested_at: nowIso(),
-    service_pid: servicePid,
-    helper_pid: null,
-  };
-  writeSelfUpdateState(updateState);
-
-  const nodeExec = Bun.which("node") || process.execPath;
-  const helperScriptPath = join(BOT_DIR, "..", "bin", "superturtle.js");
-
-  try {
-    const helper = Bun.spawn(
-      [
-        nodeExec,
-        helperScriptPath,
-        "service",
-        "self-update-runner",
-        "--cwd",
-        WORKING_DIR,
-        "--spec",
-        resolvedTarget.installSpec,
-      ],
-      {
-        cwd: WORKING_DIR,
-        env: {
-          ...process.env,
-          CLAUDE_WORKING_DIR: WORKING_DIR,
-          SUPER_TURTLE_DIR: join(BOT_DIR, ".."),
-        },
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-        detached: true,
-      }
-    );
-    helper.unref();
-    writeSelfUpdateState({
-      ...updateState,
-      helper_pid: typeof helper.pid === "number" ? helper.pid : null,
-    });
-  } catch (error) {
-    writeSelfUpdateState({
-      ...updateState,
-      status: "failed",
-      completed_at: nowIso(),
-      error: error instanceof Error ? error.message : String(error),
-    });
-    await ctx.reply("⚠️ Failed to launch the runtime updater. The current bot process is still running.");
-    return;
-  }
-
-  await Bun.sleep(500);
+  await startRemoteSelfUpdate({
+    chatId,
+    request,
+    reply: async (text) => ctx.reply(text),
+  });
 }
 
 
