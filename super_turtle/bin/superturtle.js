@@ -434,6 +434,15 @@ function clearServicePid(cwd) {
   return path;
 }
 
+function removeStaleServicePid(cwd, isPidRunningFn = isPidRunning) {
+  const pid = readServicePid(cwd);
+  if (!Number.isInteger(pid) || pid <= 0 || isPidRunningFn(pid)) {
+    return { removed: false, pid };
+  }
+  clearServicePid(cwd);
+  return { removed: true, pid };
+}
+
 function getSelfUpdateStatePath(cwd) {
   return resolve(cwd, SUPERTURTLE_SELF_UPDATE_RELATIVE_PATH);
 }
@@ -499,6 +508,137 @@ function signalPid(pid, signal = "TERM") {
   return spawnSync("kill", [`-${signal}`, String(pid)], { stdio: "ignore" });
 }
 
+function getInstanceLockPathForEnv(env) {
+  return `/tmp/claude-telegram-bot.${deriveTokenPrefix(env)}.instance.lock`;
+}
+
+function readInstanceLockPid(lockPath) {
+  if (!lockPath || !fs.existsSync(lockPath)) {
+    return null;
+  }
+
+  const raw = fs.readFileSync(lockPath, "utf-8").trim();
+  if (!/^\d+$/.test(raw)) {
+    return null;
+  }
+
+  const pid = Number.parseInt(raw, 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+function inspectInstanceLock(lockPath, isPidRunningFn = isPidRunning) {
+  const pid = readInstanceLockPid(lockPath);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return {
+      path: lockPath,
+      exists: Boolean(lockPath && fs.existsSync(lockPath)),
+      pid: null,
+      alive: false,
+    };
+  }
+
+  return {
+    path: lockPath,
+    exists: true,
+    pid,
+    alive: isPidRunningFn(pid),
+  };
+}
+
+function listProcesses() {
+  const proc = spawnSync("ps", ["-eo", "pid=", "-o", "ppid=", "-o", "command="], {
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (proc.status !== 0) {
+    return [];
+  }
+
+  return proc.stdout
+    .toString()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\d+)\s+(\d+)\s+(.*)$/s);
+      if (!match) {
+        return null;
+      }
+      const pid = Number.parseInt(match[1], 10);
+      const ppid = Number.parseInt(match[2], 10);
+      if (!Number.isInteger(pid) || pid <= 0 || !Number.isInteger(ppid) || ppid < 0) {
+        return null;
+      }
+      return {
+        pid,
+        ppid,
+        command: (match[3] || "").trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+function collectDescendantProcessIds(processes, seedPids) {
+  const tracked = new Set();
+  const queue = [];
+
+  for (const pid of seedPids || []) {
+    if (Number.isInteger(pid) && pid > 0 && !tracked.has(pid)) {
+      tracked.add(pid);
+      queue.push(pid);
+    }
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const info of processes) {
+      if (!info || !Number.isInteger(info.pid) || !Number.isInteger(info.ppid)) {
+        continue;
+      }
+      if (info.ppid !== current || tracked.has(info.pid)) {
+        continue;
+      }
+      tracked.add(info.pid);
+      queue.push(info.pid);
+    }
+  }
+
+  return tracked;
+}
+
+function expandTrackedProcessIds(trackedPids, processes) {
+  return collectDescendantProcessIds(processes, trackedPids);
+}
+
+function removeStaleInstanceLock(lockPath, isPidRunningFn = isPidRunning) {
+  if (!lockPath || !fs.existsSync(lockPath)) {
+    return { removed: false, pid: null };
+  }
+
+  const state = inspectInstanceLock(lockPath, isPidRunningFn);
+  if (!state.exists || state.alive || !Number.isInteger(state.pid)) {
+    return { removed: false, pid: state.pid };
+  }
+
+  try {
+    fs.unlinkSync(lockPath);
+    return { removed: true, pid: state.pid };
+  } catch {
+    return { removed: false, pid: state.pid };
+  }
+}
+
+function signalPidSet(pids, signal = "TERM") {
+  const signaled = [];
+  for (const pid of pids) {
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) {
+      continue;
+    }
+    signalPid(pid, signal);
+    signaled.push(pid);
+  }
+  return signaled;
+}
+
 function parseSelfUpdateRunnerArgs(argv = process.argv.slice(4)) {
   const options = {
     cwd: "",
@@ -519,16 +659,170 @@ function parseSelfUpdateRunnerArgs(argv = process.argv.slice(4)) {
   return options;
 }
 
-async function waitForServiceRunnerShutdown(cwd, servicePid, timeoutMs = 90_000) {
+async function waitForServiceRunnerShutdown(
+  cwd,
+  servicePid,
+  timeoutMs = 90_000,
+  options = {},
+  deps = {}
+) {
+  const projectEnv = options.projectEnv || loadProjectEnv(cwd) || {};
+  const instanceLockPath =
+    options.instanceLockPath || getInstanceLockPathForEnv({ ...process.env, ...projectEnv });
+  const pollIntervalMs = Number.isInteger(options.pollIntervalMs) && options.pollIntervalMs > 0
+    ? options.pollIntervalMs
+    : 250;
+  const softKillAfterMs = Number.isInteger(options.softKillAfterMs) && options.softKillAfterMs >= 0
+    ? options.softKillAfterMs
+    : 10_000;
+  const hardKillAfterMs = Number.isInteger(options.hardKillAfterMs) && options.hardKillAfterMs >= 0
+    ? options.hardKillAfterMs
+    : 20_000;
+  const listProcessesFn = deps.listProcesses || listProcesses;
+  const isPidRunningFn = deps.isPidRunning || isPidRunning;
+  const readServicePidFn = deps.readServicePid || readServicePid;
+  const signalPidSetFn = deps.signalPidSet || signalPidSet;
+  const removeStaleServicePidFn = deps.removeStaleServicePid || removeStaleServicePid;
+  const removeStaleInstanceLockFn = deps.removeStaleInstanceLock || removeStaleInstanceLock;
+  const inspectInstanceLockFn = deps.inspectInstanceLock || inspectInstanceLock;
+  const sleepFn =
+    deps.sleep || ((ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms)));
+  const logger = deps.logger || (() => {});
+
   const deadline = Date.now() + timeoutMs;
+  const initialTrackedPids =
+    Array.isArray(options.initialTrackedPids) && options.initialTrackedPids.length > 0
+      ? options.initialTrackedPids
+      : [servicePid];
+  let trackedPids = collectDescendantProcessIds(listProcessesFn(), initialTrackedPids);
+  let softEscalated = false;
+  let hardEscalated = false;
+
+  logger(
+    `Tracking old runtime shutdown via ${instanceLockPath}; watched pids: ${Array.from(trackedPids).sort((a, b) => a - b).join(", ") || "none"}.`
+  );
+
   while (Date.now() < deadline) {
-    const trackedPid = readServicePid(cwd);
-    if (!isPidRunning(servicePid) && (!trackedPid || trackedPid !== servicePid)) {
-      return;
+    const processes = listProcessesFn();
+    trackedPids = expandTrackedProcessIds(trackedPids, processes);
+
+    const staleServicePid = removeStaleServicePidFn(cwd, isPidRunningFn);
+    if (staleServicePid.removed) {
+      logger(`Removed stale service pid file for dead pid ${staleServicePid.pid}.`);
     }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+
+    const staleLock = removeStaleInstanceLockFn(instanceLockPath, isPidRunningFn);
+    if (staleLock.removed) {
+      logger(`Removed stale Telegram instance lock ${instanceLockPath} for dead pid ${staleLock.pid}.`);
+    }
+
+    let lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
+    if (lockState.alive && Number.isInteger(lockState.pid) && lockState.pid > 0) {
+      trackedPids.add(lockState.pid);
+      trackedPids = expandTrackedProcessIds(trackedPids, processes);
+    }
+
+    const survivors = Array.from(trackedPids)
+      .filter((pid) => isPidRunningFn(pid))
+      .sort((left, right) => left - right);
+    const trackedPid = readServicePidFn(cwd);
+    const serviceCleared = !isPidRunningFn(servicePid) && (!trackedPid || trackedPid !== servicePid);
+    if (serviceCleared && survivors.length === 0 && !lockState.alive) {
+      return {
+        instanceLockPath,
+        trackedPids: Array.from(trackedPids).sort((left, right) => left - right),
+      };
+    }
+
+    const elapsedMs = timeoutMs - Math.max(0, deadline - Date.now());
+    if (!softEscalated && elapsedMs >= softKillAfterMs && survivors.length > 0) {
+      const signaled = signalPidSetFn(survivors, "TERM");
+      if (signaled.length > 0) {
+        logger(`Old runtime still alive after ${elapsedMs}ms; sent SIGTERM to pids ${signaled.join(", ")}.`);
+      }
+      softEscalated = true;
+    }
+
+    lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
+    if (!hardEscalated && elapsedMs >= hardKillAfterMs) {
+      const livePids = Array.from(new Set([
+        ...survivors,
+        lockState.alive && Number.isInteger(lockState.pid) ? lockState.pid : null,
+      ].filter((pid) => Number.isInteger(pid) && pid > 0)));
+      const signaled = signalPidSetFn(livePids, "KILL");
+      if (signaled.length > 0) {
+        logger(`Old runtime still alive after ${elapsedMs}ms; sent SIGKILL to pids ${signaled.join(", ")}.`);
+      }
+      hardEscalated = true;
+    }
+
+    await sleepFn(pollIntervalMs);
   }
-  throw new Error(`Timed out waiting for service runner ${servicePid} to stop.`);
+
+  const finalProcesses = listProcessesFn();
+  trackedPids = expandTrackedProcessIds(trackedPids, finalProcesses);
+  const finalSurvivors = Array.from(trackedPids)
+    .filter((pid) => isPidRunningFn(pid))
+    .sort((left, right) => left - right);
+  const finalLock = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
+  const details = [];
+  if (finalSurvivors.length > 0) {
+    details.push(`live pids ${finalSurvivors.join(", ")}`);
+  }
+  if (finalLock.alive && Number.isInteger(finalLock.pid)) {
+    details.push(`instance lock pid ${finalLock.pid}`);
+  }
+  throw new Error(
+    `Timed out waiting for service runner ${servicePid} to stop${details.length > 0 ? ` (${details.join("; ")})` : ""}.`
+  );
+}
+
+async function waitForReplacementServiceRunner(cwd, previousServicePid, timeoutMs = 30_000, options = {}, deps = {}) {
+  const projectEnv = options.projectEnv || loadProjectEnv(cwd) || {};
+  const instanceLockPath =
+    options.instanceLockPath || getInstanceLockPathForEnv({ ...process.env, ...projectEnv });
+  const pollIntervalMs = Number.isInteger(options.pollIntervalMs) && options.pollIntervalMs > 0
+    ? options.pollIntervalMs
+    : 250;
+  const readServicePidFn = deps.readServicePid || readServicePid;
+  const isPidRunningFn = deps.isPidRunning || isPidRunning;
+  const removeStaleInstanceLockFn = deps.removeStaleInstanceLock || removeStaleInstanceLock;
+  const inspectInstanceLockFn = deps.inspectInstanceLock || inspectInstanceLock;
+  const sleepFn =
+    deps.sleep || ((ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms)));
+  const logger = deps.logger || (() => {});
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const staleLock = removeStaleInstanceLockFn(instanceLockPath, isPidRunningFn);
+    if (staleLock.removed) {
+      logger(`Removed stale Telegram instance lock ${instanceLockPath} for dead pid ${staleLock.pid}.`);
+    }
+
+    const nextServicePid = readServicePidFn(cwd);
+    const lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
+    if (
+      Number.isInteger(nextServicePid) &&
+      nextServicePid > 0 &&
+      nextServicePid !== previousServicePid &&
+      isPidRunningFn(nextServicePid) &&
+      lockState.alive
+    ) {
+      return {
+        servicePid: nextServicePid,
+        instanceLockPath,
+        lockPid: lockState.pid,
+      };
+    }
+
+    await sleepFn(pollIntervalMs);
+  }
+
+  const nextServicePid = readServicePidFn(cwd);
+  const lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
+  throw new Error(
+    `Replacement service runner did not stabilize${Number.isInteger(nextServicePid) ? ` (service pid ${nextServicePid})` : ""}${lockState.alive && Number.isInteger(lockState.pid) ? ` (instance lock pid ${lockState.pid})` : ""}.`
+  );
 }
 
 function updateManagedRuntimeManifest(cwd, installSpec, version) {
@@ -592,10 +886,17 @@ async function serviceSelfUpdateRunner() {
     return nextState;
   };
 
+  let replacementLaunched = false;
+  let oldRuntimeStopped = false;
   const restartAvailableRuntime = () => {
+    if (replacementLaunched) {
+      return null;
+    }
     appendSelfUpdateLog(cwd, "Launching replacement service runner.");
     const child = launchDetachedServiceRunner(cwd);
     appendSelfUpdateLog(cwd, `Replacement service runner launched with pid ${child.pid}.`);
+    replacementLaunched = true;
+    return child;
   };
 
   appendSelfUpdateLog(cwd, `Starting self-update to ${parsedSpec.installSpec}.`);
@@ -607,9 +908,18 @@ async function serviceSelfUpdateRunner() {
   });
 
   try {
+    const projectEnv = loadProjectEnv(cwd) || {};
+    const initialTrackedPids = Array.from(collectDescendantProcessIds(listProcesses(), [servicePid]));
+    appendSelfUpdateLog(
+      cwd,
+      `Captured old runtime tree before shutdown: ${initialTrackedPids.sort((left, right) => left - right).join(", ") || "none"}.`
+    );
     appendSelfUpdateLog(cwd, `Stopping service runner pid ${servicePid}.`);
     signalPid(servicePid, "TERM");
-    await waitForServiceRunnerShutdown(cwd, servicePid);
+    await waitForServiceRunnerShutdown(cwd, servicePid, 90_000, { projectEnv, initialTrackedPids }, {
+      logger: (message) => appendSelfUpdateLog(cwd, message),
+    });
+    oldRuntimeStopped = true;
     appendSelfUpdateLog(cwd, "Previous service runner stopped cleanly.");
 
     const install = spawnSync(
@@ -635,13 +945,20 @@ async function serviceSelfUpdateRunner() {
 
     updateManagedRuntimeManifest(cwd, parsedSpec.installSpec, parsedSpec.version);
     appendSelfUpdateLog(cwd, `Installed ${parsedSpec.installSpec}.`);
+    restartAvailableRuntime();
+    const replacement = await waitForReplacementServiceRunner(cwd, servicePid, 30_000, { projectEnv }, {
+      logger: (message) => appendSelfUpdateLog(cwd, message),
+    });
+    appendSelfUpdateLog(
+      cwd,
+      `Replacement service runner stabilized with service pid ${replacement.servicePid}${Number.isInteger(replacement.lockPid) ? ` and instance lock pid ${replacement.lockPid}` : ""}.`
+    );
     writeState({
       status: "starting",
       completed_at: new Date().toISOString(),
       error: null,
-      service_pid: null,
+      service_pid: replacement.servicePid,
     });
-    restartAvailableRuntime();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendSelfUpdateLog(cwd, `Self-update failed: ${message}`);
@@ -650,7 +967,9 @@ async function serviceSelfUpdateRunner() {
       completed_at: new Date().toISOString(),
       error: message,
     });
-    restartAvailableRuntime();
+    if (oldRuntimeStopped) {
+      restartAvailableRuntime();
+    }
     throw error;
   }
 }
@@ -2430,5 +2749,13 @@ module.exports = {
     terminateChildProcessGroup,
     parseExactRuntimeInstallSpec,
     parseSelfUpdateRunnerArgs,
+    collectDescendantProcessIds,
+    expandTrackedProcessIds,
+    getInstanceLockPathForEnv,
+    inspectInstanceLock,
+    removeStaleInstanceLock,
+    removeStaleServicePid,
+    waitForServiceRunnerShutdown,
+    waitForReplacementServiceRunner,
   },
 };

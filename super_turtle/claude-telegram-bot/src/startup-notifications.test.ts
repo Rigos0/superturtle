@@ -101,7 +101,7 @@ describe("startup notifications", () => {
       projectName: "agentic",
       driver: "codex",
     });
-    expect(message).toContain("Welcome to SuperTurtle for agentic.");
+    expect(message).toContain("Welcome, I am your turtle bot! Working in agentic.");
     expect(message).toContain("spin up SubTurtles for longer tasks");
     expect(message).toContain("handle text, screenshots, photos, documents, and audio");
     expect(message).toContain("help with office work like presentations, spreadsheets, documents, and reports");
@@ -117,7 +117,7 @@ describe("startup notifications", () => {
         projectName: null,
         driver: "codex",
       })
-    ).toContain("Welcome to SuperTurtle.");
+    ).toContain("Welcome, I am your turtle bot!");
   });
 
   it("persists the one-time startup welcome marker", async () => {
