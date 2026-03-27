@@ -33,6 +33,7 @@ const VALID_ACTIONS = [
   "list_sessions",
   "resume_session",
   "restart",
+  "update_runtime",
 ] as const;
 
 type Action = (typeof VALID_ACTIONS)[number];
@@ -72,6 +73,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         '  "list_sessions"  — list saved sessions (id, title, date)',
         '  "resume_session" — resume a past session. params: { session_id: string }',
         '  "restart"        — restart the bot process',
+        '  "update_runtime" — update the remote runtime and restart. params: { target?: string }',
+        '                     target uses the same syntax as /update: omit for default channel, or pass managed-codex, or superturtle@<exact-version>',
       ].join("\n"),
       inputSchema: {
         type: "object" as const,
@@ -89,6 +92,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               effort: { type: "string", description: "Effort level for switch_model (low/medium/high)" },
               driver: { type: "string", description: "Driver for switch_driver (claude/codex)" },
               session_id: { type: "string", description: "Session ID for resume_session" },
+              target: { type: "string", description: "Runtime update target for update_runtime" },
             },
           },
         },

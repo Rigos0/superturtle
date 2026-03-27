@@ -9,6 +9,7 @@ const { IPC_DIR, RESTART_FILE } = await import("../config");
 mkdirSync(IPC_DIR, { recursive: true });
 
 const INLINE_RESTART_PATTERN = "bot-control-inline-restart-*.json";
+const INLINE_UPDATE_PATTERN = "bot-control-inline-update-*.json";
 
 async function cleanupIpcFiles(pattern: string): Promise<void> {
   const glob = new Bun.Glob(pattern);
@@ -32,12 +33,14 @@ async function loadActualCommandsModule() {
 beforeEach(async () => {
   process.env.SUPERTURTLE_IPC_DIR = IPC_DIR;
   await cleanupIpcFiles(INLINE_RESTART_PATTERN);
+  await cleanupIpcFiles(INLINE_UPDATE_PATTERN);
   rmSync(RESTART_FILE, { force: true });
 });
 
 afterEach(async () => {
   mock.restore();
   await cleanupIpcFiles(INLINE_RESTART_PATTERN);
+  await cleanupIpcFiles(INLINE_UPDATE_PATTERN);
   rmSync(RESTART_FILE, { force: true });
 });
 
@@ -121,5 +124,50 @@ describe("inline bot-control restart", () => {
       process.exit = originalExit;
       globalThis.setTimeout = originalSetTimeout;
     }
+  });
+});
+
+describe("inline bot-control update_runtime", () => {
+  it("completes update_runtime requests through the shared self-update helper", async () => {
+    let capturedChatId: number | null = null;
+    let capturedRequest: unknown = null;
+
+    mock.module("./commands", () => ({
+      parseSelfUpdateRequest: (rawValue?: string) => {
+        expect(rawValue).toBe("managed-codex");
+        return { kind: "dist-tag", distTag: "managed-codex" } as const;
+      },
+      startRemoteSelfUpdate: async (options: { chatId: number; request: unknown }) => {
+        capturedChatId = options.chatId;
+        capturedRequest = options.request;
+        return "Updating remote runtime to superturtle@9.9.9-beta.3...";
+      },
+    }));
+
+    const { checkPendingBotControlRequests } = await loadFreshStreamingModule();
+    const chatId = 12345;
+    const requestId = `inline-update-${Date.now()}-${Math.random()}`;
+    const requestFile = `${IPC_DIR}/bot-control-${requestId}.json`;
+
+    await Bun.write(
+      requestFile,
+      JSON.stringify({
+        request_id: requestId,
+        action: "update_runtime",
+        params: { target: "managed-codex" },
+        status: "pending",
+        chat_id: String(chatId),
+        created_at: new Date().toISOString(),
+      }, null, 2)
+    );
+
+    const handled = await checkPendingBotControlRequests({} as any, chatId);
+    expect(handled).toBe(true);
+    expect(capturedChatId).toBe(chatId);
+    expect(capturedRequest).toEqual({ kind: "dist-tag", distTag: "managed-codex" });
+
+    const requestState = JSON.parse(await Bun.file(requestFile).text());
+    expect(requestState.status).toBe("completed");
+    expect(requestState.result).toBe("Updating remote runtime to superturtle@9.9.9-beta.3...");
   });
 });

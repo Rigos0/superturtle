@@ -853,6 +853,24 @@ async function executeBotControlAction(
       return "Restarting bot...";
     }
 
+    case "update_runtime": {
+      if (!chatId) {
+        return "Cannot update runtime without an active Telegram chat.";
+      }
+
+      const { parseSelfUpdateRequest, startRemoteSelfUpdate } = await import("./commands");
+      const request = parseSelfUpdateRequest(params.target);
+      if (!request) {
+        return "Invalid update target. Use default channel, a dist-tag like managed-codex, or superturtle@<exact-version>.";
+      }
+
+      return await startRemoteSelfUpdate({
+        chatId,
+        request,
+        reply: async (text) => bot.api.sendMessage(chatId, text),
+      });
+    }
+
     default:
       return `Unknown action: ${action}`;
     }

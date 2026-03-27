@@ -209,6 +209,8 @@ type PendingSelfUpdateState = {
   completed_at?: string;
   notified_at?: string;
   error?: string;
+  interrupted_foreground_work?: boolean;
+  interrupted_background_run?: boolean;
 };
 
 function readPendingSelfUpdateState(): PendingSelfUpdateState | null {
@@ -266,6 +268,20 @@ async function finalizePendingSelfUpdateMessage(): Promise<void> {
     const message = String(error).toLowerCase();
     if (!message.includes("message is not modified")) {
       throw error;
+    }
+  }
+
+  if (
+    state.status !== "failed" &&
+    (state.interrupted_foreground_work || state.interrupted_background_run)
+  ) {
+    try {
+      await bot.api.sendMessage(
+        chatId,
+        "I've just updated myself. If I cut off your last message, please send it again."
+      );
+    } catch (error) {
+      botLog.warn({ err: error, chatId }, "Failed to send post-update resend notice");
     }
   }
 
