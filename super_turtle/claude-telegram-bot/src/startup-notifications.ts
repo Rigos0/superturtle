@@ -191,10 +191,11 @@ export function buildWarmWelcomeMessage(options: {
     "",
     "What I can do:",
     "• edit code, run commands, debug failures, and explain the repo",
-    "• handle text, voice, screenshots, photos, documents, and audio",
+    "• handle text, screenshots, photos, documents, and audio",
+    "• help with office work like presentations, spreadsheets, documents, and reports",
     "• spin up SubTurtles for longer tasks and report milestones back here",
     "",
-    "Useful commands: /usage, /switch, /new, /resume, /sub, /stop",
+    "Useful commands: /usage, /model, /new, /resume, /sub",
     "Send a task in plain English and I’ll take it from there.",
   ].join("\n");
 }

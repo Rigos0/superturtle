@@ -97,18 +97,18 @@ describe("startup notifications", () => {
   });
 
   it("formats a warm welcome message with a basic capability overview", () => {
-    expect(
-      buildWarmWelcomeMessage({
-        projectName: "agentic",
-        driver: "codex",
-      })
-    ).toContain("Welcome to SuperTurtle for agentic.");
-    expect(
-      buildWarmWelcomeMessage({
-        projectName: "agentic",
-        driver: "codex",
-      })
-    ).toContain("spin up SubTurtles for longer tasks");
+    const message = buildWarmWelcomeMessage({
+      projectName: "agentic",
+      driver: "codex",
+    });
+    expect(message).toContain("Welcome to SuperTurtle for agentic.");
+    expect(message).toContain("spin up SubTurtles for longer tasks");
+    expect(message).toContain("handle text, screenshots, photos, documents, and audio");
+    expect(message).toContain("help with office work like presentations, spreadsheets, documents, and reports");
+    expect(message).not.toContain("voice");
+    expect(message).toContain("Useful commands: /usage, /model, /new, /resume, /sub");
+    expect(message).not.toContain("/switch");
+    expect(message).not.toContain("/stop");
   });
 
   it("uses a generic warm welcome when the runtime should not expose the workdir", () => {
