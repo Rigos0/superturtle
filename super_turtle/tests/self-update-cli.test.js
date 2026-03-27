@@ -82,6 +82,53 @@ const { __test__ } = require("../bin/superturtle.js");
   }
 
   {
+    const signalCalls = [];
+    let servicePidFile = 100;
+    const livePids = new Set([1129]);
+    const result = await __test__.waitForServiceRunnerShutdown(
+      "/tmp/project",
+      100,
+      100,
+      {
+        projectEnv: { TELEGRAM_BOT_TOKEN: "12345:abc" },
+        initialTrackedPids: [100, 200, 1129, 1136],
+        ignoredPids: [1129],
+        pollIntervalMs: 1,
+        softKillAfterMs: 0,
+        hardKillAfterMs: 50,
+      },
+      {
+        listProcesses: () => [
+          { pid: 1129, ppid: 1, command: "node superturtle service self-update-runner" },
+          { pid: 1136, ppid: 1129, command: "ps -eo pid,ppid,command" },
+        ],
+        isPidRunning: (pid) => livePids.has(pid),
+        readServicePid: () => servicePidFile,
+        signalPidSet: (pids, signal) => {
+          signalCalls.push({ pids: [...pids], signal });
+          return [...pids];
+        },
+        removeStaleServicePid: () => {
+          servicePidFile = null;
+          return { removed: true, pid: 100 };
+        },
+        removeStaleInstanceLock: () => ({ removed: false, pid: null }),
+        inspectInstanceLock: () => ({
+          path: "/tmp/claude-telegram-bot.12345.instance.lock",
+          exists: false,
+          pid: null,
+          alive: false,
+        }),
+        sleep: async () => {},
+        logger: () => {},
+      }
+    );
+
+    assert.deepStrictEqual(signalCalls, []);
+    assert.deepStrictEqual(result.trackedPids, [100, 200]);
+  }
+
+  {
     let tick = 0;
     const replacement = await __test__.waitForReplacementServiceRunner(
       "/tmp/project",

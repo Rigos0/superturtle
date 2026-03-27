@@ -258,7 +258,7 @@ async function finalizePendingSelfUpdateMessage(): Promise<void> {
   const chatId = state.chat_id as number;
   const messageId = state.message_id as number;
 
-  const successText = `✅ Runtime updated${state.requested_spec ? ` to ${state.requested_spec}` : ""}`;
+  const successText = `✅ Runtime updated and restarted cleanly${state.requested_spec ? ` to ${state.requested_spec}` : ""}`;
   const failureText = `⚠️ Runtime update failed${state.requested_spec ? ` for ${state.requested_spec}` : ""}.\n${summarizeSelfUpdateFailure(state.error)}`;
   const text = state.status === "failed" ? failureText : successText;
 
