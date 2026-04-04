@@ -3,8 +3,14 @@ name: Beta Runtime
 on:
   push:
     branches:
-      - unify-superturtle-layout
+      - feat/unify-managed-runtime
   workflow_dispatch:
+    inputs:
+      rebuild_template:
+        description: Rebuild the E2B template after publishing the beta package
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: beta-runtime-${{ github.ref }}
@@ -13,9 +19,6 @@ concurrency:
 jobs:
   publish-beta-package:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: super_turtle
     outputs:
       should_publish: ${{ steps.preflight.outputs.should_publish }}
       branch_dist_tag: ${{ steps.version.outputs.branch_dist_tag }}
@@ -43,14 +46,18 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - id: version
         if: steps.preflight.outputs.should_publish == 'true'
+        working-directory: super_turtle
         run: node scripts/prepare-beta-release.mjs >> "$GITHUB_OUTPUT"
       - if: steps.preflight.outputs.should_publish == 'true'
+        working-directory: super_turtle
         run: bash tests/npm-package-smoke.sh
       - if: steps.preflight.outputs.should_publish == 'true'
+        working-directory: super_turtle
         run: npm publish --tag beta --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - if: steps.preflight.outputs.should_publish == 'true'
+        working-directory: super_turtle
         run: npm dist-tag add "superturtle@${PACKAGE_VERSION}" "${BRANCH_DIST_TAG}"
         env:
           BRANCH_DIST_TAG: ${{ steps.version.outputs.branch_dist_tag }}
@@ -58,13 +65,10 @@ jobs:
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
 
   publish-beta-template:
-    if: ${{ needs.publish-beta-package.result == 'success' && needs.publish-beta-package.outputs.should_publish == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.rebuild_template == true && needs.publish-beta-package.result == 'success' && needs.publish-beta-package.outputs.should_publish == 'true' }}
     needs:
       - publish-beta-package
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: super_turtle
     steps:
       - id: preflight
         run: |
@@ -82,8 +86,10 @@ jobs:
         with:
           bun-version-file: .bun-version
       - if: steps.preflight.outputs.should_publish_template == 'true'
+        working-directory: super_turtle
         run: bun install --frozen-lockfile
       - if: steps.preflight.outputs.should_publish_template == 'true'
+        working-directory: super_turtle
         run: bun run e2b:template:build
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
