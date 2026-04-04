@@ -21,6 +21,7 @@ const {
   readMainLoopLogTail,
   MAIN_LOOP_LOG_PATH,
   handleNew,
+  handleRestart,
   handleStatus,
   handleCron,
   handleModel,
@@ -1274,5 +1275,111 @@ describe("handlers with mock Context", () => {
     });
 
     expect(result.replies).toEqual([{ text: "Unauthorized.", extra: undefined }]);
+  });
+
+  it("handleRestart defers exit in webhook mode after spawning replacement", async () => {
+    const originalSpawn = Bun.spawn;
+    const originalWrite = Bun.write;
+    const originalSleep = Bun.sleep;
+    const originalExit = process.exit;
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalTransport = process.env.TELEGRAM_TRANSPORT;
+
+    const spawnCalls: Array<{ cmd: string[]; opts: Record<string, unknown> | undefined }> = [];
+    const writes: Array<{ path: string | URL; data: string }> = [];
+    const timeoutCalls: number[] = [];
+    const exitCalls: number[] = [];
+
+    process.env.TELEGRAM_TRANSPORT = "webhook";
+    Bun.spawn = ((cmd: string[], opts?: Record<string, unknown>) => {
+      spawnCalls.push({ cmd, opts });
+      return { unref() {}, pid: 12345 } as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+    Bun.write = (async (path: string | URL, data: string) => {
+      writes.push({ path, data });
+      return data.length;
+    }) as typeof Bun.write;
+    Bun.sleep = (async () => {}) as typeof Bun.sleep;
+    process.exit = ((code?: number) => {
+      exitCalls.push(code ?? 0);
+      return undefined as never;
+    }) as typeof process.exit;
+    globalThis.setTimeout = ((fn: (...args: any[]) => void, delay?: number) => {
+      timeoutCalls.push(delay ?? 0);
+      fn();
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout;
+
+    try {
+      const ctx = {
+        from: { id: ALLOWED_USERS[0] ?? 123 },
+        chat: { id: 456 },
+        reply: async () => ({ message_id: 789 }),
+      };
+
+      await handleRestart(ctx as any);
+    } finally {
+      Bun.spawn = originalSpawn;
+      Bun.write = originalWrite;
+      Bun.sleep = originalSleep;
+      process.exit = originalExit;
+      globalThis.setTimeout = originalSetTimeout;
+      if (originalTransport === undefined) {
+        delete process.env.TELEGRAM_TRANSPORT;
+      } else {
+        process.env.TELEGRAM_TRANSPORT = originalTransport;
+      }
+    }
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(writes).toHaveLength(1);
+    expect(timeoutCalls).toEqual([0]);
+    expect(exitCalls).toEqual([0]);
+  });
+
+  it("handleRestart exits immediately outside webhook mode", async () => {
+    const originalSpawn = Bun.spawn;
+    const originalWrite = Bun.write;
+    const originalSleep = Bun.sleep;
+    const originalExit = process.exit;
+    const originalTransport = process.env.TELEGRAM_TRANSPORT;
+
+    const spawnCalls: Array<{ cmd: string[]; opts: Record<string, unknown> | undefined }> = [];
+    const exitCalls: number[] = [];
+
+    delete process.env.TELEGRAM_TRANSPORT;
+    Bun.spawn = ((cmd: string[], opts?: Record<string, unknown>) => {
+      spawnCalls.push({ cmd, opts });
+      return { unref() {}, pid: 12345 } as ReturnType<typeof Bun.spawn>;
+    }) as typeof Bun.spawn;
+    Bun.write = (async () => 1) as typeof Bun.write;
+    Bun.sleep = (async () => {}) as typeof Bun.sleep;
+    process.exit = ((code?: number) => {
+      exitCalls.push(code ?? 0);
+      return undefined as never;
+    }) as typeof process.exit;
+
+    try {
+      const ctx = {
+        from: { id: ALLOWED_USERS[0] ?? 123 },
+        chat: { id: 456 },
+        reply: async () => ({ message_id: 789 }),
+      };
+
+      await handleRestart(ctx as any);
+    } finally {
+      Bun.spawn = originalSpawn;
+      Bun.write = originalWrite;
+      Bun.sleep = originalSleep;
+      process.exit = originalExit;
+      if (originalTransport === undefined) {
+        delete process.env.TELEGRAM_TRANSPORT;
+      } else {
+        process.env.TELEGRAM_TRANSPORT = originalTransport;
+      }
+    }
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(exitCalls).toEqual([0]);
   });
 });

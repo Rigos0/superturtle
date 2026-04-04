@@ -2760,6 +2760,7 @@ export async function handleRestart(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
   const inRunLoop = process.env.SUPERTURTLE_RUN_LOOP === "1";
+  const inWebhookMode = (process.env.TELEGRAM_TRANSPORT || "").trim().toLowerCase() === "webhook";
 
   if (!isAuthorized(userId, ALLOWED_USERS)) {
     await ctx.reply("Unauthorized.");
@@ -2799,6 +2800,13 @@ export async function handleRestart(ctx: Context): Promise<void> {
       detached: true,
     });
     child.unref();
+  }
+
+  if (inWebhookMode) {
+    setTimeout(() => {
+      process.exit(0);
+    }, 0);
+    return;
   }
 
   // Exit current process after replacement is spawned.
