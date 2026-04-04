@@ -39,4 +39,43 @@ describe("superturtle service runner helpers", () => {
     expect(processKillCalls).toEqual([[-4321, "SIGTERM"]]);
     expect(childKillCalls).toEqual(["SIGTERM"]);
   });
+
+  it("collects ancestor pids up to init", () => {
+    const tracked = __test__.collectAncestorProcessIds(
+      [
+        { pid: 1336, ppid: 1332, command: "bun run src/index.ts" },
+        { pid: 1332, ppid: 1329, command: "/bin/bash run-loop.sh" },
+        { pid: 1329, ppid: 1, command: "bash -lc superturtle service run" },
+      ],
+      1336
+    );
+
+    expect(Array.from(tracked)).toEqual([1336, 1332, 1329]);
+  });
+
+  it("discovers tracked runtime pids from service pid and instance lock ancestry", () => {
+    const discovery = __test__.discoverTrackedRuntimePids(
+      "/workspace/project",
+      { TELEGRAM_BOT_TOKEN: "123:test" },
+      {
+        listProcesses: () => [
+          { pid: 1329, ppid: 1, command: "bash -lc superturtle service run" },
+          { pid: 1332, ppid: 1329, command: "/bin/bash run-loop.sh" },
+          { pid: 1336, ppid: 1332, command: "bun run src/index.ts" },
+        ],
+        readServicePid: () => null,
+        isPidRunning: (pid) => [1329, 1332, 1336].includes(pid),
+        inspectInstanceLock: () => ({
+          path: "/tmp/claude-telegram-bot.123.instance.lock",
+          exists: true,
+          pid: 1336,
+          alive: true,
+        }),
+      }
+    );
+
+    expect(discovery.servicePid).toBeNull();
+    expect(discovery.instanceLockPath).toBe("/tmp/claude-telegram-bot.123.instance.lock");
+    expect(discovery.trackedPids).toEqual([1329, 1332, 1336]);
+  });
 });

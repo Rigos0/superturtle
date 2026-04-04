@@ -604,6 +604,34 @@ function expandTrackedProcessIds(trackedPids, processes) {
   return collectDescendantProcessIds(processes, trackedPids);
 }
 
+function collectAncestorProcessIds(processes, startPid) {
+  const byPid = new Map();
+  for (const info of processes || []) {
+    if (info && Number.isInteger(info.pid) && info.pid > 0) {
+      byPid.set(info.pid, info);
+    }
+  }
+
+  const tracked = new Set();
+  let currentPid = startPid;
+  for (let depth = 0; depth < 16; depth += 1) {
+    if (!Number.isInteger(currentPid) || currentPid <= 1 || tracked.has(currentPid)) {
+      break;
+    }
+    const info = byPid.get(currentPid);
+    if (!info) {
+      break;
+    }
+    tracked.add(info.pid);
+    if (!Number.isInteger(info.ppid) || info.ppid <= 1 || info.ppid === info.pid) {
+      break;
+    }
+    currentPid = info.ppid;
+  }
+
+  return tracked;
+}
+
 function subtractPidSet(values, excluded) {
   const next = new Set();
   for (const pid of values || []) {
@@ -646,6 +674,56 @@ function signalPidSet(pids, signal = "TERM") {
     signaled.push(pid);
   }
   return signaled;
+}
+
+function parseServiceStopTreeArgs(argv = process.argv.slice(4)) {
+  const options = {
+    cwd: "",
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--cwd") {
+      options.cwd = argv[index + 1] || "";
+      index += 1;
+      continue;
+    }
+  }
+
+  return options;
+}
+
+function discoverTrackedRuntimePids(cwd, projectEnv, deps = {}) {
+  const listProcessesFn = deps.listProcesses || listProcesses;
+  const isPidRunningFn = deps.isPidRunning || isPidRunning;
+  const readServicePidFn = deps.readServicePid || readServicePid;
+  const inspectInstanceLockFn = deps.inspectInstanceLock || inspectInstanceLock;
+  const processes = listProcessesFn();
+  const tracked = new Set();
+
+  const servicePid = readServicePidFn(cwd);
+  if (Number.isInteger(servicePid) && servicePid > 0 && isPidRunningFn(servicePid)) {
+    for (const pid of collectDescendantProcessIds(processes, [servicePid])) {
+      tracked.add(pid);
+    }
+  }
+
+  const instanceLockPath = getInstanceLockPathForEnv({ ...process.env, ...projectEnv });
+  const lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
+  if (lockState.alive && Number.isInteger(lockState.pid) && lockState.pid > 0) {
+    for (const pid of collectAncestorProcessIds(processes, lockState.pid)) {
+      tracked.add(pid);
+    }
+    for (const pid of collectDescendantProcessIds(processes, [lockState.pid])) {
+      tracked.add(pid);
+    }
+  }
+
+  return {
+    instanceLockPath,
+    servicePid: Number.isInteger(servicePid) ? servicePid : null,
+    trackedPids: Array.from(tracked).sort((left, right) => left - right),
+  };
 }
 
 function parseSelfUpdateRunnerArgs(argv = process.argv.slice(4)) {
@@ -1019,6 +1097,56 @@ async function serviceSelfUpdateRunner() {
     }
     throw error;
   }
+}
+
+async function serviceStopTree() {
+  const options = parseServiceStopTreeArgs();
+  const cwd = options.cwd ? getBoundProjectRoot(options.cwd) : getBoundProjectRoot(process.cwd());
+  migrateLegacyRuntimeLayout(cwd);
+  const projectEnv = loadProjectEnv(cwd) || {};
+  const discovery = discoverTrackedRuntimePids(cwd, projectEnv);
+  const ignoredPids = Array.from(collectDescendantProcessIds(listProcesses(), [process.pid]));
+
+  if (discovery.trackedPids.length === 0) {
+    const staleServicePid = removeStaleServicePid(cwd);
+    const staleLock = removeStaleInstanceLock(discovery.instanceLockPath);
+    if (staleServicePid.removed) {
+      console.log(`Removed stale service pid file for dead pid ${staleServicePid.pid}.`);
+    }
+    if (staleLock.removed) {
+      console.log(`Removed stale Telegram instance lock ${discovery.instanceLockPath} for dead pid ${staleLock.pid}.`);
+    }
+    console.log("No live SuperTurtle runtime tree found.");
+    return;
+  }
+
+  const signaled = signalPidSet(discovery.trackedPids, "TERM");
+  if (signaled.length > 0) {
+    console.log(`Sent SIGTERM to runtime pids: ${signaled.join(", ")}`);
+  }
+
+  const anchorPid =
+    Number.isInteger(discovery.servicePid) && discovery.servicePid > 0 ? discovery.servicePid : discovery.trackedPids[0];
+
+  await waitForServiceRunnerShutdown(
+    cwd,
+    anchorPid,
+    30_000,
+    {
+      projectEnv,
+      initialTrackedPids: discovery.trackedPids,
+      ignoredPids,
+      softKillAfterMs: 1_000,
+      hardKillAfterMs: 5_000,
+    },
+    {
+      logger: (message) => console.log(message),
+    }
+  );
+
+  clearServicePid(cwd);
+  removeStaleInstanceLock(discovery.instanceLockPath);
+  console.log("SuperTurtle runtime tree stopped cleanly.");
 }
 
 function getRuntimeOwnerType(env) {
@@ -2672,6 +2800,13 @@ if (require.main === module) {
         serviceRun().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
         break;
       }
+      if (process.argv[3] === "stop-tree") {
+        serviceStopTree().catch((err) => {
+          console.error(err instanceof Error ? err.message : err);
+          process.exit(1);
+        });
+        break;
+      }
       if (process.argv[3] === "self-update-runner") {
         serviceSelfUpdateRunner().catch((err) => {
           console.error(err instanceof Error ? err.message : err);
@@ -2679,7 +2814,7 @@ if (require.main === module) {
         });
         break;
       }
-      console.error("Usage: superturtle service run | superturtle service self-update-runner --cwd <project> --spec superturtle@<exact-version>");
+      console.error("Usage: superturtle service run | superturtle service stop-tree [--cwd <project>] | superturtle service self-update-runner --cwd <project> --spec superturtle@<exact-version>");
       process.exit(1);
       break;
     case "stop":
@@ -2780,6 +2915,7 @@ Logs:
 
 Service:
   superturtle service run
+  superturtle service stop-tree --cwd <project>
   superturtle service self-update-runner --cwd <project> --spec superturtle@<exact-version>
 
 Cloud:
@@ -2806,11 +2942,15 @@ module.exports = {
     parseExactRuntimeInstallSpec,
     parseSelfUpdateRunnerArgs,
     collectDescendantProcessIds,
+    collectAncestorProcessIds,
     expandTrackedProcessIds,
+    discoverTrackedRuntimePids,
     getInstanceLockPathForEnv,
     inspectInstanceLock,
+    parseServiceStopTreeArgs,
     removeStaleInstanceLock,
     removeStaleServicePid,
+    serviceStopTree,
     waitForServiceRunnerShutdown,
     waitForReplacementServiceRunner,
   },
