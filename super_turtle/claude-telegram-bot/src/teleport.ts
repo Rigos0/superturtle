@@ -1,6 +1,7 @@
 import {
-  SUPERTURTLE_REMOTE_MODE,
-  SUPERTURTLE_RUNTIME_ROLE,
+  SUPERTURTLE_DRIVER,
+  SUPERTURTLE_RUNTIME_PROFILE,
+  TELEPORT_DISABLED_MESSAGE,
   WORKING_DIR,
 } from "./config";
 
@@ -59,9 +60,9 @@ export type TeleportState = {
 const HOME_RETURN_GRACE_MS = 30_000;
 
 export const TELEPORT_CONTROL_MESSAGE =
-  "This remote teleport runtime is control-only. Use /home to return Telegram ownership to your PC.";
+  TELEPORT_DISABLED_MESSAGE;
 export const TELEPORT_AGENT_TEXT_ONLY_MESSAGE =
-  "This remote SuperTurtle currently supports text chat only. Use /home to return to the full local runtime on your PC.";
+  "This managed runtime currently supports text chat only in this branch.";
 
 export const TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS = new Set([
   "home",
@@ -84,21 +85,19 @@ export const TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS = new Set([
 ]);
 
 export function isTeleportRemoteRuntime(): boolean {
-  return SUPERTURTLE_RUNTIME_ROLE === "teleport-remote";
+  return SUPERTURTLE_RUNTIME_PROFILE === "managed";
 }
 
 export function isTeleportRemoteControlMode(): boolean {
-  return isTeleportRemoteRuntime() && SUPERTURTLE_REMOTE_MODE === "control";
+  return false;
 }
 
 export function isTeleportRemoteAgentMode(): boolean {
-  return isTeleportRemoteRuntime() && SUPERTURTLE_REMOTE_MODE === "agent";
+  return isTeleportRemoteRuntime() && SUPERTURTLE_DRIVER === "codex";
 }
 
 export function getTeleportRemoteUnsupportedMessage(): string {
-  return isTeleportRemoteControlMode()
-    ? TELEPORT_CONTROL_MESSAGE
-    : TELEPORT_AGENT_TEXT_ONLY_MESSAGE;
+  return isTeleportRemoteRuntime() ? TELEPORT_AGENT_TEXT_ONLY_MESSAGE : TELEPORT_CONTROL_MESSAGE;
 }
 
 export async function launchTeleportRuntimeForCurrentProject(

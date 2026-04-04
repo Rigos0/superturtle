@@ -15,10 +15,11 @@ import {
   CODEX_AVAILABLE,
   DEFAULT_CLAUDE_EFFORT,
   DEFAULT_CLAUDE_MODEL,
-  MAIN_PROVIDER,
   MCP_SERVERS,
   META_PROMPT,
   SESSION_FILE,
+  SUPERTURTLE_DRIVER_EXPLICITLY_SET,
+  SUPERTURTLE_DRIVER,
   STREAMING_THROTTLE_MS,
   TEMP_PATHS,
   TOKEN_PREFIX,
@@ -410,7 +411,10 @@ export class ClaudeSession {
     this._model = prefs.model || DEFAULT_CLAUDE_MODEL;
     this._effort = prefs.effort || DEFAULT_CLAUDE_EFFORT;
 
-    const preferredDriver = prefs.activeDriver || MAIN_PROVIDER;
+    const preferredDriver =
+      SUPERTURTLE_DRIVER_EXPLICITLY_SET
+        ? SUPERTURTLE_DRIVER
+        : prefs.activeDriver || SUPERTURTLE_DRIVER;
     let resolvedDriver: "claude" | "codex" = preferredDriver;
 
     if (resolvedDriver === "codex" && !CODEX_AVAILABLE) {

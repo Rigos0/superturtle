@@ -21,24 +21,23 @@ describe("/update command helpers", () => {
   });
 
   it("defaults to a configured dist-tag and accepts explicit tags", () => {
-    expect(parseSelfUpdateRequest(undefined, "managed-codex")).toEqual({
+    expect(parseSelfUpdateRequest(undefined, "test")).toEqual({
       kind: "dist-tag",
-      distTag: "managed-codex",
+      distTag: "test",
     });
-    expect(parseSelfUpdateRequest("managed-codex", "latest")).toEqual({
+    expect(parseSelfUpdateRequest("test", "latest")).toEqual({
       kind: "dist-tag",
-      distTag: "managed-codex",
+      distTag: "test",
     });
-    expect(parseSelfUpdateRequest("superturtle@managed-codex", "latest")).toEqual({
+    expect(parseSelfUpdateRequest("superturtle@test", "latest")).toEqual({
       kind: "dist-tag",
-      distTag: "managed-codex",
+      distTag: "test",
     });
   });
 
-  it("exposes /update only on remote command surfaces", () => {
-    expect(getTelegramCommandsForRuntime("local", "agent").map(({ command }) => command)).not.toContain("update");
-    expect(getTelegramCommandsForRuntime("teleport-remote", "control").map(({ command }) => command)).toContain("update");
-    expect(getTelegramCommandsForRuntime("teleport-remote", "agent").map(({ command }) => command)).toContain("update");
+  it("exposes /update only on managed command surfaces", () => {
+    expect(getTelegramCommandsForRuntime("local").map(({ command }) => command)).not.toContain("update");
+    expect(getTelegramCommandsForRuntime("managed").map(({ command }) => command)).toContain("update");
   });
 });
 
@@ -59,9 +58,9 @@ describe("/update handoff", () => {
       process.env.TELEGRAM_BOT_TOKEN = "test-token";
       process.env.TELEGRAM_ALLOWED_USERS = "123";
       process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
-      process.env.SUPERTURTLE_RUNTIME_ROLE = "teleport-remote";
-      process.env.SUPERTURTLE_REMOTE_MODE = "agent";
-      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "managed-codex";
+      process.env.SUPERTURTLE_RUNTIME_PROFILE = "managed";
+      process.env.SUPERTURTLE_DRIVER = "codex";
+      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "test";
       process.env.CODEX_ENABLED = "false";
       process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
 
@@ -79,7 +78,7 @@ describe("/update handoff", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          "managed-codex": "9.9.9-beta.1",
+          test: "9.9.9-beta.1",
         }),
       });
       Bun.spawnSync = ((cmd, opts) => {
@@ -138,8 +137,8 @@ describe("/update handoff", () => {
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_ALLOWED_USERS: "123",
         CLAUDE_WORKING_DIR: workdir,
-        SUPERTURTLE_RUNTIME_ROLE: "teleport-remote",
-        SUPERTURTLE_REMOTE_MODE: "agent",
+        SUPERTURTLE_RUNTIME_PROFILE: "managed",
+        SUPERTURTLE_DRIVER: "codex",
         CODEX_ENABLED: "false",
         CODEX_CLI_AVAILABLE_OVERRIDE: "false",
       },
@@ -174,8 +173,8 @@ describe("/update handoff", () => {
       unrefCalled: boolean;
     };
 
-    expect(payload.replies[0]).toContain("Updating remote runtime to superturtle@9.9.9-beta.1");
-    expect(payload.replies[0]).toContain("Resolved from npm dist-tag `managed-codex`");
+    expect(payload.replies[0]).toContain("Updating managed runtime to superturtle@9.9.9-beta.1");
+    expect(payload.replies[0]).toContain("Resolved from npm dist-tag `test`");
     expect(payload.state.status).toBe("pending");
     expect(payload.state.requested_spec).toBe("superturtle@9.9.9-beta.1");
     expect(payload.state.target_version).toBe("9.9.9-beta.1");
@@ -207,9 +206,9 @@ describe("/update handoff", () => {
       process.env.TELEGRAM_BOT_TOKEN = "test-token";
       process.env.TELEGRAM_ALLOWED_USERS = "123";
       process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
-      process.env.SUPERTURTLE_RUNTIME_ROLE = "teleport-remote";
-      process.env.SUPERTURTLE_REMOTE_MODE = "agent";
-      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "managed-codex";
+      process.env.SUPERTURTLE_RUNTIME_PROFILE = "managed";
+      process.env.SUPERTURTLE_DRIVER = "codex";
+      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "test";
       process.env.CODEX_ENABLED = "false";
       process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
 
@@ -226,7 +225,7 @@ describe("/update handoff", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          "managed-codex": "9.9.9-beta.2",
+          test: "9.9.9-beta.2",
         }),
       });
       Bun.spawnSync = ((cmd, opts) => {
@@ -296,8 +295,8 @@ describe("/update handoff", () => {
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_ALLOWED_USERS: "123",
         CLAUDE_WORKING_DIR: workdir,
-        SUPERTURTLE_RUNTIME_ROLE: "teleport-remote",
-        SUPERTURTLE_REMOTE_MODE: "agent",
+        SUPERTURTLE_RUNTIME_PROFILE: "managed",
+        SUPERTURTLE_DRIVER: "codex",
         CODEX_ENABLED: "false",
         CODEX_CLI_AVAILABLE_OVERRIDE: "false",
       },
@@ -325,7 +324,7 @@ describe("/update handoff", () => {
       unrefCalled: boolean;
     };
 
-    expect(payload.replies[0]).toContain("Updating remote runtime to superturtle@9.9.9-beta.2");
+    expect(payload.replies[0]).toContain("Updating managed runtime to superturtle@9.9.9-beta.2");
     expect(payload.state.service_pid).toBe(4242);
     expect(payload.spawnCmd).toContain("self-update-runner");
     expect(payload.unrefCalled).toBe(true);
@@ -349,9 +348,9 @@ describe("/update handoff", () => {
       process.env.TELEGRAM_BOT_TOKEN = "test-token";
       process.env.TELEGRAM_ALLOWED_USERS = "123";
       process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
-      process.env.SUPERTURTLE_RUNTIME_ROLE = "teleport-remote";
-      process.env.SUPERTURTLE_REMOTE_MODE = "agent";
-      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "managed-codex";
+      process.env.SUPERTURTLE_RUNTIME_PROFILE = "managed";
+      process.env.SUPERTURTLE_DRIVER = "codex";
+      process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "test";
       process.env.CODEX_ENABLED = "false";
       process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
 
@@ -369,7 +368,7 @@ describe("/update handoff", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          "managed-codex": "9.9.9-beta.4",
+          test: "9.9.9-beta.4",
         }),
       });
       Bun.spawnSync = ((cmd, opts) => {
@@ -448,8 +447,8 @@ describe("/update handoff", () => {
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_ALLOWED_USERS: "123",
         CLAUDE_WORKING_DIR: workdir,
-        SUPERTURTLE_RUNTIME_ROLE: "teleport-remote",
-        SUPERTURTLE_REMOTE_MODE: "agent",
+        SUPERTURTLE_RUNTIME_PROFILE: "managed",
+        SUPERTURTLE_DRIVER: "codex",
         CODEX_ENABLED: "false",
         CODEX_CLI_AVAILABLE_OVERRIDE: "false",
       },
@@ -477,7 +476,7 @@ describe("/update handoff", () => {
       unrefCalled: boolean;
     };
 
-    expect(payload.replies[0]).toContain("Updating remote runtime to superturtle@9.9.9-beta.4");
+    expect(payload.replies[0]).toContain("Updating managed runtime to superturtle@9.9.9-beta.4");
     expect(payload.state.service_pid).toBe(938);
     expect(payload.spawnCmd).toContain("self-update-runner");
     expect(payload.unrefCalled).toBe(true);

@@ -19,6 +19,12 @@ type ConfigProbeOverrides = {
   defaultClaudeEffort?: string | undefined;
   defaultCodexModel?: string | undefined;
   defaultCodexEffort?: string | undefined;
+  runtimeProfile?: string | undefined;
+  driver?: string | undefined;
+  runtimeRole?: string | undefined;
+  remoteMode?: string | undefined;
+  managedCloud?: string | undefined;
+  remoteDriver?: string | undefined;
   mainProvider?: string | undefined;
 };
 
@@ -38,6 +44,9 @@ const MARKERS = {
   defaultClaudeEffort: "__DEFAULT_CLAUDE_EFFORT__=",
   defaultCodexModel: "__DEFAULT_CODEX_MODEL__=",
   defaultCodexEffort: "__DEFAULT_CODEX_EFFORT__=",
+  runtimeProfile: "__SUPERTURTLE_RUNTIME_PROFILE__=",
+  driver: "__SUPERTURTLE_DRIVER__=",
+  runtimeContractError: "__RUNTIME_CONTRACT_ERROR__=",
   mainProvider: "__MAIN_PROVIDER__=",
 } as const;
 
@@ -68,6 +77,12 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
   applyOverride("DEFAULT_CLAUDE_EFFORT", overrides.defaultClaudeEffort);
   applyOverride("DEFAULT_CODEX_MODEL", overrides.defaultCodexModel);
   applyOverride("DEFAULT_CODEX_EFFORT", overrides.defaultCodexEffort);
+  applyOverride("SUPERTURTLE_RUNTIME_PROFILE", overrides.runtimeProfile);
+  applyOverride("SUPERTURTLE_DRIVER", overrides.driver);
+  applyOverride("SUPERTURTLE_RUNTIME_ROLE", overrides.runtimeRole);
+  applyOverride("SUPERTURTLE_REMOTE_MODE", overrides.remoteMode);
+  applyOverride("SUPERTURTLE_MANAGED_CLOUD", overrides.managedCloud);
+  applyOverride("SUPERTURTLE_REMOTE_DRIVER", overrides.remoteDriver);
   applyOverride("MAIN_PROVIDER", overrides.mainProvider);
 
   const script = `
@@ -85,6 +100,9 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
     console.log(${JSON.stringify(MARKERS.defaultClaudeEffort)} + String(config.DEFAULT_CLAUDE_EFFORT));
     console.log(${JSON.stringify(MARKERS.defaultCodexModel)} + String(config.DEFAULT_CODEX_MODEL));
     console.log(${JSON.stringify(MARKERS.defaultCodexEffort)} + String(config.DEFAULT_CODEX_EFFORT));
+    console.log(${JSON.stringify(MARKERS.runtimeProfile)} + String(config.SUPERTURTLE_RUNTIME_PROFILE));
+    console.log(${JSON.stringify(MARKERS.driver)} + String(config.SUPERTURTLE_DRIVER));
+    console.log(${JSON.stringify(MARKERS.runtimeContractError)} + String(config.RUNTIME_CONTRACT_ERROR));
     console.log(${JSON.stringify(MARKERS.mainProvider)} + String(config.MAIN_PROVIDER));
   `;
 
@@ -146,6 +164,9 @@ describe("config defaults", () => {
     expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("high");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("medium");
+    expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("local");
+    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("claude");
+    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toBe("null");
     expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("claude");
   });
 });
@@ -213,6 +234,58 @@ describe("config overrides", () => {
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex-spark");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("low");
     expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("codex");
+  });
+
+  it("uses the new runtime contract env vars when provided", async () => {
+    const result = await probeConfig({
+      runtimeProfile: "managed",
+      driver: "codex",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("managed");
+    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("codex");
+    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toBe("null");
+  });
+
+  it("maps legacy managed env vars into the resolved new contract", async () => {
+    const result = await probeConfig({
+      runtimeRole: "teleport-remote",
+      remoteMode: "agent",
+      remoteDriver: "codex",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("managed");
+    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("codex");
+    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toBe("null");
+  });
+
+  it("fails legacy teleport control mode through the resolved contract", async () => {
+    const result = await probeConfig({
+      runtimeRole: "teleport-remote",
+      remoteMode: "control",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("managed");
+    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toContain(
+      "Teleport is disabled in this branch."
+    );
+  });
+
+  it("marks managed plus claude as unsupported", async () => {
+    const result = await probeConfig({
+      runtimeProfile: "managed",
+      driver: "claude",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("managed");
+    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("claude");
+    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toContain(
+      "Managed runtime currently supports SUPERTURTLE_DRIVER=codex only in this branch."
+    );
   });
 
   it("falls back to safe defaults for invalid policy values", async () => {

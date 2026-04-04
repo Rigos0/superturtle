@@ -64,7 +64,7 @@ describe("ClaudeSession env defaults", () => {
     const result = await probeClaudeSession({
       DEFAULT_CLAUDE_MODEL: "claude-sonnet-4-6",
       DEFAULT_CLAUDE_EFFORT: "medium",
-      MAIN_PROVIDER: "codex",
+      SUPERTURTLE_DRIVER: "codex",
       CLAUDE_PREFS_JSON: undefined,
     });
 
@@ -79,7 +79,6 @@ describe("ClaudeSession env defaults", () => {
     const result = await probeClaudeSession({
       DEFAULT_CLAUDE_MODEL: "claude-sonnet-4-6",
       DEFAULT_CLAUDE_EFFORT: "low",
-      MAIN_PROVIDER: "codex",
       CLAUDE_PREFS_JSON: JSON.stringify({
         model: "claude-opus-4-6",
         effort: "high",
@@ -92,5 +91,19 @@ describe("ClaudeSession env defaults", () => {
     expect(result.payload?.effort).toBe("high");
     expect(result.payload?.effortDisplay.low).toBe("Low (default)");
     expect(result.payload?.activeDriver).toBe("claude");
+  });
+
+  it("lets the explicit runtime driver override saved driver prefs", async () => {
+    const result = await probeClaudeSession({
+      SUPERTURTLE_DRIVER: "codex",
+      CLAUDE_PREFS_JSON: JSON.stringify({
+        model: "claude-opus-4-6",
+        effort: "high",
+        activeDriver: "claude",
+      }),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.payload?.activeDriver).toBe("codex");
   });
 });

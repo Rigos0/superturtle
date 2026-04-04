@@ -129,18 +129,18 @@ describe("inline bot-control restart", () => {
 
 describe("inline bot-control update_runtime", () => {
   it("completes update_runtime requests through the shared self-update helper", async () => {
-    let capturedChatId: number | null = null;
+    let capturedChatId: number | undefined;
     let capturedRequest: unknown = null;
 
     mock.module("./commands", () => ({
       parseSelfUpdateRequest: (rawValue?: string) => {
-        expect(rawValue).toBe("managed-codex");
-        return { kind: "dist-tag", distTag: "managed-codex" } as const;
+        expect(rawValue).toBe("test");
+        return { kind: "dist-tag", distTag: "test" } as const;
       },
       startRemoteSelfUpdate: async (options: { chatId: number; request: unknown }) => {
         capturedChatId = options.chatId;
         capturedRequest = options.request;
-        return "Updating remote runtime to superturtle@9.9.9-beta.3...";
+        return "Updating managed runtime to superturtle@9.9.9-beta.3...";
       },
     }));
 
@@ -154,7 +154,7 @@ describe("inline bot-control update_runtime", () => {
       JSON.stringify({
         request_id: requestId,
         action: "update_runtime",
-        params: { target: "managed-codex" },
+        params: { target: "test" },
         status: "pending",
         chat_id: String(chatId),
         created_at: new Date().toISOString(),
@@ -164,10 +164,10 @@ describe("inline bot-control update_runtime", () => {
     const handled = await checkPendingBotControlRequests({} as any, chatId);
     expect(handled).toBe(true);
     expect(capturedChatId).toBe(chatId);
-    expect(capturedRequest).toEqual({ kind: "dist-tag", distTag: "managed-codex" });
+    expect(capturedRequest).toEqual({ kind: "dist-tag", distTag: "test" });
 
     const requestState = JSON.parse(await Bun.file(requestFile).text());
     expect(requestState.status).toBe("completed");
-    expect(requestState.result).toBe("Updating remote runtime to superturtle@9.9.9-beta.3...");
+    expect(requestState.result).toBe("Updating managed runtime to superturtle@9.9.9-beta.3...");
   });
 });

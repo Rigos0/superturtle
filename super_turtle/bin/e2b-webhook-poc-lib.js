@@ -552,8 +552,8 @@ function buildRemoteEnv(
   const env = {
     ...projectEnv,
     CLAUDE_WORKING_DIR: remoteRoot,
-    SUPERTURTLE_RUNTIME_ROLE: "teleport-remote",
-    SUPERTURTLE_REMOTE_MODE: remoteMode || DEFAULT_REMOTE_MODE,
+    SUPERTURTLE_RUNTIME_PROFILE: "managed",
+    SUPERTURTLE_DRIVER: remoteDriver || "codex",
     TELEGRAM_TRANSPORT: "webhook",
     TELEGRAM_WEBHOOK_REGISTER: "false",
     TELEGRAM_WEBHOOK_URL: webhookUrl,
@@ -570,10 +570,6 @@ function buildRemoteEnv(
   if (claudeAccessToken) {
     env.CLAUDE_CODE_OAUTH_TOKEN = claudeAccessToken;
   }
-  if (remoteDriver) {
-    env.SUPERTURTLE_REMOTE_DRIVER = remoteDriver;
-  }
-
   const requiredKeys = ["TELEGRAM_BOT_TOKEN"];
   for (const key of requiredKeys) {
     if (!env[key] || !String(env[key]).trim()) {

@@ -848,10 +848,30 @@ async function waitForReplacementServiceRunner(cwd, previousServicePid, timeoutM
 function updateManagedRuntimeManifest(cwd, installSpec, version) {
   const manifestPath = getManagedRuntimeManifestPath(cwd);
   const existing = readJsonFile(manifestPath);
+  const projectEnv = loadProjectEnv(cwd) || {};
+  const runtimeProfile =
+    (projectEnv.SUPERTURTLE_RUNTIME_PROFILE || process.env.SUPERTURTLE_RUNTIME_PROFILE || "").trim() ||
+    ((projectEnv.SUPERTURTLE_RUNTIME_ROLE || process.env.SUPERTURTLE_RUNTIME_ROLE) === "teleport-remote"
+      ? "managed"
+      : "local");
+  const driver =
+    (
+      projectEnv.SUPERTURTLE_DRIVER ||
+      process.env.SUPERTURTLE_DRIVER ||
+      projectEnv.SUPERTURTLE_REMOTE_DRIVER ||
+      process.env.SUPERTURTLE_REMOTE_DRIVER ||
+      projectEnv.MAIN_PROVIDER ||
+      process.env.MAIN_PROVIDER ||
+      (runtimeProfile === "managed" ? "codex" : "claude")
+    ).trim();
   const nextPayload =
     existing && typeof existing === "object" && !Array.isArray(existing) ? { ...existing } : {};
   nextPayload.runtime_install_spec = installSpec;
   nextPayload.runtime_version = version;
+  nextPayload.runtime_profile = runtimeProfile;
+  nextPayload.driver = driver;
+  nextPayload.remote_mode = runtimeProfile === "managed" ? "agent" : null;
+  nextPayload.remote_driver = runtimeProfile === "managed" ? driver : null;
   nextPayload.updated_at = new Date().toISOString();
   writeJsonFile(manifestPath, nextPayload);
   return manifestPath;
@@ -1002,7 +1022,9 @@ async function serviceSelfUpdateRunner() {
 }
 
 function getRuntimeOwnerType(env) {
-  return env.SUPERTURTLE_RUNTIME_ROLE === "teleport-remote" || env.TELEGRAM_TRANSPORT === "webhook"
+  return env.SUPERTURTLE_RUNTIME_PROFILE === "managed" ||
+    env.SUPERTURTLE_RUNTIME_ROLE === "teleport-remote" ||
+    env.TELEGRAM_TRANSPORT === "webhook"
     ? "cloud"
     : "local";
 }

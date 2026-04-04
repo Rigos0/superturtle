@@ -17,11 +17,13 @@ import {
   CODEX_AVAILABLE,
   CODEX_CLI_AVAILABLE,
   CODEX_USER_ENABLED,
-  SUPERTURTLE_REMOTE_MODE,
+  RUNTIME_CONTRACT_ERROR,
   TOKEN_PREFIX,
   IPC_DIR,
   SUPERTURTLE_DATA_DIR,
-  SUPERTURTLE_RUNTIME_ROLE,
+  SUPERTURTLE_DRIVER,
+  SUPERTURTLE_DRIVER_EXPLICITLY_SET,
+  SUPERTURTLE_RUNTIME_PROFILE,
   TURTLE_GREETINGS_ENABLED,
   getCodexUnavailableReason,
 } from "./config";
@@ -107,15 +109,6 @@ import {
   type TelegramTransportConfig,
 } from "./telegram-transport";
 import { startSubturtleBoardService } from "./subturtle-board-service";
-import {
-  getTeleportRemoteUnsupportedMessage,
-  isTeleportRemoteAgentMode,
-  isTeleportRemoteControlMode,
-  loadTeleportStateForCurrentProject,
-  reconcileTeleportOwnershipForCurrentProject,
-  TELEPORT_REMOTE_AGENT_ALLOWED_COMMANDS,
-  TELEPORT_REMOTE_CONTROL_ALLOWED_COMMANDS,
-} from "./teleport";
 import {
   claimTelegramOwnerIfUnclaimed,
   getAuthorizedTelegramUserIds,
@@ -294,7 +287,7 @@ async function finalizePendingSelfUpdateMessage(): Promise<void> {
 }
 
 async function sendStartupNotifications(): Promise<void> {
-  if (SUPERTURTLE_RUNTIME_ROLE === "teleport-remote") {
+  if (SUPERTURTLE_RUNTIME_PROFILE !== "local") {
     return;
   }
 
@@ -321,7 +314,7 @@ async function sendWarmWelcomeIfNeeded(chatId: number, userId: number | null): P
   }
 
   const projectName =
-    SUPERTURTLE_RUNTIME_ROLE === "teleport-remote" ? null : basename(WORKING_DIR);
+    SUPERTURTLE_RUNTIME_PROFILE === "managed" ? null : basename(WORKING_DIR);
   const text = buildWarmWelcomeMessage({
     projectName,
     driver: session.activeDriver,
@@ -757,36 +750,6 @@ bot.command("start", async (ctx) => {
   await sendWarmWelcomeIfNeeded(chatId, userId ?? null);
 });
 
-bot.use(async (ctx, next) => {
-  if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
-    await next();
-    return;
-  }
-
-  const commandName = getCommandNameFromText(ctx.message?.text);
-  if (!commandName) {
-    await next();
-    return;
-  }
-
-  if (commandName === "start") {
-    await next();
-    return;
-  }
-
-  const allowedCommands = new Set(
-    getTelegramCommandsForRuntime("teleport-remote", isTeleportRemoteAgentMode() ? "agent" : "control")
-      .map(({ command }) => command)
-  );
-
-  if (!allowedCommands.has(commandName)) {
-    await ctx.reply(getTeleportRemoteUnsupportedMessage());
-    return;
-  }
-
-  await next();
-});
-
 // ============== Message Handlers ==============
 
 // Bare-word command matching (e.g. "status" works like "/status").
@@ -1159,11 +1122,11 @@ const startCronTimer = () => {
   }, 10000); // 10 seconds
 };
 
-function shouldDeferRemoteStartupTasks(
+function shouldDeferManagedStartupTasks(
   env: Record<string, string | undefined> = process.env
 ): boolean {
   return (
-    SUPERTURTLE_RUNTIME_ROLE === "teleport-remote" &&
+    SUPERTURTLE_RUNTIME_PROFILE === "managed" &&
     (env.SUPERTURTLE_DEFER_REMOTE_STARTUP_TASKS || "").trim().toLowerCase() === "true"
   );
 }
@@ -1182,34 +1145,12 @@ function logStartupMilestone(
   );
 }
 
-function buildLocalStandbyConfig(): Extract<TelegramTransportConfig, { mode: "standby" }> {
-  const state = loadTeleportStateForCurrentProject();
-  return {
-    mode: "standby",
-    expectedRemoteWebhookUrl: state?.ownerMode === "remote" ? state.webhookUrl : state?.webhookUrl || null,
-    onResumePolling: async () => {
-      await reconcileTeleportOwnershipForCurrentProject();
-    },
-  };
-}
-
 function resolveStartupTransportConfig(): TelegramTransportConfig | undefined {
-  const localTeleportState = loadTeleportStateForCurrentProject();
-  return SUPERTURTLE_RUNTIME_ROLE === "local"
-    ? localTeleportState?.ownerMode === "remote"
-      ? buildLocalStandbyConfig()
-      : {
-          mode: "polling",
-          clearWebhookOnStart: true,
-          standbyOnConflict: async () => {
-            await reconcileTeleportOwnershipForCurrentProject();
-            const state = loadTeleportStateForCurrentProject();
-            if (!state?.webhookUrl) {
-              return null;
-            }
-            return buildLocalStandbyConfig();
-          },
-        }
+  return SUPERTURTLE_RUNTIME_PROFILE === "local"
+    ? {
+        mode: "polling",
+        clearWebhookOnStart: true,
+      }
     : undefined;
 }
 
@@ -1231,33 +1172,46 @@ botLog.info(
 );
 botLog.info("Starting bot...");
 
-if (!CLAUDE_CLI_AVAILABLE && SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
+if (RUNTIME_CONTRACT_ERROR) {
+  botLog.error({ runtimeProfile: SUPERTURTLE_RUNTIME_PROFILE, driver: SUPERTURTLE_DRIVER }, RUNTIME_CONTRACT_ERROR);
+  process.exit(1);
+}
+
+const startupDriver: DriverId =
+  SUPERTURTLE_RUNTIME_PROFILE === "managed"
+    ? "codex"
+    : SUPERTURTLE_DRIVER_EXPLICITLY_SET
+      ? SUPERTURTLE_DRIVER
+      : session.activeDriver;
+
+if (startupDriver === "claude" && !CLAUDE_CLI_AVAILABLE) {
   botLog.error(
-    "Claude CLI is required for the meta-agent runtime. Install Claude Code or set CLAUDE_CLI_PATH."
+    "Claude CLI is required when the active runtime driver is Claude. Install Claude Code or set CLAUDE_CLI_PATH."
   );
   process.exit(1);
 }
 
-if (isTeleportRemoteControlMode()) {
-  botLog.warn(
-    "Starting in teleport-remote control mode. Text prompts and agent-driving commands are disabled."
+if (startupDriver === "codex" && !CODEX_AVAILABLE) {
+  botLog.error(
+    `Codex is required when the active runtime driver is Codex. ${getCodexUnavailableReason() || "Codex is unavailable."}`
   );
+  process.exit(1);
 }
-if (isTeleportRemoteAgentMode()) {
-  if (!CODEX_AVAILABLE) {
-    botLog.error(
-      `Remote agent mode requires Codex inside E2B. ${getCodexUnavailableReason() || "Codex is unavailable."}`
-    );
-    process.exit(1);
-  }
-  session.activeDriver = "codex";
-  botLog.info("Starting in teleport-remote agent mode with Codex as the active driver");
+
+if (SUPERTURTLE_RUNTIME_PROFILE === "managed" || SUPERTURTLE_DRIVER_EXPLICITLY_SET) {
+  session.activeDriver = startupDriver;
+}
+
+if (SUPERTURTLE_RUNTIME_PROFILE === "managed") {
+  botLog.info("Starting in managed mode with Codex as the active driver");
+} else {
+  botLog.info({ driver: startupDriver }, `Starting in local mode with ${startupDriver} as the active driver`);
 }
 
 mkdirSync(IPC_DIR, { recursive: true });
 const releaseInstanceLock = acquireInstanceLockOrExit();
 const startupStartedAt = Date.now();
-const deferRemoteStartupTasks = shouldDeferRemoteStartupTasks();
+const deferRemoteStartupTasks = shouldDeferManagedStartupTasks();
 
 // Grammy requires bot.init() (or an explicit botInfo) before handleUpdate().
 const botInitStartedAt = Date.now();
@@ -1277,11 +1231,11 @@ const ensureStartupTransport = async () => {
   const transportStartedAt = Date.now();
   startupTransport = await startTelegramTransport(bot, resolveStartupTransportConfig(), {
     getReadiness: async () => {
-      if (isTeleportRemoteAgentMode() && !CODEX_AVAILABLE) {
+      if (SUPERTURTLE_RUNTIME_PROFILE === "managed" && !CODEX_AVAILABLE) {
         return {
           ok: false,
           status: 503,
-          body: `remote-agent-codex-unavailable: ${getCodexUnavailableReason() || "Codex is unavailable."}`,
+          body: `managed-codex-unavailable: ${getCodexUnavailableReason() || "Codex is unavailable."}`,
         };
       }
       return { ok: true, status: 200, body: "ok" };
@@ -1322,14 +1276,14 @@ if (deferRemoteStartupTasks) {
 }
 
 if (
-  SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote" &&
+  SUPERTURTLE_RUNTIME_PROFILE === "local" &&
   TURTLE_GREETINGS_ENABLED &&
   getPrimaryTelegramTarget()
 ) {
   startTurtleGreetings(bot, () => getPrimaryTelegramTarget()?.chatId ?? null);
   botLog.info("Turtle greetings enabled (8am/8pm Europe/Prague)");
 }
-if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
+if (SUPERTURTLE_RUNTIME_PROFILE === "local") {
   startDashboardServer();
 }
 
@@ -1355,7 +1309,7 @@ if (existsSync(RESTART_FILE)) {
         }
       }
 
-      if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
+      if (SUPERTURTLE_RUNTIME_PROFILE === "local") {
         // Clean slate: reset driver sessions (stop any stale work from before restart)
         // Preserve the active driver preference — it was already loaded from prefs by the constructor.
         const savedDriver = session.activeDriver;
@@ -1408,7 +1362,7 @@ try {
 
 await sendStartupNotifications();
 
-if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
+if (SUPERTURTLE_RUNTIME_PROFILE === "local") {
   await runConductorMaintenancePass({ recoverInFlightWakeups: true });
 
   // Start cron timer after boot-time recovery so recurring ticks never race startup maintenance.

@@ -161,7 +161,7 @@ describe("remote text mode", () => {
     expect(runCalls).toHaveLength(0);
     expect(replies).toEqual([
       {
-        text: "This remote teleport runtime is control-only. Use /home to return Telegram ownership to your PC.",
+        text: "Teleport is disabled in this branch. Use SUPERTURTLE_RUNTIME_PROFILE=managed for the managed E2B runtime.",
       },
     ]);
   });

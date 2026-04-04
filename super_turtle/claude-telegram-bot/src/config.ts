@@ -74,9 +74,6 @@ export const SUPER_TURTLE_DIR = process.env.SUPER_TURTLE_DIR
 
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 export const E2B_API_KEY = process.env.E2B_API_KEY || "";
-export const TELEPORT_COMMANDS_ENABLED = E2B_API_KEY.trim().length > 0;
-export const SUPERTURTLE_MANAGED_CLOUD =
-  process.env.SUPERTURTLE_MANAGED_CLOUD?.trim().toLowerCase() === "true";
 export const SUPERTURTLE_RUNTIME_UPDATE_PACKAGE =
   process.env.SUPERTURTLE_RUNTIME_UPDATE_PACKAGE?.trim() || "superturtle";
 export const SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL =
@@ -85,8 +82,15 @@ export const SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL =
 export type ClaudeEffortLevel = "low" | "medium" | "high";
 export type CodexEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type MainProvider = "claude" | "codex";
+export type SuperTurtleDriver = MainProvider;
+export type SuperTurtleRuntimeProfile = "local" | "managed";
 export type SuperTurtleRuntimeRole = "local" | "teleport-remote";
 export type SuperTurtleRemoteMode = "control" | "agent";
+
+export const TELEPORT_DISABLED_MESSAGE =
+  "Teleport is disabled in this branch. Use SUPERTURTLE_RUNTIME_PROFILE=managed for the managed E2B runtime.";
+export const MANAGED_DRIVER_UNSUPPORTED_MESSAGE =
+  "Managed runtime currently supports SUPERTURTLE_DRIVER=codex only in this branch.";
 
 const DEFAULT_CLAUDE_MODEL_FALLBACK = "claude-opus-4-6";
 const DEFAULT_CLAUDE_EFFORT_FALLBACK: ClaudeEffortLevel = "high";
@@ -135,6 +139,131 @@ function parseDefaultEffort<T extends string>(
   return fallback;
 }
 
+function parseOptionalBool(raw: string | undefined): boolean | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const value = raw.toLowerCase();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+
+function parseDriverValue(
+  envKey: string,
+  rawValue: string | undefined
+): SuperTurtleDriver | null {
+  const value = rawValue?.trim().toLowerCase();
+  if (!value) return null;
+  if (value === "claude" || value === "codex") {
+    return value;
+  }
+  configLog.warn(`Invalid ${envKey}="${value}". Ignoring it.`);
+  return null;
+}
+
+function parseRuntimeProfileValue(
+  envKey: string,
+  rawValue: string | undefined
+): SuperTurtleRuntimeProfile | null {
+  const value = rawValue?.trim().toLowerCase();
+  if (!value) return null;
+  if (value === "local" || value === "managed") {
+    return value;
+  }
+  configLog.warn(`Invalid ${envKey}="${value}". Ignoring it.`);
+  return null;
+}
+
+function parseLegacyRuntimeRole(rawValue: string | undefined): SuperTurtleRuntimeRole | null {
+  const value = rawValue?.trim().toLowerCase();
+  if (!value) return null;
+  if (value === "local" || value === "teleport-remote") {
+    return value;
+  }
+  configLog.warn(`Invalid SUPERTURTLE_RUNTIME_ROLE="${value}". Ignoring it.`);
+  return null;
+}
+
+function parseLegacyRemoteMode(rawValue: string | undefined): SuperTurtleRemoteMode | null {
+  const value = rawValue?.trim().toLowerCase();
+  if (!value) return null;
+  if (value === "control" || value === "agent") {
+    return value;
+  }
+  configLog.warn(`Invalid SUPERTURTLE_REMOTE_MODE="${value}". Ignoring it.`);
+  return null;
+}
+
+const legacyRuntimeInputs: string[] = [];
+
+function noteLegacyRuntimeInput(envKey: string): void {
+  if (process.env[envKey] !== undefined) {
+    legacyRuntimeInputs.push(envKey);
+  }
+}
+
+noteLegacyRuntimeInput("SUPERTURTLE_RUNTIME_ROLE");
+noteLegacyRuntimeInput("SUPERTURTLE_REMOTE_MODE");
+noteLegacyRuntimeInput("SUPERTURTLE_MANAGED_CLOUD");
+noteLegacyRuntimeInput("SUPERTURTLE_REMOTE_DRIVER");
+noteLegacyRuntimeInput("MAIN_PROVIDER");
+
+const explicitRuntimeProfile = parseRuntimeProfileValue(
+  "SUPERTURTLE_RUNTIME_PROFILE",
+  process.env.SUPERTURTLE_RUNTIME_PROFILE
+);
+const explicitDriver = parseDriverValue(
+  "SUPERTURTLE_DRIVER",
+  process.env.SUPERTURTLE_DRIVER
+);
+const legacyMainProvider = parseDriverValue("MAIN_PROVIDER", process.env.MAIN_PROVIDER);
+const legacyRemoteDriver = parseDriverValue(
+  "SUPERTURTLE_REMOTE_DRIVER",
+  process.env.SUPERTURTLE_REMOTE_DRIVER
+);
+const legacyRuntimeRole = parseLegacyRuntimeRole(process.env.SUPERTURTLE_RUNTIME_ROLE);
+const legacyRemoteMode = parseLegacyRemoteMode(process.env.SUPERTURTLE_REMOTE_MODE);
+const legacyManagedCloud = parseOptionalBool(process.env.SUPERTURTLE_MANAGED_CLOUD);
+
+if (legacyRuntimeInputs.length > 0) {
+  configLog.warn(
+    {
+      legacyRuntimeInputs,
+    },
+    "Legacy runtime env vars are being accepted temporarily. Runtime decisions now resolve through SUPERTURTLE_RUNTIME_PROFILE and SUPERTURTLE_DRIVER."
+  );
+}
+
+function resolveRuntimeProfile(): {
+  profile: SuperTurtleRuntimeProfile;
+  error: string | null;
+} {
+  if (explicitRuntimeProfile) {
+    return { profile: explicitRuntimeProfile, error: null };
+  }
+
+  if (legacyRuntimeRole === "teleport-remote") {
+    if (legacyRemoteMode === "control") {
+      return { profile: "managed", error: TELEPORT_DISABLED_MESSAGE };
+    }
+    return { profile: "managed", error: null };
+  }
+
+  if (legacyManagedCloud === true) {
+    return { profile: "managed", error: null };
+  }
+
+  return { profile: "local", error: null };
+}
+
+function resolveDriver(profile: SuperTurtleRuntimeProfile): SuperTurtleDriver {
+  return (
+    explicitDriver ||
+    legacyRemoteDriver ||
+    legacyMainProvider ||
+    (profile === "managed" ? "codex" : "claude")
+  );
+}
+
 export const DEFAULT_CLAUDE_MODEL = parseDefaultModel(
   "DEFAULT_CLAUDE_MODEL",
   DEFAULT_CLAUDE_MODEL_FALLBACK,
@@ -155,31 +284,36 @@ export const DEFAULT_CODEX_EFFORT = parseDefaultEffort(
   DEFAULT_CODEX_EFFORT_FALLBACK,
   VALID_CODEX_EFFORTS
 );
-export const MAIN_PROVIDER: MainProvider = (() => {
-  const value = process.env.MAIN_PROVIDER?.trim().toLowerCase();
-  if (!value) return "claude";
-  if (value === "claude" || value === "codex") return value;
-  configLog.warn(`Invalid MAIN_PROVIDER="${value}". Falling back to "claude".`);
-  return "claude";
-})();
-export const SUPERTURTLE_RUNTIME_ROLE: SuperTurtleRuntimeRole = (() => {
-  const value = process.env.SUPERTURTLE_RUNTIME_ROLE?.trim().toLowerCase();
-  if (!value) return "local";
-  if (value === "local" || value === "teleport-remote") return value;
-  configLog.warn(
-    `Invalid SUPERTURTLE_RUNTIME_ROLE="${value}". Falling back to "local".`
-  );
-  return "local";
-})();
-export const SUPERTURTLE_REMOTE_MODE: SuperTurtleRemoteMode = (() => {
-  const value = process.env.SUPERTURTLE_REMOTE_MODE?.trim().toLowerCase();
-  if (!value) return "control";
-  if (value === "control" || value === "agent") return value;
-  configLog.warn(
-    `Invalid SUPERTURTLE_REMOTE_MODE="${value}". Falling back to "control".`
-  );
-  return "control";
-})();
+const resolvedRuntimeProfile = resolveRuntimeProfile();
+export const SUPERTURTLE_RUNTIME_PROFILE: SuperTurtleRuntimeProfile =
+  resolvedRuntimeProfile.profile;
+export const SUPERTURTLE_DRIVER: SuperTurtleDriver =
+  resolveDriver(SUPERTURTLE_RUNTIME_PROFILE);
+export const SUPERTURTLE_DRIVER_EXPLICITLY_SET =
+  explicitDriver !== null || legacyRemoteDriver !== null || legacyMainProvider !== null;
+export const MAIN_PROVIDER: MainProvider = SUPERTURTLE_DRIVER;
+export const SUPERTURTLE_RUNTIME_ROLE: SuperTurtleRuntimeRole =
+  SUPERTURTLE_RUNTIME_PROFILE === "managed" ? "teleport-remote" : "local";
+export const SUPERTURTLE_REMOTE_MODE: SuperTurtleRemoteMode =
+  SUPERTURTLE_RUNTIME_PROFILE === "managed" ? "agent" : "control";
+export const SUPERTURTLE_MANAGED_CLOUD =
+  SUPERTURTLE_RUNTIME_PROFILE === "managed";
+export const TELEPORT_DISABLED_IN_THIS_BRANCH = true;
+export const RUNTIME_CONTRACT_ERROR =
+  resolvedRuntimeProfile.error ||
+  (SUPERTURTLE_RUNTIME_PROFILE === "managed" && SUPERTURTLE_DRIVER !== "codex"
+    ? MANAGED_DRIVER_UNSUPPORTED_MESSAGE
+    : null);
+
+process.env.SUPERTURTLE_RUNTIME_PROFILE = SUPERTURTLE_RUNTIME_PROFILE;
+process.env.SUPERTURTLE_DRIVER = SUPERTURTLE_DRIVER;
+
+export function ensureSupportedRuntimeContract(): void {
+  if (RUNTIME_CONTRACT_ERROR) {
+    throw new Error(RUNTIME_CONTRACT_ERROR);
+  }
+}
+
 export const SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = (() => {
   const explicit = process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG?.trim();
   if (explicit) {
@@ -191,8 +325,8 @@ export const SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = (() => {
     return templateChannel;
   }
 
-  if (SUPERTURTLE_RUNTIME_ROLE === "teleport-remote") {
-    return "managed-codex";
+  if (SUPERTURTLE_RUNTIME_PROFILE === "managed") {
+    return "test";
   }
 
   return "latest";
@@ -251,14 +385,6 @@ export const CODEX_ENABLED = CODEX_USER_ENABLED;
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "never" | "on-request" | "on-failure" | "untrusted";
-
-function parseOptionalBool(raw: string | undefined): boolean | null {
-  if (raw === undefined || raw.trim() === "") return null;
-  const value = raw.toLowerCase();
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return null;
-}
 
 function parseBooleanEnv(envKey: string, fallback: boolean): boolean {
   const parsed = parseOptionalBool(process.env[envKey]);

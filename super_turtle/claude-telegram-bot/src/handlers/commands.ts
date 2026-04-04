@@ -35,15 +35,13 @@ import {
   BOT_DIR,
   TOKEN_PREFIX,
   DEFAULT_CODEX_EFFORT,
-  TELEPORT_COMMANDS_ENABLED,
-  SUPERTURTLE_REMOTE_MODE,
-  SUPERTURTLE_RUNTIME_ROLE,
-  SUPERTURTLE_MANAGED_CLOUD,
+  SUPERTURTLE_RUNTIME_PROFILE,
   SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG,
   SUPERTURTLE_RUNTIME_UPDATE_PACKAGE,
   SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL,
   SUPERTURTLE_DATA_DIR,
   SUPERTURTLE_SUBTURTLES_DIR,
+  TELEPORT_DISABLED_MESSAGE,
   getCodexUnavailableReason,
 } from "../config";
 import { getContextReport } from "../context-command";
@@ -55,16 +53,6 @@ import { handleStop, stopForegroundWork } from "./stop";
 import { clearPreparedSnapshots, getPreparedSnapshotCount } from "../cron-supervision-queue";
 import { cmdLog } from "../logger";
 import type { BotCommand } from "grammy/types";
-import {
-  activateTeleportOwnershipForCurrentProject,
-  launchTeleportRuntimeForCurrentProject,
-  loadTeleportStateForCurrentProject,
-  pauseTeleportSandboxForCurrentProject,
-  reconcileTeleportOwnershipForCurrentProject,
-  releaseTeleportOwnershipForCurrentProject,
-  recentlyReturnedHome,
-  type TeleportProgressEvent,
-} from "../teleport";
 
 // Canonical main-loop log written by live.sh (tmux + caffeinate + run-loop).
 export const MAIN_LOOP_LOG_PATH = `/tmp/claude-telegram-${TOKEN_PREFIX}-bot-ts.log`;
@@ -92,24 +80,14 @@ const LOCAL_TELEGRAM_COMMANDS = [
   { command: "sub", description: "Manage SubTurtles" },
   { command: "cron", description: "Show scheduled jobs" },
   { command: "debug", description: "Show debug state" },
-  { command: "teleport", description: "Move Telegram control to E2B" },
   { command: "restart", description: "Restart the bot" },
 ] as const;
 
-const TELEPORT_REMOTE_CONTROL_COMMANDS = [
-  { command: "home", description: "Return Telegram control to your PC" },
-  { command: "status", description: "Show detailed status" },
-  { command: "looplogs", description: "Show main loop logs" },
-  { command: "pinologs", description: "Show Pino logs" },
-  { command: "debug", description: "Show debug state" },
-  { command: "restart", description: "Restart the bot" },
-  { command: "update", description: "Update the remote runtime" },
+const MANAGED_TELEGRAM_COMMANDS = [
+  ...LOCAL_TELEGRAM_COMMANDS,
+  { command: "update", description: "Update the managed runtime" },
 ] as const;
-const TELEPORT_REMOTE_AGENT_COMMANDS = [
-  { command: "stop", description: "Stop current work" },
-  ...TELEPORT_REMOTE_CONTROL_COMMANDS,
-] as const;
-const UPDATE_USAGE_TEXT = "Usage: /update | /update managed-codex | /update superturtle@0.2.9-beta.143.1";
+const UPDATE_USAGE_TEXT = "Usage: /update | /update test | /update superturtle@0.2.9-beta.143.1";
 const SELF_UPDATE_SERVICE_PID_PATH = join(SUPERTURTLE_DATA_DIR, "service.pid");
 const SELF_UPDATE_STALE_MS = 15 * 60 * 1000;
 
@@ -150,42 +128,12 @@ type SelfUpdateReplyMessage = {
 
 type SelfUpdateReplyFn = (text: string) => Promise<SelfUpdateReplyMessage | null | undefined>;
 
-function getVisibleTelegramCommands(commands: readonly BotCommand[]): readonly BotCommand[] {
-  if (TELEPORT_COMMANDS_ENABLED) {
-    return commands;
-  }
-  return commands.filter((entry) => entry.command !== "teleport" && entry.command !== "home");
-}
-
-function useManagedCloudCommandSurface(
-  runtimeRole: "local" | "teleport-remote",
-  remoteMode: "control" | "agent"
-): boolean {
-  return SUPERTURTLE_MANAGED_CLOUD && runtimeRole === "teleport-remote" && remoteMode === "agent";
-}
-
-function withRemoteUpdateCommand(commands: readonly BotCommand[]): readonly BotCommand[] {
-  if (commands.some((command) => command.command === "update")) {
-    return commands;
-  }
-  return [...commands, TELEPORT_REMOTE_CONTROL_COMMANDS[TELEPORT_REMOTE_CONTROL_COMMANDS.length - 1]!];
-}
-
 export function getTelegramCommandsForRuntime(
-  runtimeRole: "local" | "teleport-remote" = SUPERTURTLE_RUNTIME_ROLE,
-  remoteMode: "control" | "agent" = SUPERTURTLE_REMOTE_MODE
+  runtimeProfile: "local" | "managed" = SUPERTURTLE_RUNTIME_PROFILE
 ): readonly BotCommand[] {
-  if (useManagedCloudCommandSurface(runtimeRole, remoteMode)) {
-    return getVisibleTelegramCommands(withRemoteUpdateCommand(LOCAL_TELEGRAM_COMMANDS));
-  }
-  if (runtimeRole === "teleport-remote") {
-    return getVisibleTelegramCommands(
-      remoteMode === "agent"
-        ? TELEPORT_REMOTE_AGENT_COMMANDS
-        : TELEPORT_REMOTE_CONTROL_COMMANDS
-    );
-  }
-  return getVisibleTelegramCommands(LOCAL_TELEGRAM_COMMANDS);
+  return runtimeProfile === "managed"
+    ? MANAGED_TELEGRAM_COMMANDS
+    : LOCAL_TELEGRAM_COMMANDS;
 }
 
 export const TELEGRAM_COMMANDS: readonly BotCommand[] =
@@ -193,119 +141,15 @@ export const TELEGRAM_COMMANDS: readonly BotCommand[] =
 
 async function syncTelegramCommandsFromCommand(
   ctx: Context,
-  runtimeRole: "local" | "teleport-remote",
-  remoteMode: "control" | "agent" = SUPERTURTLE_REMOTE_MODE
+  runtimeProfile: "local" | "managed"
 ): Promise<void> {
   try {
     await ctx.api.setMyCommands([
-      ...getTelegramCommandsForRuntime(runtimeRole, remoteMode),
+      ...getTelegramCommandsForRuntime(runtimeProfile),
     ]);
   } catch (error) {
-    cmdLog.warn({ err: error, runtimeRole, remoteMode }, "Failed to refresh Telegram slash commands");
+    cmdLog.warn({ err: error, runtimeProfile }, "Failed to refresh Telegram slash commands");
   }
-}
-
-type ProgressCard = {
-  update(text: string): Promise<void>;
-};
-
-async function createProgressCard(ctx: Context, initialText: string): Promise<ProgressCard> {
-  let currentText = initialText;
-  let message = await ctx.reply(initialText);
-
-  const setText = async (text: string) => {
-    if (!text || text === currentText) {
-      return;
-    }
-    currentText = text;
-    try {
-      await ctx.api.editMessageText(message.chat.id, message.message_id, text);
-    } catch (error) {
-      const summary = String(error).toLowerCase();
-      if (summary.includes("message is not modified")) {
-        return;
-      }
-      message = await ctx.reply(text);
-    }
-  };
-
-  return {
-    update: setText,
-  };
-}
-
-function formatTeleportProgressText(stage: TeleportProgressEvent["stage"]): string {
-  const detail = (() => {
-    switch (stage) {
-      case "preparing":
-        return "Preparing teleport";
-      case "connecting_sandbox":
-        return "Connecting to your E2B sandbox";
-      case "creating_sandbox":
-        return "Creating your E2B sandbox";
-      case "configuring_remote":
-        return "Configuring the remote runtime";
-      case "bootstrapping_auth":
-        return "Bootstrapping credentials";
-      case "starting_remote":
-        return "Starting remote SuperTurtle";
-      case "waiting_ready":
-        return "Waiting for the remote turtle to become ready";
-      case "switching_telegram":
-        return "Switching Telegram to the remote turtle";
-      case "verifying_cutover":
-        return "Verifying Telegram cutover";
-      case "done":
-        return "Remote turtle is ready";
-      default:
-        return "Teleporting";
-    }
-  })();
-
-  return `🌀 Teleporting to E2B\n• ${detail}`;
-}
-
-function formatHomeProgressText(stage: TeleportProgressEvent["stage"]): string {
-  const detail = (() => {
-    switch (stage) {
-      case "releasing_telegram":
-        return "Releasing Telegram ownership";
-      case "verifying_release":
-        return "Confirming Telegram is back on your PC";
-      case "pausing_remote":
-        return "Pausing the remote sandbox";
-      case "done":
-        return "Finalizing return";
-      default:
-        return "Returning control to your PC";
-    }
-  })();
-
-  return `🏠 Returning home\n• ${detail}`;
-}
-
-function summarizeTeleportUserError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  let message = raw.replace(/https?:\/\/\S+/g, "remote endpoint");
-
-  if (/template .* not found/i.test(message)) {
-    return "The configured E2B template is not available for this account.";
-  }
-  if (/timed out waiting for sandbox readiness/i.test(message)) {
-    return "The remote turtle did not become ready in time.";
-  }
-  if (/webhook ownership verification failed/i.test(message)) {
-    return "Telegram did not switch cleanly to the remote turtle.";
-  }
-  if (/webhook delete verification failed/i.test(message)) {
-    return "Telegram did not switch cleanly back to your PC.";
-  }
-  if (/missing required env/i.test(message)) {
-    return "Your project configuration is incomplete for teleport.";
-  }
-
-  message = message.replace(/\s+/g, " ").trim();
-  return message ? message.slice(0, 200) : fallback;
 }
 
 /**
@@ -649,8 +493,8 @@ export async function startRemoteSelfUpdate(options: {
   reply: SelfUpdateReplyFn;
   request: ParsedSelfUpdateRequest;
 }): Promise<string> {
-  if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
-    const text = "ℹ️ Self-update is only supported inside the remote E2B runtime.";
+  if (SUPERTURTLE_RUNTIME_PROFILE !== "managed") {
+    const text = "ℹ️ Self-update is only supported inside the managed E2B runtime.";
     await options.reply(text);
     return text;
   }
@@ -660,13 +504,13 @@ export async function startRemoteSelfUpdate(options: {
     resolvedTarget = await resolveSelfUpdateTarget(options.request);
   } catch (error) {
     const text =
-      `⚠️ Failed to resolve the remote runtime target.\n${error instanceof Error ? error.message : String(error)}`;
+      `⚠️ Failed to resolve the managed runtime target.\n${error instanceof Error ? error.message : String(error)}`;
     await options.reply(text);
     return text;
   }
 
   if (listSubturtles().some((turtle) => turtle.status === "running")) {
-    const text = "⚠️ Stop running SubTurtles before updating the remote runtime.";
+    const text = "⚠️ Stop running SubTurtles before updating the managed runtime.";
     await options.reply(text);
     return text;
   }
@@ -696,8 +540,8 @@ export async function startRemoteSelfUpdate(options: {
   if (currentVersion && resolvedTarget.version === currentVersion) {
     const text =
       resolvedTarget.source === "dist-tag"
-        ? `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec} (current ${resolvedTarget.distTag} target).`
-        : `ℹ️ The remote runtime is already on ${resolvedTarget.installSpec}.`;
+        ? `ℹ️ The managed runtime is already on ${resolvedTarget.installSpec} (current ${resolvedTarget.distTag} target).`
+        : `ℹ️ The managed runtime is already on ${resolvedTarget.installSpec}.`;
     await options.reply(text);
     return text;
   }
@@ -711,7 +555,7 @@ export async function startRemoteSelfUpdate(options: {
       ? "\n• I may interrupt the current reply while I restart. If that happens, resend your last message after I come back."
       : "";
   const kickoffText =
-    `⬆️ Updating remote runtime to ${resolvedTarget.installSpec}...${sourceLine}\n• The turtle will restart after the new package is installed.${interruptionLine}`;
+    `⬆️ Updating managed runtime to ${resolvedTarget.installSpec}...${sourceLine}\n• The turtle will restart after the new package is installed.${interruptionLine}`;
   const message = await options.reply(kickoffText);
 
   if (!options.chatId || !message?.message_id) {
@@ -1566,20 +1410,12 @@ export async function handleStatus(ctx: Context): Promise<void> {
     return;
   }
 
-  if (SUPERTURTLE_RUNTIME_ROLE === "local") {
-    await reconcileTeleportOwnershipForCurrentProject();
-  }
-
   const lines = await buildSessionOverviewLines("Status");
-  const teleportState = loadTeleportStateForCurrentProject();
-  if (teleportState) {
-    lines.push(
-      "",
-      `<b>Teleport:</b> ${escapeHtml(teleportState.ownerMode || "local")} · sandbox ${escapeHtml(teleportState.sandboxId)}`
-    );
-  } else {
-    lines.push("", `<b>Teleport:</b> local only`);
-  }
+  lines.push(
+    "",
+    `<b>Runtime:</b> ${escapeHtml(SUPERTURTLE_RUNTIME_PROFILE)} · driver ${escapeHtml(session.activeDriver)}`,
+    "<b>Teleport:</b> disabled in this branch"
+  );
 
   await ctx.reply(lines.join("\n"), { parse_mode: "HTML" });
 }
@@ -1592,55 +1428,7 @@ export async function handleTeleport(ctx: Context): Promise<void> {
     return;
   }
 
-  if (SUPERTURTLE_RUNTIME_ROLE === "teleport-remote") {
-    await ctx.reply("ℹ️ Already running in E2B webhook mode. Use /home to return ownership to your PC.");
-    return;
-  }
-
-  await reconcileTeleportOwnershipForCurrentProject();
-  const existingState = loadTeleportStateForCurrentProject();
-  if (existingState?.ownerMode === "remote") {
-    await ctx.reply(
-      "ℹ️ Telegram is already routed to E2B. Use /home from the remote turtle to return ownership to this PC."
-    );
-    return;
-  }
-
-  if (isAnyDriverRunning() || isBackgroundRunActive()) {
-    await ctx.reply("⏳ Stop current work before teleporting.");
-    return;
-  }
-
-  const progress = await createProgressCard(
-    ctx,
-    formatTeleportProgressText("preparing")
-  );
-  try {
-    await launchTeleportRuntimeForCurrentProject({
-      remoteMode: "agent",
-      remoteDriver: "codex",
-      onProgress: async (event) => {
-        await progress.update(formatTeleportProgressText(event.stage));
-      },
-    });
-    await activateTeleportOwnershipForCurrentProject({
-      onProgress: async (event) => {
-        await progress.update(formatTeleportProgressText(event.stage));
-      },
-    });
-    await syncTelegramCommandsFromCommand(ctx, "teleport-remote", "agent");
-    await progress.update(
-      "✅ Teleported to E2B.\nTelegram is now routed to the remote turtle."
-    );
-  } catch (error) {
-    cmdLog.error({ err: error }, "Teleport command failed");
-    await progress.update(
-      `❌ Teleport failed: ${summarizeTeleportUserError(
-        error,
-        "Teleport could not be completed."
-      )}`
-    );
-  }
+  await ctx.reply(`ℹ️ ${TELEPORT_DISABLED_MESSAGE}`);
 }
 
 export async function handleHome(ctx: Context): Promise<void> {
@@ -1651,46 +1439,7 @@ export async function handleHome(ctx: Context): Promise<void> {
     return;
   }
 
-  if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
-    if (recentlyReturnedHome(loadTeleportStateForCurrentProject())) {
-      return;
-    }
-    await ctx.reply("ℹ️ This turtle is already local. Use /teleport to move Telegram ownership to E2B.");
-    return;
-  }
-
-  const progress = await createProgressCard(
-    ctx,
-    formatHomeProgressText("releasing_telegram")
-  );
-  try {
-    await releaseTeleportOwnershipForCurrentProject({
-      onProgress: async (event) => {
-        await progress.update(formatHomeProgressText(event.stage));
-      },
-    });
-    await syncTelegramCommandsFromCommand(ctx, "local");
-    try {
-      await pauseTeleportSandboxForCurrentProject({
-        onProgress: async (event) => {
-          await progress.update(formatHomeProgressText(event.stage));
-        },
-      });
-    } catch (error) {
-      cmdLog.warn({ err: error }, "Failed to pause teleport sandbox after /home");
-    }
-    await progress.update(
-      "✅ Back on your PC.\nTelegram is now routed to the local turtle."
-    );
-  } catch (error) {
-    cmdLog.error({ err: error }, "Home command failed");
-    await progress.update(
-      `❌ Failed to return home: ${summarizeTeleportUserError(
-        error,
-        "Return home could not be completed."
-      )}`
-    );
-  }
+  await ctx.reply(`ℹ️ ${TELEPORT_DISABLED_MESSAGE}`);
 }
 
 /**
@@ -3068,8 +2817,8 @@ export async function handleUpdate(ctx: Context): Promise<void> {
     return;
   }
 
-  if (SUPERTURTLE_RUNTIME_ROLE !== "teleport-remote") {
-    await ctx.reply("ℹ️ Self-update is only supported inside the remote E2B runtime.");
+  if (SUPERTURTLE_RUNTIME_PROFILE !== "managed") {
+    await ctx.reply("ℹ️ Self-update is only supported inside the managed E2B runtime.");
     return;
   }
 
