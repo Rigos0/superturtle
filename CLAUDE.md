@@ -5,7 +5,7 @@ This file is for humans and turtles working in this repo after installing or upg
 ## Latest release highlights
 
 - Fixed a Codex stalling issue around pending tool output delivery
-- Reduced Telegram push noise: intermediate updates are silent, while the final reply still notifies normally
+- Reduced Telegram push noiwdym se: intermediate updates are silent, while the final reply still notifies normally
 - Improved process startup and shutdown reliability to reduce duplicate runners and restart cleanup issues
 - Added short Telegram startup messages when the turtle process boots
 
@@ -52,6 +52,8 @@ superturtle doctor
   - Real managed E2E: publish an exact `superturtle@<version>` beta, then run `bun run dev:managed-e2e-beta -- --email <you@example.com> --version superturtle@<exact-version>` from `../superturtle-web`
   - Web app dev: change `../superturtle-web` locally against the shared `test` backend
 - Direct-sync is for fast debugging only. Real managed validation should use the published exact runtime artifact.
+- `bun run dev:reset-onboarding -- --email <you@example.com>` only clears hosted app state.
+- Add `--delete-sandbox` if you also want the current managed E2B sandbox removed.
 - `main` stays the only long-lived runtime branch. Use `feat/unify-managed-runtime` only as the temporary integration branch until it lands back on `main`.
 
 ## Communication Preference
