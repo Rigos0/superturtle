@@ -1249,29 +1249,20 @@ const ensureStartupTransport = async () => {
   return startupTransport;
 };
 
-const startDeferredRemoteStartupTasks = () => {
-  if (!deferRemoteStartupTasks) {
-    return;
-  }
-
+if (deferRemoteStartupTasks) {
+  await ensureStartupTransport();
   const syncStartedAt = Date.now();
   botLog.info(
     {
       msSinceStart: Date.now() - startupStartedAt,
     },
-    "[startup] deferred telegram command sync started"
+    "[startup] managed telegram command sync started"
   );
+  await syncTelegramCommands();
+  logStartupMilestone("managed telegram command sync finished", startupStartedAt, syncStartedAt);
+}
 
-  void (async () => {
-    await syncTelegramCommands();
-    logStartupMilestone("deferred telegram command sync finished", startupStartedAt, syncStartedAt);
-  })();
-};
-
-if (deferRemoteStartupTasks) {
-  await ensureStartupTransport();
-  startDeferredRemoteStartupTasks();
-} else {
+if (!deferRemoteStartupTasks) {
   await syncTelegramCommands();
 }
 

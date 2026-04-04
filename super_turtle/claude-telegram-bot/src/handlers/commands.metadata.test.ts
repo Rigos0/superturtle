@@ -39,11 +39,11 @@ describe("TELEGRAM_COMMANDS", () => {
     expect(TELEGRAM_COMMANDS.every((entry: { description: string }) => entry.description.trim().length > 0)).toBe(true);
   });
 
-  it("publishes teleport when E2B is configured", async () => {
+  it("avoids disabled teleport commands when E2B is configured", async () => {
     const { TELEGRAM_COMMANDS } = await loadCommandsModule("test-e2b-key");
     const names = TELEGRAM_COMMANDS.map((entry: { command: string }) => entry.command);
 
-    expect(names).toContain("teleport");
+    expect(names).not.toContain("teleport");
     expect(new Set(names).size).toBe(names.length);
     expect(TELEGRAM_COMMANDS.every((entry: { description: string }) => entry.description.trim().length > 0)).toBe(true);
   });
