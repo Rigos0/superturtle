@@ -51,6 +51,9 @@ superturtle doctor
   - Fast runtime dev: change code here, then run `bun run dev:managed-sync-runtime -- --email <you@example.com> --source ../agentic-dev/super_turtle` from `../superturtle-web`
   - Real managed E2E: publish an exact `superturtle@<version>` beta, then run `bun run dev:managed-e2e-beta -- --email <you@example.com> --version superturtle@<exact-version>` from `../superturtle-web`
   - Web app dev: change `../superturtle-web` locally against the shared `test` backend
+- `dev:managed-sync-runtime` and `dev:managed-e2e-beta` now recreate the sandbox by default.
+- Use `--reuse-sandbox` only for rare warm-sandbox debugging.
+- Use `bun run dev:managed-recreate-sandbox -- --email <you@example.com>` from `../superturtle-web` when you want a fresh managed sandbox without resetting hosted state.
 - Direct-sync is for fast debugging only. Real managed validation should use the published exact runtime artifact.
 - `bun run dev:reset-onboarding -- --email <you@example.com>` only clears hosted app state.
 - Add `--delete-sandbox` if you also want the current managed E2B sandbox removed.
