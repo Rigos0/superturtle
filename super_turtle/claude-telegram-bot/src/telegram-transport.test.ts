@@ -562,6 +562,68 @@ describe("startTelegramTransport", () => {
 });
 
 describe("handleTelegramWebhookRequest", () => {
+  it("acknowledges webhook updates before long-running handlers finish", async () => {
+    let resolveUpdate: (() => void) | null = null;
+    let handled = false;
+
+    const responsePromise = handleTelegramWebhookRequest(
+      new Request("http://127.0.0.1:8787/telegram/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-telegram-bot-api-secret-token": "secret-token",
+        },
+        body: JSON.stringify({
+          update_id: 1,
+          message: {
+            message_id: 1,
+            date: 1,
+            chat: { id: 1, type: "private" },
+            from: { id: 1, is_bot: false, first_name: "Test" },
+            text: "hello",
+          },
+        }),
+      }),
+      {
+        api: {
+          async deleteWebhook() {},
+          async getWebhookInfo() {
+            return { url: "https://example.test/telegram/webhook" };
+          },
+          async setWebhook() {},
+        },
+        async handleUpdate() {
+          await new Promise<void>((resolve) => {
+            resolveUpdate = resolve;
+          });
+          handled = true;
+        },
+      },
+      {
+        mode: "webhook",
+        publicUrl: "https://example.test/telegram/webhook",
+        path: "/telegram/webhook",
+        host: "0.0.0.0",
+        port: 8787,
+        secretToken: "secret-token",
+        healthPath: "/healthz",
+        readyPath: "/readyz",
+        registerWebhook: true,
+      }
+    );
+
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("OK");
+    expect(handled).toBe(false);
+
+    expect(resolveUpdate).not.toBeNull();
+    resolveUpdate!();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(handled).toBe(true);
+  });
+
   it("rejects invalid JSON payloads", async () => {
     const response = await handleTelegramWebhookRequest(
       new Request("http://127.0.0.1:8787/telegram/webhook", {

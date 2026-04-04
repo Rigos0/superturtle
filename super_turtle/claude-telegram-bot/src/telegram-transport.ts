@@ -195,13 +195,15 @@ export async function handleTelegramWebhookRequest(
     return new Response("Bad Request", { status: 400 });
   }
 
-  try {
-    await bot.handleUpdate(update);
-    return new Response("OK", { status: 200 });
-  } catch (error) {
-    transportLog.error({ err: error }, "Failed to process Telegram webhook update");
-    return new Response("Internal Server Error", { status: 500 });
-  }
+  // Acknowledge webhook delivery immediately so long-running turns do not keep
+  // Telegram or the public ingress waiting on the full bot execution path.
+  void Promise.resolve()
+    .then(() => bot.handleUpdate(update))
+    .catch((error) => {
+      transportLog.error({ err: error }, "Failed to process Telegram webhook update");
+    });
+
+  return new Response("OK", { status: 200 });
 }
 
 function defaultStartPollingRunner(bot: TelegramBotLike): PollingRunnerLike {
