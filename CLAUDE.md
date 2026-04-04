@@ -44,6 +44,25 @@ superturtle status
 superturtle doctor
 ```
 
+## Managed Dev Flow
+
+- `../agentic` is the runtime repo. `../superturtle-web` is the hosted control-plane repo.
+- Use 3 loops:
+  - Fast runtime dev: change code here, then run `bun run dev:managed-sync-runtime -- --email <you@example.com> --source ../agentic-dev/super_turtle` from `../superturtle-web`
+  - Real managed E2E: publish an exact `superturtle@<version>` beta, then run `bun run dev:managed-e2e-beta -- --email <you@example.com> --version superturtle@<exact-version>` from `../superturtle-web`
+  - Web app dev: change `../superturtle-web` locally against the shared `test` backend
+- Direct-sync is for fast debugging only. Real managed validation should use the published exact runtime artifact.
+- `main` stays the only long-lived runtime branch. Use `feat/unify-managed-runtime` only as the temporary integration branch until it lands back on `main`.
+
+## Communication Preference
+
+When summarizing work for the user:
+
+- keep it very short
+- prefer 1-3 bullets or 2-4 short sentences
+- lead with the outcome, not the background
+- avoid long setup, caveats, or repeated context unless the user asks for detail
+
 ## Notes for the turtle
 
 - Prefer `.superturtle/.env` for live config
