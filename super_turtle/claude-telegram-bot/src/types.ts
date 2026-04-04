@@ -67,6 +67,7 @@ export type McpServerConfig = McpStdioConfig | McpHttpConfig;
 export interface McpStdioConfig {
   command: string;
   args?: string[];
+  cwd?: string;
   env?: Record<string, string>;
 }
 

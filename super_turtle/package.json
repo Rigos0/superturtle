@@ -37,6 +37,7 @@
     "!claude-telegram-bot/src/**/*.test.ts",
     "claude-telegram-bot/src/handlers/__fixtures__/",
     "claude-telegram-bot/bot_control_mcp/",
+    "claude-telegram-bot/notion_mcp/",
     "claude-telegram-bot/send_turtle_mcp/",
     "claude-telegram-bot/scripts/",
     "claude-telegram-bot/systemd/",

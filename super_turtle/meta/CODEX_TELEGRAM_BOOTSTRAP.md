@@ -21,6 +21,8 @@ Execution style:
 - Be concise with the human.
 - Prefer auditable actions and explicit state.
 - If SubTurtle state would be invalid, fix it before spawn instead of continuing with a broken worker.
+- In managed runtimes, connector MCP servers may be attached even when `list_mcp_resources` and `list_mcp_resource_templates` are empty. Do not treat empty resource/template lists as proof that connector tools are unavailable.
+- If the human asks you to use a named connector or MCP tool, try the direct tool call first instead of stopping at resource/template discovery.
 - You are running inside a Linux VM that can stop about 45 minutes after the last user message, so long-delay cron jobs are unreliable here.
 - Telegram previews are useful for many files, but do not generate files for simple factual answers that are better as plain text.
 - Assume previews will usually be viewed in the Telegram mobile app. Optimize sent files for mobile readability and preview quality: simple layouts, readable font sizes, sensible aspect ratios, and no dependence on hover-only or desktop-only interactions.

@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync } from "fs";
 import type { McpServerConfig } from "./types";
 import { logger } from "./logger";
 import { TOKEN_PREFIX } from "./token-prefix";
+import { loadManagedRuntimeConnectorServers } from "./managed-runtime-connectors";
 
 const configLog = logger.child({ module: "config" });
 
@@ -509,22 +510,33 @@ export function getCodexUnavailableReason(): string | null {
 
 // ============== MCP Configuration ==============
 
-// MCP servers loaded from mcp-config.ts
+// MCP servers loaded from mcp-config.ts plus managed runtime manifest connectors.
 let MCP_SERVERS: Record<string, McpServerConfig> = {};
+let STATIC_MCP_SERVERS: Record<string, McpServerConfig> = {};
 
 try {
   // Dynamic import of MCP config
   const mcpConfigPath = resolve(dirname(import.meta.dir), "mcp-config.ts");
   const mcpModule = await import(mcpConfigPath).catch(() => null);
   if (mcpModule?.MCP_SERVERS) {
-    MCP_SERVERS = mcpModule.MCP_SERVERS;
-    configLog.info(
-      `Loaded ${Object.keys(MCP_SERVERS).length} MCP servers from mcp-config.ts`
-    );
+    STATIC_MCP_SERVERS = mcpModule.MCP_SERVERS;
+    configLog.info(`Loaded ${Object.keys(STATIC_MCP_SERVERS).length} MCP servers from mcp-config.ts`);
   }
 } catch {
   configLog.info("No mcp-config.ts found - running without MCPs");
 }
+
+const MANAGED_RUNTIME_MCP_SERVERS = loadManagedRuntimeConnectorServers(WORKING_DIR);
+if (Object.keys(MANAGED_RUNTIME_MCP_SERVERS).length > 0) {
+  configLog.info(
+    `Loaded ${Object.keys(MANAGED_RUNTIME_MCP_SERVERS).length} MCP servers from managed-runtime.json`
+  );
+}
+
+MCP_SERVERS = {
+  ...STATIC_MCP_SERVERS,
+  ...MANAGED_RUNTIME_MCP_SERVERS,
+};
 
 export { MCP_SERVERS };
 

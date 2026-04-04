@@ -386,7 +386,7 @@ async function hasExistingMcpConfig(): Promise<boolean> {
 
 /**
  * Convert MCP server config to Codex SDK format.
- * Codex config expects: { mcp_servers: { name: { command: ..., args: ..., cwd: ... } } }
+ * Codex config expects: { mcp_servers: { name: { ...stdio or http config... } } }
  *
  * CRITICAL: Set cwd to WORKING_DIR so relative imports in MCP servers resolve correctly.
  * Without this, `import { mcpLog } from "../src/logger"` fails when Codex spawns the subprocess
@@ -404,7 +404,7 @@ function buildCodexMcpConfig(chatId?: string | number): Record<string, unknown> 
         : "";
 
   for (const [name, config] of Object.entries(MCP_SERVERS)) {
-    if ("command" in config && "args" in config) {
+    if ("command" in config) {
       const resolvedCommand = config.command === "bun" ? bunPath : config.command;
       const env = config.env ? { ...config.env } : {};
       if (envPath && !env.PATH) {
@@ -418,8 +418,16 @@ function buildCodexMcpConfig(chatId?: string | number): Record<string, unknown> 
         command: resolvedCommand,
         ...(config.args && { args: config.args }),
         ...(Object.keys(env).length > 0 ? { env } : {}),
-        // Set working directory so relative imports in MCP servers resolve correctly
-        cwd: WORKING_DIR,
+        cwd: config.cwd ?? WORKING_DIR,
+      };
+      continue;
+    }
+
+    if ("type" in config && config.type === "http") {
+      mcpServers[name] = {
+        type: "http",
+        url: config.url,
+        ...(config.headers ? { headers: config.headers } : {}),
       };
     }
   }
