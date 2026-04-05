@@ -21,9 +21,16 @@ describe("connection change notifications", () => {
   it("formats a concise success message", () => {
     expect(
       buildPendingConnectionChangeSuccessText({
+        action: "updated",
         label: "Token Vault",
       })
     ).toBe("✅ Your Token Vault change is now live.");
+    expect(
+      buildPendingConnectionChangeSuccessText({
+        action: "revoked",
+        label: "GitHub access",
+      })
+    ).toBe("✅ Your GitHub access was revoked.");
   });
 
   it("drains queued notifications in requested order and deletes them after sending", async () => {
@@ -129,6 +136,26 @@ describe("connection change notifications", () => {
       label: "Notion",
       requested_at: "2026-04-05T09:30:00.000Z",
       source: "connector.notion",
+      version: 1,
+    });
+  });
+
+  it("accepts revoked notifications and renders revoke-specific success text", () => {
+    expect(
+      parsePendingConnectionChangeNotification({
+        action: "revoked",
+        id: "revoke-1",
+        label: "Token Vault secret",
+        requested_at: "2026-04-05T10:00:00.000Z",
+        source: "token-vault",
+        version: 1,
+      })
+    ).toEqual({
+      action: "revoked",
+      id: "revoke-1",
+      label: "Token Vault secret",
+      requested_at: "2026-04-05T10:00:00.000Z",
+      source: "token-vault",
       version: 1,
     });
   });

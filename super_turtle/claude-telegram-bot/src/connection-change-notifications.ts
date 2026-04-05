@@ -11,7 +11,7 @@ export const PENDING_CONNECTION_NOTIFICATIONS_DIR = join(
 );
 
 export type PendingConnectionChangeNotification = {
-  action: "updated";
+  action: "updated" | "revoked";
   id: string;
   label: string;
   requested_at: string;
@@ -25,8 +25,12 @@ type StoredPendingConnectionChangeNotification = {
 };
 
 export function buildPendingConnectionChangeSuccessText(
-  notification: Pick<PendingConnectionChangeNotification, "label">
+  notification: Pick<PendingConnectionChangeNotification, "action" | "label">
 ) {
+  if (notification.action === "revoked") {
+    return `✅ Your ${notification.label} was revoked.`;
+  }
+
   return `✅ Your ${notification.label} change is now live.`;
 }
 
@@ -41,7 +45,7 @@ export function parsePendingConnectionChangeNotification(
   if (value.version !== PENDING_CONNECTION_NOTIFICATION_SCHEMA_VERSION) {
     return null;
   }
-  if (value.action !== "updated") {
+  if (value.action !== "updated" && value.action !== "revoked") {
     return null;
   }
   if (typeof value.id !== "string" || !value.id.trim()) {
@@ -62,7 +66,7 @@ export function parsePendingConnectionChangeNotification(
   }
 
   return {
-    action: "updated",
+    action: value.action,
     id: value.id,
     label: value.label,
     requested_at: value.requested_at,
