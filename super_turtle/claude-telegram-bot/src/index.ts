@@ -59,6 +59,7 @@ import { TELEGRAM_COMMANDS } from "./handlers/commands";
 import { enqueueBusyDeferredCronJob, pruneQueuedDueCronJobIds } from "./cron-deferred-queue";
 import { isCronJobQueued } from "./deferred-queue";
 import { drainDeferredQueue } from "./deferred-queue-runtime";
+import { drainPendingConnectionChangeNotifications } from "./connection-change-notifications";
 import { session } from "./session";
 import { codexSession } from "./codex-session";
 import { getDueJobs, getJobs, advanceRecurringJob, removeJob } from "./cron";
@@ -1349,6 +1350,17 @@ try {
   await finalizePendingSelfUpdateMessage();
 } catch (e) {
   botLog.warn({ err: e }, "Failed to update self-update status message");
+}
+
+try {
+  await drainPendingConnectionChangeNotifications({
+    chatId: getPrimaryTelegramTarget()?.chatId ?? null,
+    sendMessage: async (chatId, text) => {
+      await bot.api.sendMessage(chatId, text);
+    },
+  });
+} catch (e) {
+  botLog.warn({ err: e }, "Failed to send pending connection change notifications");
 }
 
 await sendStartupNotifications();
