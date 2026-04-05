@@ -529,14 +529,17 @@ function inspectInstanceLock(lockPath, isPidRunningFn = isPidRunning) {
       exists: Boolean(lockPath && fs.existsSync(lockPath)),
       pid: null,
       alive: false,
+      valid: false,
     };
   }
 
+  const alive = isPidRunningFn(pid);
   return {
     path: lockPath,
     exists: true,
     pid,
-    alive: isPidRunningFn(pid),
+    alive,
+    valid: alive,
   };
 }
 
@@ -632,6 +635,44 @@ function collectAncestorProcessIds(processes, startPid) {
   return tracked;
 }
 
+function isExpectedRuntimeInstanceLockPid(processes, pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  const byPid = new Map();
+  for (const info of processes || []) {
+    if (info && Number.isInteger(info.pid) && info.pid > 0) {
+      byPid.set(info.pid, info);
+    }
+  }
+
+  const processInfo = byPid.get(pid);
+  if (!processInfo) {
+    return false;
+  }
+
+  const botCommand = processInfo.command || "";
+  const looksLikeBotProcess =
+    botCommand.includes("bun run src/index.ts") ||
+    botCommand.includes("bun run src/index.js") ||
+    botCommand.includes("tsx src/index.ts");
+  if (!looksLikeBotProcess) {
+    return false;
+  }
+
+  const ancestorPids = collectAncestorProcessIds(processes, pid);
+  for (const ancestorPid of ancestorPids) {
+    const ancestorInfo = byPid.get(ancestorPid);
+    const ancestorCommand = ancestorInfo?.command || "";
+    if (ancestorCommand.includes("run-loop.sh")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function subtractPidSet(values, excluded) {
   const next = new Set();
   for (const pid of values || []) {
@@ -710,7 +751,12 @@ function discoverTrackedRuntimePids(cwd, projectEnv, deps = {}) {
 
   const instanceLockPath = getInstanceLockPathForEnv({ ...process.env, ...projectEnv });
   const lockState = inspectInstanceLockFn(instanceLockPath, isPidRunningFn);
-  if (lockState.alive && Number.isInteger(lockState.pid) && lockState.pid > 0) {
+  const lockPidMatchesRuntime =
+    lockState.alive &&
+    Number.isInteger(lockState.pid) &&
+    lockState.pid > 0 &&
+    isExpectedRuntimeInstanceLockPid(processes, lockState.pid);
+  if (lockPidMatchesRuntime) {
     for (const pid of collectAncestorProcessIds(processes, lockState.pid)) {
       tracked.add(pid);
     }
@@ -721,6 +767,7 @@ function discoverTrackedRuntimePids(cwd, projectEnv, deps = {}) {
 
   return {
     instanceLockPath,
+    lockPidMatchesRuntime,
     servicePid: Number.isInteger(servicePid) ? servicePid : null,
     trackedPids: Array.from(tracked).sort((left, right) => left - right),
   };

@@ -74,8 +74,33 @@ describe("superturtle service runner helpers", () => {
       }
     );
 
+    expect(discovery.lockPidMatchesRuntime).toBe(true);
     expect(discovery.servicePid).toBeNull();
     expect(discovery.instanceLockPath).toBe("/tmp/claude-telegram-bot.123.instance.lock");
     expect(discovery.trackedPids).toEqual([1329, 1332, 1336]);
+  });
+
+  it("ignores live instance-lock pids that do not look like the bot runtime", () => {
+    const discovery = __test__.discoverTrackedRuntimePids(
+      "/workspace/project",
+      { TELEGRAM_BOT_TOKEN: "123:test" },
+      {
+        listProcesses: () => [
+          { pid: 7777, ppid: 1, command: "node /tmp/something-else.js" },
+        ],
+        readServicePid: () => null,
+        isPidRunning: (pid) => pid === 7777,
+        inspectInstanceLock: () => ({
+          path: "/tmp/claude-telegram-bot.123.instance.lock",
+          exists: true,
+          pid: 7777,
+          alive: true,
+          valid: true,
+        }),
+      }
+    );
+
+    expect(discovery.lockPidMatchesRuntime).toBe(false);
+    expect(discovery.trackedPids).toEqual([]);
   });
 });
