@@ -47,14 +47,11 @@ superturtle doctor
 ## Managed Dev Flow
 
 - `../agentic` is the runtime repo. `../superturtle-web` is the hosted control-plane repo.
-- Use 3 loops:
-  - Fast runtime dev: change code here, then run `bun run dev:managed-sync-runtime -- --email <you@example.com> --source ../agentic-dev/super_turtle` from `../superturtle-web`
-  - Real managed E2E: publish an exact `superturtle@<version>` beta, then run `bun run dev:managed-e2e-beta -- --email <you@example.com> --version superturtle@<exact-version>` from `../superturtle-web`
+- Use 2 loops:
+  - Runtime validation: publish an exact `superturtle@<version>` beta, point `../superturtle-web/.env.local` at that exact spec, then run `bun run dev:managed-recreate-sandbox -- --email <you@example.com> --version superturtle@<exact-version>` from `../superturtle-web` or rerun onboarding from a clean reset
   - Web app dev: change `../superturtle-web` locally against the shared `test` backend
-- `dev:managed-sync-runtime` and `dev:managed-e2e-beta` now recreate the sandbox by default.
-- Use `--reuse-sandbox` only for rare warm-sandbox debugging.
 - Use `bun run dev:managed-recreate-sandbox -- --email <you@example.com>` from `../superturtle-web` when you want a fresh managed sandbox without resetting hosted state.
-- Direct-sync is for fast debugging only. Real managed validation should use the published exact runtime artifact.
+- Do not use source-sync or warm-sandbox runtime patch flows. Real managed validation should use the published exact runtime artifact.
 - `bun run dev:reset-onboarding -- --email <you@example.com>` only clears hosted app state.
 - Add `--delete-sandbox` if you also want the current managed E2B sandbox removed.
 - `main` stays the only long-lived runtime branch. Use `feat/unify-managed-runtime` only as the temporary integration branch until it lands back on `main`.
