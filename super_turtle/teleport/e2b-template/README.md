@@ -6,7 +6,8 @@ The template is intentionally infrastructure-only:
 
 - Bun is preinstalled from an E2B Bun image
 - system tools needed by the runtime are preinstalled
-- `codex` and the published `superturtle` npm package are preinstalled
+- common office/media tools are preinstalled: LibreOffice, Poppler tools, ImageMagick, `python-pptx`, Pillow, and the Remotion CLI stack
+- `codex` is preinstalled
 - user auth and project files are not baked into the template
 
 That split is deliberate. The template should change rarely, while runtime state setup and auth refresh happen later at launch time.
@@ -26,7 +27,12 @@ The build script reads `E2B_API_KEY` from the environment, the repo root `.env`,
 
 - Template name: `superturtle-managed-runtime`
 - Template tags: `v<package-version>`, `latest`
-- Runtime package install spec: `superturtle@<package-version>`
+- Template manifest records a runtime package install spec for observability and cold-boot targeting
+- Managed onboarding still installs the exact `superturtle@...` runtime at start time
+- Default media stack:
+  - native: LibreOffice, Poppler, ImageMagick, `libnss3`, `libnspr4`
+  - Python: `python-pptx`, `Pillow`
+  - JS: `@remotion/cli`, `remotion`, `react`, `react-dom`
 
 ## Useful overrides
 
@@ -60,6 +66,7 @@ Guidelines:
 - Use `beta` for branch/runtime testing.
 - Prefer exact prerelease versions over the floating `beta` dist-tag so template builds stay reproducible.
 - The published npm package is the runtime artifact. Do not build E2B templates from a local repo tarball.
+- For managed onboarding, the exact published `superturtle` version is installed during runtime bootstrap, not baked into the template image.
 
 ## Maintenance model
 

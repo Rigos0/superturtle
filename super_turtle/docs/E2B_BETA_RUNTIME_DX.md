@@ -15,7 +15,7 @@ That gives us one runtime artifact for:
 
 The repo already has the core pieces for this model:
 
-- the E2B template can install an exact published npm spec through `SUPERTURTLE_RUNTIME_INSTALL_SPEC`
+- the E2B template manifest records the desired exact published npm spec through `SUPERTURTLE_RUNTIME_INSTALL_SPEC`
 - the template manifest already records `runtime_install_spec`
 - the managed control plane already records `template_id`, `template_version`, and `runtime_version`
 
@@ -84,7 +84,7 @@ If the spec does not match, we should either:
 
 Preferred policy:
 
-- cold start: template supplies the runtime
+- cold start: template supplies the base image and records the desired runtime spec
 - warm reuse: self-update if only the runtime spec changed
 - recycle only when the base template/tooling changed
 

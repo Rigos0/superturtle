@@ -30,15 +30,26 @@ const bootstrapCommands = [
   manifestScript,
 ];
 
+const remotionInstallSpecs = [
+  "@remotion/cli",
+  "remotion",
+  "react",
+  "react-dom",
+];
+
 const packageInstallCommand = [
   "set -euo pipefail && export BUN_INSTALL=/home/user/.bun PATH=\"/home/user/.bun/bin:$PATH\" && bun install -g",
   shellEscape(templateConfig.codexInstallSpec),
-  shellEscape(templateConfig.runtimeInstallSpec),
+  ...remotionInstallSpecs.map(shellEscape),
   "&& chown -R user:user /home/user/.bun",
 ].join(" ");
 
 export const template = Template()
   .fromBunImage(templateConfig.bunVersion)
+  // Measured on 2026-04-06 against the current Debian-based managed sandbox:
+  // this common office/media native stack adds about 430 packages and roughly
+  // 1.4 GB installed size. Current managed sandboxes are about 22.4 GB disk,
+  // so this is intentional headroom for office and media work.
   .aptInstall(
     [
       "git",
@@ -51,6 +62,11 @@ export const template = Template()
       "fd-find",
       "unzip",
       "ffmpeg",
+      "imagemagick",
+      "libnspr4",
+      "libnss3",
+      "libreoffice",
+      "poppler-utils",
       "python3",
       "python3-pip",
       "python3-venv",
@@ -58,7 +74,11 @@ export const template = Template()
     ],
     { noInstallRecommends: true }
   )
-  .runCmd("python3 -m pip install --break-system-packages uv", { user: "root" })
+  // Measured wheel downloads for python-pptx + Pillow were about 5 MB total.
+  .runCmd("python3 -m pip install --break-system-packages uv python-pptx Pillow", { user: "root" })
   .runCmd(bootstrapCommands, { user: "root" })
+  // A minimal global Remotion toolchain install was about 168 MB in node_modules
+  // before browser/runtime caches. We preinstall it because video work is a
+  // first-class managed-runtime workflow now.
   .runCmd(packageInstallCommand, { user: "root" })
   .setWorkdir("/home/user/workspace");
