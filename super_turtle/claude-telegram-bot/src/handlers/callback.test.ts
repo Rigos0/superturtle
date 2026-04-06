@@ -26,6 +26,7 @@ async function runCallbackProbe<T>(
     ...process.env,
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
+    TELEGRAM_PROGRESS_INITIAL_DELAY_MS: "0",
     CLAUDE_WORKING_DIR: process.cwd(),
     CODEX_ENABLED: opts?.codexEnabled === false ? "false" : "true",
     CODEX_CLI_AVAILABLE_OVERRIDE: opts?.codexCliAvailable === false ? "false" : "true",
@@ -113,6 +114,7 @@ describe("handleCallback Codex switching and controls", () => {
       const state = new StreamingState();
       const statusCallback = createStatusCallback(ctx, state, { showToolStatus: true });
       await state.progressUpdateChain;
+      await statusCallback("thinking", "Preparing response");
       await statusCallback("segment_end", "Answer draft 1", 0);
       await statusCallback("segment_end", "Answer draft 2", 1);
       await statusCallback("segment_end", "Answer draft 3", 2);
@@ -179,6 +181,7 @@ describe("handleCallback Codex switching and controls", () => {
       const state = new StreamingState();
       const statusCallback = createStatusCallback(ctx, state, { showToolStatus: true });
       await state.progressUpdateChain;
+      await statusCallback("thinking", "Preparing response");
       await statusCallback("segment_end", "Answer draft 1", 0);
       await statusCallback("segment_end", "Answer draft 2", 1);
       await statusCallback("segment_end", "Answer draft 3", 2);

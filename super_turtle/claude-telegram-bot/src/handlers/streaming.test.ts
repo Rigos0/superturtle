@@ -5,6 +5,7 @@ import type { Context } from "grammy";
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
 process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.TELEGRAM_PROGRESS_INITIAL_DELAY_MS ||= "0";
 
 const {
   checkPendingAskUserRequests,
@@ -48,6 +49,7 @@ async function cleanupIpcFiles(pattern: string): Promise<void> {
 beforeEach(async () => {
   mock.restore();
   process.env.SUPERTURTLE_IPC_DIR = IPC_DIR;
+  process.env.TELEGRAM_PROGRESS_INITIAL_DELAY_MS = "0";
   await cleanupIpcFiles(STREAMING_ASK_USER_PATTERN);
   await cleanupIpcFiles(STREAMING_PINO_LOGS_PATTERN);
   await cleanupIpcFiles(STREAMING_BOT_CONTROL_PATTERN);
@@ -550,7 +552,8 @@ describe("bot-control dynamic import", () => {
 });
 
 describe("streaming notifications", () => {
-  it("removes the retained progress message when the only streamed reply matches the final notifying reply", async () => {
+  it("skips creating a progress message when a fast single-reply run finishes before the initial delay", async () => {
+    process.env.TELEGRAM_PROGRESS_INITIAL_DELAY_MS = "350";
     const { StreamingState, createStatusCallback } = await loadFreshStreamingModule();
     const replyCalls: Array<{ text: string; extra?: Record<string, unknown> }> = [];
     const deleteMessageMock = mock(async () => {});
@@ -580,27 +583,14 @@ describe("streaming notifications", () => {
     await statusCallback("segment_end", "Hello from Super Turtle", 0);
     await statusCallback("done", "");
 
-    expect(replyCalls).toHaveLength(2);
+    expect(replyCalls).toHaveLength(1);
     expect(replyCalls[0]).toMatchObject({
-      text: "\u200b",
-      extra: { disable_notification: true, parse_mode: "HTML" },
-    });
-    expect(replyCalls[1]).toMatchObject({
       text: "Hello from Super Turtle",
       extra: { parse_mode: "HTML" },
     });
-    expect(replyCalls[1]?.extra?.disable_notification).toBeUndefined();
-    expect(editMessageTextMock).toHaveBeenCalledTimes(1);
-    const editCalls = getEditMessageTextCalls(editMessageTextMock);
-    expect(editCalls[0]?.[0]).toBe(123);
-    expect(editCalls[0]?.[1]).toBe(1);
-    expectLiveProgressText(
-      String(editCalls[0]?.[2]),
-      "Hello from Super Turtle"
-    );
-    expect(editCalls[0]?.[3]).toEqual({ parse_mode: "HTML" });
-    expect(deleteMessageMock).toHaveBeenCalledTimes(1);
-    expect(deleteMessageMock).toHaveBeenCalledWith(123, 1);
+    expect(replyCalls[0]?.extra?.disable_notification).toBeUndefined();
+    expect(editMessageTextMock).not.toHaveBeenCalled();
+    expect(deleteMessageMock).not.toHaveBeenCalled();
   });
 
   it("updates thinking and tool progress in the retained silent message", async () => {
@@ -634,15 +624,57 @@ describe("streaming notifications", () => {
 
     expect(replyCalls).toHaveLength(1);
     expect(replyCalls[0]).toMatchObject({
-      text: "\u200b",
+      text: "Planning the answer",
       extra: { disable_notification: true, parse_mode: "HTML" },
     });
-    expect(editMessageTextMock).toHaveBeenCalledTimes(3);
+    expect(editMessageTextMock).toHaveBeenCalledTimes(2);
     const editCalls = getEditMessageTextCalls(editMessageTextMock);
-    expectLiveProgressText(String(editCalls[0]?.[2]), "Planning the answer");
-    expectLiveProgressText(String(editCalls[1]?.[2]), "Error: command failed");
-    expectCompletedProgressText(String(editCalls[2]?.[2]), "Reply ready.");
+    expectLiveProgressText(String(editCalls[0]?.[2]), "Error: command failed");
+    expectCompletedProgressText(String(editCalls[1]?.[2]), "Reply ready.");
     expect(deleteMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the retained progress message when visible thinking precedes the final reply", async () => {
+    const { StreamingState, createStatusCallback } = await loadFreshStreamingModule();
+    const replyCalls: Array<{ text: string; extra?: Record<string, unknown> }> = [];
+    const editMessageTextMock = mock(async () => {});
+
+    const ctx = {
+      chat: { id: 457 },
+      reply: mock(async (text: string, extra?: Record<string, unknown>) => {
+        replyCalls.push({ text, extra });
+        return {
+          chat: { id: 457 },
+          message_id: replyCalls.length,
+        };
+      }),
+      api: {
+        deleteMessage: mock(async () => {}),
+        editMessageText: editMessageTextMock,
+      },
+    } as unknown as Context;
+
+    const state = new StreamingState();
+    const statusCallback = createStatusCallback(ctx, state, { showToolStatus: true });
+    await state.progressUpdateChain;
+
+    await statusCallback("thinking", "Working through it");
+    await statusCallback("segment_end", "Final answer", 0);
+    await statusCallback("done", "");
+
+    expect(replyCalls).toHaveLength(2);
+    expect(replyCalls[0]).toMatchObject({
+      text: "Working through it",
+      extra: { disable_notification: true, parse_mode: "HTML" },
+    });
+    expect(replyCalls[1]).toMatchObject({
+      text: "Final answer",
+      extra: { parse_mode: "HTML" },
+    });
+    expect(editMessageTextMock).toHaveBeenCalledTimes(2);
+    const editCalls = getEditMessageTextCalls(editMessageTextMock);
+    expectLiveProgressText(String(editCalls[0]?.[2]), "Final answer");
+    expectCompletedProgressText(String(editCalls[1]?.[2]), "Reply ready.");
   });
 
   it("does not send a new silent progress message after teardown completes", async () => {
@@ -721,7 +753,7 @@ describe("streaming notifications", () => {
       const statusCallback = createStatusCallback(ctx, state);
       await state.progressUpdateChain;
 
-      expect(replyCalls[0]?.text).toBe("\u200b");
+      expect(replyCalls).toHaveLength(0);
       expect(heartbeatTick).not.toBeNull();
 
       fakeNow += 19_000;
@@ -731,6 +763,11 @@ describe("streaming notifications", () => {
       fakeNow += 1_000;
       await runHeartbeatTick(heartbeatTick);
       expect(editMessageTextMock).not.toHaveBeenCalled();
+      expect(replyCalls).toHaveLength(1);
+      expect(replyCalls[0]).toMatchObject({
+        text: "\u200b",
+        extra: { disable_notification: true, parse_mode: "HTML" },
+      });
 
       fakeNow += 29_000;
       await runHeartbeatTick(heartbeatTick);
@@ -741,12 +778,10 @@ describe("streaming notifications", () => {
       expect(editMessageTextMock).not.toHaveBeenCalled();
 
       await statusCallback("thinking", "Back on it");
+      expect(replyCalls).toHaveLength(1);
       expect(editMessageTextMock).toHaveBeenCalledTimes(1);
       const editCalls = getEditMessageTextCalls(editMessageTextMock);
-      expectLiveProgressText(
-        String(editCalls[0]?.[2]),
-        "Back on it"
-      );
+      expectLiveProgressText(String(editCalls[0]?.[2]), "Back on it");
 
       fakeNow += 19_000;
       await runHeartbeatTick(heartbeatTick);
@@ -799,8 +834,7 @@ describe("streaming notifications", () => {
       await runHeartbeatTick(heartbeatTick);
 
       expect(state.progressSnapshots.some((snapshot) => snapshot.progressState === "Still working")).toBe(true);
-      const lastEditCall = getEditMessageTextCalls(editMessageTextMock).at(-1);
-      expect(String(lastEditCall?.[2])).toContain("Investigating the issue");
+      expect(editMessageTextMock).not.toHaveBeenCalled();
     } finally {
       Date.now = originalDateNow;
       globalThis.setInterval = originalSetInterval;
@@ -837,6 +871,7 @@ describe("streaming notifications", () => {
     const statusCallback = createStatusCallback(ctx, state, { showToolStatus: true });
     await state.progressUpdateChain;
 
+    await statusCallback("thinking", "Preparing response");
     for (let idx = 0; idx < 13; idx += 1) {
       await statusCallback("segment_end", `Answer draft ${idx + 1}`, idx);
     }
@@ -922,7 +957,7 @@ describe("streaming notifications", () => {
       await statusCallback("done", "");
 
       expect(sleepCalls).toEqual([200]);
-      expect(editMessageTextMock).toHaveBeenCalledTimes(3);
+      expect(editMessageTextMock).toHaveBeenCalledTimes(2);
     } finally {
       Date.now = originalDateNow;
       (Bun as any).sleep = originalBunSleep;
@@ -995,12 +1030,7 @@ describe("streaming notifications", () => {
 
       await statusCallback("done", "");
 
-      expect(replyMock).toHaveBeenCalledTimes(1);
-      expect(replyMock.mock.calls[0]?.[0]).toBe("\u200b");
-      expect(replyMock.mock.calls[0]?.[1]).toMatchObject({
-        disable_notification: true,
-        parse_mode: "HTML",
-      });
+      expect(replyMock).not.toHaveBeenCalled();
       expect(replyWithPhotoMock).toHaveBeenCalledTimes(1);
       const photoCall = replyWithPhotoMock.mock.calls[0] as
         | [unknown, { caption?: string; disable_notification?: boolean }]
@@ -1084,11 +1114,7 @@ describe("streaming notifications", () => {
         caption: "Final image",
       });
       expect(replyWithPhotoMock.mock.calls[0]?.[1]?.disable_notification).toBeUndefined();
-      expect(replyMock).toHaveBeenCalledTimes(1);
-      expect(replyMock.mock.calls[0]).toEqual([
-        "\u200b",
-        { disable_notification: true, parse_mode: "HTML" },
-      ]);
+      expect(replyMock).not.toHaveBeenCalled();
       expect(deleteMessageMock).not.toHaveBeenCalled();
     } finally {
       process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
@@ -1165,11 +1191,7 @@ describe("streaming notifications", () => {
 
       expect(replyWithStickerMock).toHaveBeenCalledTimes(1);
       expect(replyWithStickerMock.mock.calls[0]?.[1]?.disable_notification).toBeUndefined();
-      expect(replyMock).toHaveBeenCalledTimes(1);
-      expect(replyMock.mock.calls[0]).toEqual([
-        "\u200b",
-        { disable_notification: true, parse_mode: "HTML" },
-      ]);
+      expect(replyMock).not.toHaveBeenCalled();
       expect(deleteMessageMock).not.toHaveBeenCalled();
     } finally {
       globalThis.fetch = originalFetch;

@@ -46,6 +46,10 @@ const HEARTBEAT_TICK_MS = 1_000;
 const REQUEST_LOCK_STALE_MS = 60_000;
 const MAX_PROGRESS_SNAPSHOTS = 12;
 const MIN_PROGRESS_VISIBLE_MS = 200;
+const INITIAL_PROGRESS_RENDER_DELAY_MS = (() => {
+  const raw = Number(process.env.TELEGRAM_PROGRESS_INITIAL_DELAY_MS ?? "350");
+  return Number.isFinite(raw) && raw >= 0 ? raw : 350;
+})();
 
 export type CanonicalProgressState =
   | "Starting"
@@ -76,6 +80,12 @@ interface ProgressSnapshot {
   toolHint: string | null;
   elapsedMs: number;
   terminal: boolean;
+}
+
+interface RenderedProgressPayload {
+  text: string;
+  replyMarkup?: InlineKeyboard;
+  controlsKey: string;
 }
 
 const retainedProgressViewers = new Map<string, StreamingState>();
@@ -297,7 +307,7 @@ export async function checkPendingSendTurtleRequests(
 
       if (url) {
         if (state) {
-          await applyProgressStateUpdate(ctx, state, "Writing answer", {
+          await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
             summary: buildArtifactProgressSummary("sticker", caption),
             toolHint: null,
             storeSnapshot: true,
@@ -384,7 +394,7 @@ export async function checkPendingSendImageRequests(
           }
 
           if (state) {
-            await applyProgressStateUpdate(ctx, state, "Writing answer", {
+            await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
               summary: buildArtifactProgressSummary("image", caption),
               toolHint: null,
               storeSnapshot: true,
@@ -413,7 +423,7 @@ export async function checkPendingSendImageRequests(
           const fallback = source.startsWith("http") ? source : `📎 ${source}`;
           const fallbackText = `${fallback}${caption ? `\n${caption}` : ""}`;
           if (state && shouldSetMediaNotifiableOutput(state)) {
-            await applyProgressStateUpdate(ctx, state, "Writing answer", {
+            await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
               summary: buildArtifactProgressSummary("image", caption),
               toolHint: null,
               storeSnapshot: true,
@@ -921,6 +931,10 @@ export class StreamingState {
   teardownCompleted = false;
   awaitingUserAttention = false;
   stopRequestedByUser = false;
+  visibleProgressMaterialized = false;
+  pendingProgressPayload: RenderedProgressPayload | null = null;
+  pendingProgressTimer: ReturnType<typeof setTimeout> | null = null;
+  initialProgressDelayElapsed = INITIAL_PROGRESS_RENDER_DELAY_MS === 0;
 
   getSilentCapturedText(): string {
     return [...this.silentSegments.entries()]
@@ -942,6 +956,18 @@ function unregisterRetainedProgressViewer(state: StreamingState): void {
   }
   retainedProgressViewers.delete(state.retainedProgressViewerKey);
   state.retainedProgressViewerKey = null;
+}
+
+function clearPendingProgressRender(state: StreamingState): void {
+  if (state.pendingProgressTimer) {
+    clearTimeout(state.pendingProgressTimer);
+    state.pendingProgressTimer = null;
+  }
+  state.pendingProgressPayload = null;
+}
+
+function shouldRenderTerminalProgress(state: StreamingState): boolean {
+  return state.visibleProgressMaterialized;
 }
 
 function registerRetainedProgressViewer(state: StreamingState): void {
@@ -1434,11 +1460,7 @@ export async function updateRetainedProgressState(
 async function updateProgressMessage(
   ctx: Context,
   state: StreamingState,
-  payload: {
-    text: string;
-    replyMarkup?: InlineKeyboard;
-    controlsKey: string;
-  }
+  payload: RenderedProgressPayload
 ): Promise<void> {
   if (state.teardownCompleted && !state.progressViewerCompleted) {
     return;
@@ -1454,6 +1476,28 @@ async function updateProgressMessage(
   await waitForMinimumVisibleProgressDuration(state);
 
   if (state.teardownCompleted && !state.progressViewerCompleted) {
+    return;
+  }
+
+  if (
+    !state.progressMessage &&
+    !state.progressViewerCompleted &&
+    state.lastProgressContent === null &&
+    !state.initialProgressDelayElapsed
+  ) {
+    state.pendingProgressPayload = payload;
+    if (!state.pendingProgressTimer) {
+      state.pendingProgressTimer = setTimeout(() => {
+        state.pendingProgressTimer = null;
+        state.initialProgressDelayElapsed = true;
+        const pendingPayload = state.pendingProgressPayload;
+        state.pendingProgressPayload = null;
+        if (!pendingPayload || state.teardownCompleted || state.progressMessage) {
+          return;
+        }
+        void queueProgressMessageUpdate(ctx, state, pendingPayload);
+      }, INITIAL_PROGRESS_RENDER_DELAY_MS);
+    }
     return;
   }
 
@@ -1533,11 +1577,14 @@ async function updateProgressMessage(
   }
 
   try {
+    clearPendingProgressRender(state);
+    state.initialProgressDelayElapsed = true;
     const msg = await replySilently(ctx, payload.text, {
       parse_mode: "HTML",
       ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
     });
     state.progressMessage = msg;
+    state.visibleProgressMaterialized = true;
     state.lastProgressContent = payload.text;
     state.lastProgressControlsKey = payload.controlsKey;
     markProgressRendered(state, payload.text);
@@ -1547,10 +1594,13 @@ async function updateProgressMessage(
     if (plainText.length === 0) {
       throw error;
     }
+    clearPendingProgressRender(state);
+    state.initialProgressDelayElapsed = true;
     const msg = await replySilently(ctx, plainText, {
       ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
     });
     state.progressMessage = msg;
+    state.visibleProgressMaterialized = true;
     state.lastProgressContent = payload.text;
     state.lastProgressControlsKey = payload.controlsKey;
     markProgressRendered(state, payload.text);
@@ -1561,11 +1611,7 @@ async function updateProgressMessage(
 function queueProgressMessageUpdate(
   ctx: Context,
   state: StreamingState,
-  payload: {
-    text: string;
-    replyMarkup?: InlineKeyboard;
-    controlsKey: string;
-  }
+  payload: RenderedProgressPayload
 ): Promise<void> {
   if (state.teardownCompleted && !state.progressViewerCompleted) {
     return state.progressUpdateChain;
@@ -1691,6 +1737,24 @@ async function sendRenderedContent(
   return sendChunkedMessages(ctx, formatted, { notifyFinalChunk: notify });
 }
 
+async function maybeApplyTerminalProgressStateUpdate(
+  ctx: Context,
+  state: StreamingState,
+  progressState: CanonicalProgressState,
+  options: {
+    summary: string;
+    toolHint?: string | null;
+    storeSnapshot?: boolean;
+    terminalSnapshot?: boolean;
+  }
+): Promise<boolean> {
+  if (!shouldRenderTerminalProgress(state)) {
+    return false;
+  }
+  await applyProgressStateUpdate(ctx, state, progressState, options);
+  return true;
+}
+
 function setLastNotifiableOutput(
   state: StreamingState,
   messages: Message[],
@@ -1767,6 +1831,7 @@ export async function teardownStreamingState(
   if (state.teardownCompleted) return;
   state.teardownCompleted = true;
   stopHeartbeat(state);
+  clearPendingProgressRender(state);
   if (options.retainProgressMessage !== true) {
     await clearProgressMessage(ctx, state);
   }
@@ -1948,15 +2013,6 @@ export function createStatusCallback(
     activeStreamingStates.set(chatId, state);
   }
   startHeartbeat(ctx, state);
-  if (typeof ctx.reply === "function") {
-    void applyProgressStateUpdate(ctx, state, "Starting", {
-      summary: DEFAULT_PROGRESS_SUMMARY.Starting,
-      toolHint: null,
-      storeSnapshot: false,
-    }).catch((error) => {
-      streamLog.debug({ err: error }, "Failed to create retained progress message");
-    });
-  }
   return async (statusType: DriverStatusType, content: string, segmentId?: number) => {
     try {
       const outboundMessageKind = classifyDriverStatusMessage(statusType);
@@ -2004,6 +2060,9 @@ export function createStatusCallback(
             return;
           }
           state.lastAnswerPreview = preview;
+          if (!shouldRenderTerminalProgress(state)) {
+            return;
+          }
           await applyProgressStateUpdate(ctx, state, "Writing answer", {
             summary: preview,
             toolHint: null,
@@ -2020,7 +2079,7 @@ export function createStatusCallback(
             DEFAULT_PROGRESS_SUMMARY["Writing answer"]
           );
           state.lastAnswerPreview = preview;
-          await applyProgressStateUpdate(ctx, state, "Writing answer", {
+          await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
             summary: preview,
             toolHint: null,
             storeSnapshot: true,
@@ -2049,13 +2108,17 @@ export function createStatusCallback(
 
         if (finalOutput?.kind === "final_artifact") {
           await promoteFinalSegmentNotification(ctx, state);
-          await applyProgressStateUpdate(ctx, state, "Done", {
-            summary: doneSummary,
-            toolHint: null,
-            storeSnapshot: true,
-            terminalSnapshot: true,
-          });
-          retainProgressMessage = true;
+          retainProgressMessage = await maybeApplyTerminalProgressStateUpdate(
+            ctx,
+            state,
+            "Done",
+            {
+              summary: doneSummary,
+              toolHint: null,
+              storeSnapshot: true,
+              terminalSnapshot: true,
+            }
+          );
         } else if (!finalOutput) {
           await applyProgressStateUpdate(ctx, state, "Done", {
             summary: doneSummary,
@@ -2065,10 +2128,20 @@ export function createStatusCallback(
           });
           retainProgressMessage = true;
         } else {
-          pruneTrailingDuplicateFinalSuccessSnapshots(state, doneSummary);
-          retainProgressMessage = finalizeExistingProgressHistory(state);
-          if (retainProgressMessage) {
-            await queueRenderedProgressMessageUpdate(ctx, state);
+          if (shouldRenderTerminalProgress(state)) {
+            pruneTrailingDuplicateFinalSuccessSnapshots(state, doneSummary);
+            retainProgressMessage = finalizeExistingProgressHistory(state);
+            if (!retainProgressMessage && state.visibleProgressMaterialized) {
+              await applyProgressStateUpdate(ctx, state, "Done", {
+                summary: DEFAULT_PROGRESS_SUMMARY.Done,
+                toolHint: null,
+                storeSnapshot: true,
+                terminalSnapshot: true,
+              });
+              retainProgressMessage = true;
+            } else if (retainProgressMessage) {
+              await queueRenderedProgressMessageUpdate(ctx, state);
+            }
           }
         }
 
