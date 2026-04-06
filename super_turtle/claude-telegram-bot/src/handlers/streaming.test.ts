@@ -674,7 +674,7 @@ describe("streaming notifications", () => {
     expect(editMessageTextMock).toHaveBeenCalledTimes(2);
     const editCalls = getEditMessageTextCalls(editMessageTextMock);
     expectLiveProgressText(String(editCalls[0]?.[2]), "Final answer");
-    expectCompletedProgressText(String(editCalls[1]?.[2]), "Reply ready.");
+    expectCompletedProgressText(String(editCalls[1]?.[2]), "Final answer");
   });
 
   it("does not send a new silent progress message after teardown completes", async () => {
@@ -877,15 +877,16 @@ describe("streaming notifications", () => {
     }
     await statusCallback("done", "");
 
-    expect(state.progressSnapshots).toHaveLength(11);
+    expect(state.progressSnapshots).toHaveLength(12);
     expect(state.progressSnapshots[0]?.progressState).toBe("Writing answer");
     expect(state.progressSnapshots[0]?.summary).toContain("Answer draft 2");
     expect(state.progressSnapshots[state.progressSnapshots.length - 1]?.progressState).toBe("Writing answer");
     expect(state.progressSnapshots[state.progressSnapshots.length - 1]?.terminal).toBe(true);
-    expect(state.selectedProgressSnapshotIndex).toBe(10);
+    expect(state.progressSnapshots[state.progressSnapshots.length - 1]?.summary).toContain("Answer draft 13");
+    expect(state.selectedProgressSnapshotIndex).toBe(11);
 
     const finalEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
-    expect(String(finalEdit?.[2])).toContain("11 / 11");
+    expect(String(finalEdit?.[2])).toContain("12 / 12");
     expect((finalEdit?.[3] as any)?.reply_markup?.inline_keyboard).toEqual([
       [{ text: "⬅️", callback_data: "progress_nav:back" }],
     ]);
@@ -893,9 +894,9 @@ describe("streaming notifications", () => {
     const backResult = await navigateRetainedProgressViewer(ctx, "back");
     expect(backResult).toBe("updated");
     const afterBackEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
-    expect(String(afterBackEdit?.[2])).toContain("10 / 11");
+    expect(String(afterBackEdit?.[2])).toContain("11 / 12");
     expect(String(afterBackEdit?.[2])).toContain("Elapsed ");
-    expect(String(afterBackEdit?.[2])).toContain("Answer draft 11");
+    expect(String(afterBackEdit?.[2])).toContain("Answer draft 12");
     expect((afterBackEdit?.[3] as any)?.reply_markup?.inline_keyboard).toEqual([
       [
         { text: "⬅️", callback_data: "progress_nav:back" },
@@ -915,9 +916,9 @@ describe("streaming notifications", () => {
     );
     expect(nextResult).toBe("updated");
     const afterNextEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
-    expect(String(afterNextEdit?.[2])).toContain("11 / 11");
+    expect(String(afterNextEdit?.[2])).toContain("12 / 12");
     expect(String(afterNextEdit?.[2])).toContain("Elapsed ");
-    expect(String(afterNextEdit?.[2])).toContain("Answer draft 12");
+    expect(String(afterNextEdit?.[2])).toContain("Answer draft 13");
   });
 
   it("paces live progress edits so visible content stays on screen for at least 200ms", async () => {

@@ -131,13 +131,13 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
     expect(result.payload?.callbackAnswers).toEqual([{}]);
-    expect(result.payload?.lastEdit?.text || "").toContain("1 / 2");
-    expect(result.payload?.lastEdit?.text || "").toContain("Answer draft 1");
+    expect(result.payload?.lastEdit?.text || "").toContain("2 / 3");
+    expect(result.payload?.lastEdit?.text || "").toContain("Answer draft 2");
     expect(
       result.payload?.lastEdit?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
       )
-    ).toEqual(["progress_nav:next"]);
+    ).toEqual(["progress_nav:back", "progress_nav:next"]);
   });
 
   it("silently answers retained progress navigation at the history boundary", async () => {
@@ -207,7 +207,7 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.payload?.editCountAfterBoundaryTap).toBe(
       result.payload?.editCountBeforeBoundaryTap
     );
-    expect(result.payload?.lastEditText || "").toContain("1 / 2");
+    expect(result.payload?.lastEditText || "").toContain("1 / 3");
     expect(result.payload?.lastEditText || "").toContain("Answer draft 1");
   });
 
