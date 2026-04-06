@@ -36,6 +36,10 @@ import {
   buildLevelFilter,
   formatPinoEntry,
 } from "../log-reader";
+import {
+  TerminalOutputPlan,
+  type TerminalOutputEntry,
+} from "./terminal-output-plan";
 
 // Union type for bot control to work with both Claude and Codex sessions
 type BotControlSession = ClaudeSession | CodexSession;
@@ -312,18 +316,16 @@ export async function checkPendingSendTurtleRequests(
             toolHint: null,
             storeSnapshot: true,
           });
-          if (shouldSetMediaNotifiableOutput(state)) {
-            setLastNotifiableOutput(
-              state,
-              [],
-              async (targetCtx, notify) =>
-                sendStickerOutput(targetCtx, url, { caption, notify }),
-              {
-                kind: "final_artifact",
-                progressSummary: buildArtifactDoneSummary("sticker", caption),
-              }
-            );
-          }
+          queueTerminalOutput(
+            state,
+            [],
+            async (targetCtx, notify) =>
+              sendStickerOutput(targetCtx, url, { caption, notify }),
+            {
+              kind: "final_artifact",
+              progressSummary: buildArtifactDoneSummary("sticker", caption),
+            }
+          );
         } else {
           await sendStickerOutput(ctx, url, { caption, notify: true });
         }
@@ -399,18 +401,16 @@ export async function checkPendingSendImageRequests(
               toolHint: null,
               storeSnapshot: true,
             });
-            if (shouldSetMediaNotifiableOutput(state)) {
-              setLastNotifiableOutput(
-                state,
-                [],
-                async (targetCtx, notify) =>
-                  sendImageOutput(targetCtx, source, { caption, notify }),
-                {
-                  kind: "final_artifact",
-                  progressSummary: buildArtifactDoneSummary("image", caption),
-                }
-              );
-            }
+            queueTerminalOutput(
+              state,
+              [],
+              async (targetCtx, notify) =>
+                sendImageOutput(targetCtx, source, { caption, notify }),
+              {
+                kind: "final_artifact",
+                progressSummary: buildArtifactDoneSummary("image", caption),
+              }
+            );
           } else {
             await sendImageOutput(ctx, source, { caption, notify: true });
           }
@@ -422,13 +422,13 @@ export async function checkPendingSendImageRequests(
           );
           const fallback = source.startsWith("http") ? source : `📎 ${source}`;
           const fallbackText = `${fallback}${caption ? `\n${caption}` : ""}`;
-          if (state && shouldSetMediaNotifiableOutput(state)) {
+          if (state) {
             await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
               summary: buildArtifactProgressSummary("image", caption),
               toolHint: null,
               storeSnapshot: true,
             });
-            setLastNotifiableOutput(
+            queueTerminalOutput(
               state,
               [],
               async (targetCtx, notify) => [
@@ -894,24 +894,15 @@ async function executeBotControlAction(
  * Tracks state for streaming message updates.
  */
 export class StreamingState {
-  textMessages = new Map<number, Message>(); // segment_id -> telegram message
-  renderedTextMessages = new Map<number, Message[]>(); // segment_id -> all visible telegram messages for the segment
   toolMessages: Message[] = []; // ephemeral tool status messages
   lastEditTimes = new Map<number, number>(); // segment_id -> last edit time
-  lastContent = new Map<number, string>(); // segment_id -> last sent content
   progressMessage: Message | null = null; // retained silent progress message for foreground runs
   lastProgressContent: string | null = null;
   lastProgressControlsKey: string | null = null;
   lastProgressRenderedAt = 0;
   progressUpdateChain: Promise<void> = Promise.resolve();
   hasTextSegmentOutput = false;
-  lastNotifiableOutput: {
-    messages: Message[];
-    resend: (ctx: Context, notify: boolean) => Promise<Message[]>;
-    replaceExisting: boolean;
-    kind: "final_success" | "final_artifact";
-    progressSummary: string | null;
-  } | null = null;
+  terminalOutputs = new TerminalOutputPlan();
   silentSegments = new Map<number, string>(); // segment_id -> captured text for silent mode
   sawToolUse = false; // used to avoid replaying side-effectful tool runs on retries
   sawSpawnOrchestration = false; // true when streamed tool activity indicates `ctl spawn` orchestration
@@ -935,6 +926,10 @@ export class StreamingState {
   pendingProgressPayload: RenderedProgressPayload | null = null;
   pendingProgressTimer: ReturnType<typeof setTimeout> | null = null;
   initialProgressDelayElapsed = INITIAL_PROGRESS_RENDER_DELAY_MS === 0;
+
+  get lastNotifiableOutput(): TerminalOutputEntry | null {
+    return this.terminalOutputs.getLatestOutput();
+  }
 
   getSilentCapturedText(): string {
     return [...this.silentSegments.entries()]
@@ -1729,7 +1724,7 @@ async function maybeApplyTerminalProgressStateUpdate(
   return true;
 }
 
-function setLastNotifiableOutput(
+function queueTerminalOutput(
   state: StreamingState,
   messages: Message[],
   resend: (ctx: Context, notify: boolean) => Promise<Message[]>,
@@ -1739,17 +1734,18 @@ function setLastNotifiableOutput(
     replaceExisting?: boolean;
   } = {}
 ): void {
-  state.lastNotifiableOutput = {
+  const output: TerminalOutputEntry = {
     messages,
     resend,
     kind: options.kind ?? "final_success",
     progressSummary: options.progressSummary ?? null,
     replaceExisting: options.replaceExisting === true,
   };
-}
-
-function shouldSetMediaNotifiableOutput(state: StreamingState): boolean {
-  return !state.lastNotifiableOutput || state.lastNotifiableOutput.kind !== "final_artifact";
+  if (output.kind === "final_artifact") {
+    state.terminalOutputs.appendArtifact(output);
+    return;
+  }
+  state.terminalOutputs.queueSuccess(output);
 }
 
 function startHeartbeat(ctx: Context, state: StreamingState): void {
@@ -1941,37 +1937,47 @@ async function sendChunkedMessages(
   return messages;
 }
 
-async function promoteFinalSegmentNotification(
+async function promoteTerminalOutputs(
   ctx: Context,
   state: StreamingState
 ): Promise<boolean> {
-  const output = state.lastNotifiableOutput;
-  if (!output) {
+  const outputs = state.terminalOutputs.getOutputs();
+  if (outputs.length === 0) {
     return false;
   }
 
-  if (output.replaceExisting) {
-    for (const msg of output.messages) {
-      try {
-        await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
-      } catch (error) {
-        if (!isIgnorableDeleteMessageError(error)) {
-          streamLog.debug(
-            { errorSummary: describeError(error), chatId: msg.chat.id, messageId: msg.message_id },
-            "Failed to delete last notifiable output before promotion"
-          );
+  let sentAny = false;
+
+  for (let index = 0; index < outputs.length; index += 1) {
+    const output = outputs[index]!;
+    if (output.replaceExisting) {
+      for (const msg of output.messages) {
+        try {
+          await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
+        } catch (error) {
+          if (!isIgnorableDeleteMessageError(error)) {
+            streamLog.debug(
+              {
+                errorSummary: describeError(error),
+                chatId: msg.chat.id,
+                messageId: msg.message_id,
+              },
+              "Failed to delete queued terminal output before promotion"
+            );
+          }
         }
       }
     }
+
+    try {
+      output.messages = await output.resend(ctx, index === outputs.length - 1);
+      sentAny = output.messages.length > 0 || sentAny;
+    } catch (error) {
+      streamLog.debug({ err: error }, "Failed to promote queued terminal output");
+    }
   }
 
-  try {
-    output.messages = await output.resend(ctx, true);
-    return output.messages.length > 0;
-  } catch (error) {
-    streamLog.debug({ err: error }, "Failed to promote last notifiable output");
-    return false;
-  }
+  return sentAny;
 }
 
 /**
@@ -2059,18 +2065,15 @@ export function createStatusCallback(
             storeSnapshot: true,
           });
           const formatted = convertMarkdownToHtml(content);
-          state.lastContent.set(segmentId, formatted);
-          if (state.lastNotifiableOutput?.kind !== "final_artifact") {
-            setLastNotifiableOutput(
-              state,
-              [],
-              async (targetCtx, notify) => sendRenderedContent(targetCtx, formatted, notify),
-              {
-                kind: "final_success",
-                progressSummary: preview,
-              }
-            );
-          }
+          queueTerminalOutput(
+            state,
+            [],
+            async (targetCtx, notify) => sendRenderedContent(targetCtx, formatted, notify),
+            {
+              kind: "final_success",
+              progressSummary: preview,
+            }
+          );
         }
       } else if (statusType === "done") {
         const finalOutput = state.lastNotifiableOutput;
@@ -2081,7 +2084,7 @@ export function createStatusCallback(
         let retainProgressMessage = false;
 
         if (finalOutput?.kind === "final_artifact") {
-          await promoteFinalSegmentNotification(ctx, state);
+          await promoteTerminalOutputs(ctx, state);
           retainProgressMessage = await maybeApplyTerminalProgressStateUpdate(
             ctx,
             state,
@@ -2119,7 +2122,7 @@ export function createStatusCallback(
         }
 
         if (finalOutput?.kind !== "final_artifact") {
-          await promoteFinalSegmentNotification(ctx, state);
+          await promoteTerminalOutputs(ctx, state);
         }
         await teardownStreamingState(ctx, state, {
           chatId,

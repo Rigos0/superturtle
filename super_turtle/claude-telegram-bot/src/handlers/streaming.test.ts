@@ -1333,4 +1333,197 @@ describe("streaming notifications", () => {
       clearStreamingState(321);
     }
   });
+
+  it("queues multiple final images and only notifies on the last one", async () => {
+    const {
+      checkPendingSendImageRequests,
+      clearStreamingState,
+      createStatusCallback,
+      StreamingState,
+    } = await loadFreshStreamingModule();
+    const customIpcDir = `/tmp/streaming-multi-image-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const previousIpcDir = process.env.SUPERTURTLE_IPC_DIR;
+    mkdirSync(customIpcDir, { recursive: true });
+    process.env.SUPERTURTLE_IPC_DIR = customIpcDir;
+
+    try {
+      const deleteMessageMock = mock(async () => {});
+      const replyMock = mock(async (text: string, extra?: Record<string, unknown>) => ({
+        chat: { id: 555 },
+        message_id: extra?.disable_notification === true ? 3 : 4,
+        text,
+      }));
+      const replyWithPhotoMock = mock(
+        async (_source: unknown, extra?: Record<string, unknown>) => ({
+          chat: { id: 555 },
+          message_id: extra?.disable_notification === true ? 1 : 2,
+          photo: [{ file_id: `photo-${extra?.caption}` }],
+        })
+      );
+
+      const ctx = {
+        chat: { id: 555 },
+        reply: replyMock,
+        replyWithPhoto: replyWithPhotoMock,
+        api: {
+          deleteMessage: deleteMessageMock,
+          editMessageText: mock(async () => {}),
+        },
+      } as unknown as Context;
+
+      const state = new StreamingState();
+      const statusCallback = createStatusCallback(ctx, state);
+      await state.progressUpdateChain;
+
+      const firstRequestId = `streaming-send-image-multi-1-${Date.now()}`;
+      await Bun.write(
+        `${customIpcDir}/send-image-${firstRequestId}.json`,
+        JSON.stringify({
+          request_id: firstRequestId,
+          source: "https://example.com/one.png",
+          caption: "First image",
+          status: "pending",
+          chat_id: "555",
+          created_at: new Date().toISOString(),
+        })
+      );
+      expect(await checkPendingSendImageRequests(ctx, 555)).toBe(true);
+
+      const secondRequestId = `streaming-send-image-multi-2-${Date.now()}`;
+      await Bun.write(
+        `${customIpcDir}/send-image-${secondRequestId}.json`,
+        JSON.stringify({
+          request_id: secondRequestId,
+          source: "https://example.com/two.png",
+          caption: "Second image",
+          status: "pending",
+          chat_id: "555",
+          created_at: new Date().toISOString(),
+        })
+      );
+      expect(await checkPendingSendImageRequests(ctx, 555)).toBe(true);
+
+      expect(state.terminalOutputs.getOutputs()).toHaveLength(2);
+
+      await statusCallback("done", "");
+
+      expect(replyMock).not.toHaveBeenCalled();
+      expect(replyWithPhotoMock).toHaveBeenCalledTimes(2);
+      expect(replyWithPhotoMock.mock.calls[0]?.[1]).toMatchObject({
+        caption: "First image",
+        disable_notification: true,
+      });
+      expect(replyWithPhotoMock.mock.calls[1]?.[1]).toMatchObject({
+        caption: "Second image",
+      });
+      expect(replyWithPhotoMock.mock.calls[1]?.[1]?.disable_notification).toBeUndefined();
+      expect(deleteMessageMock).not.toHaveBeenCalled();
+    } finally {
+      process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
+      rmSync(customIpcDir, { recursive: true, force: true });
+      clearStreamingState(555);
+    }
+  });
+
+  it("queues mixed image and sticker outputs in the order they arrive", async () => {
+    const {
+      checkPendingSendImageRequests,
+      checkPendingSendTurtleRequests,
+      clearStreamingState,
+      createStatusCallback,
+      StreamingState,
+    } = await loadFreshStreamingModule();
+    const customIpcDir = `/tmp/streaming-mixed-artifacts-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const previousIpcDir = process.env.SUPERTURTLE_IPC_DIR;
+    mkdirSync(customIpcDir, { recursive: true });
+    process.env.SUPERTURTLE_IPC_DIR = customIpcDir;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+    ) as unknown as typeof fetch;
+
+    try {
+      const replyMock = mock(async (text: string, extra?: Record<string, unknown>) => ({
+        chat: { id: 556 },
+        message_id: extra?.disable_notification === true ? 13 : 14,
+        text,
+      }));
+      const replyWithPhotoMock = mock(
+        async (_source: unknown, extra?: Record<string, unknown>) => ({
+          chat: { id: 556 },
+          message_id: extra?.disable_notification === true ? 11 : 12,
+          photo: [{ file_id: "photo-file-id" }],
+        })
+      );
+      const replyWithStickerMock = mock(
+        async (_source: unknown, extra?: Record<string, unknown>) => ({
+          chat: { id: 556 },
+          message_id: extra?.disable_notification === true ? 21 : 22,
+          sticker: { file_id: "sticker-file-id" },
+        })
+      );
+
+      const ctx = {
+        chat: { id: 556 },
+        reply: replyMock,
+        replyWithPhoto: replyWithPhotoMock,
+        replyWithSticker: replyWithStickerMock,
+        api: {
+          deleteMessage: mock(async () => {}),
+          editMessageText: mock(async () => {}),
+        },
+      } as unknown as Context;
+
+      const state = new StreamingState();
+      const statusCallback = createStatusCallback(ctx, state);
+      await state.progressUpdateChain;
+
+      const imageRequestId = `streaming-send-image-mixed-${Date.now()}`;
+      await Bun.write(
+        `${customIpcDir}/send-image-${imageRequestId}.json`,
+        JSON.stringify({
+          request_id: imageRequestId,
+          source: "https://example.com/mixed.png",
+          caption: "Mixed image",
+          status: "pending",
+          chat_id: "556",
+          created_at: new Date().toISOString(),
+        })
+      );
+      expect(await checkPendingSendImageRequests(ctx, 556)).toBe(true);
+
+      const stickerRequestId = `streaming-send-turtle-mixed-${Date.now()}`;
+      await Bun.write(
+        `${customIpcDir}/send-turtle-${stickerRequestId}.json`,
+        JSON.stringify({
+          request_id: stickerRequestId,
+          url: "https://example.com/turtle.webp",
+          caption: "Mixed sticker",
+          status: "pending",
+          chat_id: "556",
+          created_at: new Date().toISOString(),
+        })
+      );
+      expect(await checkPendingSendTurtleRequests(ctx, 556)).toBe(true);
+
+      expect(state.terminalOutputs.getOutputs()).toHaveLength(2);
+
+      await statusCallback("done", "");
+
+      expect(replyMock).not.toHaveBeenCalled();
+      expect(replyWithPhotoMock).toHaveBeenCalledTimes(1);
+      expect(replyWithStickerMock).toHaveBeenCalledTimes(1);
+      expect(replyWithPhotoMock.mock.calls[0]?.[1]).toMatchObject({
+        caption: "Mixed image",
+        disable_notification: true,
+      });
+      expect(replyWithStickerMock.mock.calls[0]?.[1]?.disable_notification).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
+      rmSync(customIpcDir, { recursive: true, force: true });
+      clearStreamingState(556);
+    }
+  });
 });
