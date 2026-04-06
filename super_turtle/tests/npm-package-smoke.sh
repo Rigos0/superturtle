@@ -30,6 +30,10 @@ require_file() {
 require_file "bin/superturtle.js"
 require_file "__init__.py"
 require_file "subturtle/ctl"
+require_file "subturtle/lib/env.sh"
+require_file "subturtle/lib/shared.sh"
+require_file "subturtle/lib/conductor.sh"
+require_file "subturtle/lib/commands.sh"
 require_file "subturtle/__init__.py"
 require_file "subturtle/subturtle_loop/__init__.py"
 require_file "state/run_state_writer.py"
@@ -49,6 +53,11 @@ node "${PACKAGE_DIR}/bin/superturtle.js" --help >/dev/null
 
 (
   cd "${PACKAGE_DIR}"
+  CTL_LOG="${TMP_DIR}/ctl-help.log"
+  if bash subturtle/ctl >"${CTL_LOG}" 2>&1; then
+    :
+  fi
+  grep -q "Usage: ./super_turtle/subturtle/ctl" "${CTL_LOG}"
   env -u PYTHONPATH python3 - <<'PY'
 import subturtle.__main__
 import subturtle.loops
