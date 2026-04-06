@@ -8,6 +8,20 @@ import {
   createCodexPendingOutputCoordinator,
 } from "./codex-pending-outputs";
 
+function isLikelyInvalidThreadHistoryError(error: unknown): boolean {
+  const errorStr = String(error).toLowerCase();
+  return (
+    errorStr.includes("array_above_max_length") ||
+    (
+      errorStr.includes("invalid 'input[") &&
+      errorStr.includes(".content") &&
+      errorStr.includes("array too long")
+    ) ||
+    errorStr.includes("invalid resumed thread history") ||
+    errorStr.includes("malformed resumed thread history")
+  );
+}
+
 export class CodexDriver implements ChatDriver {
   readonly id = "codex" as const;
   readonly displayName = "Codex";
@@ -150,7 +164,11 @@ export class CodexDriver implements ChatDriver {
 
   isCrashError(error: unknown): boolean {
     const errorStr = String(error).toLowerCase();
-    return errorStr.includes("crashed") || errorStr.includes("failed");
+    return (
+      errorStr.includes("crashed") ||
+      errorStr.includes("failed") ||
+      isLikelyInvalidThreadHistoryError(error)
+    );
   }
 
   isStallError(error: unknown): boolean {

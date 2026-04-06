@@ -78,6 +78,24 @@ async function saveCodexPrefs(prefs: CodexPrefs): Promise<void> {
   }
 }
 
+function resolveSavedCodexModel(savedModel: string | undefined): string {
+  const normalized = savedModel?.trim();
+  if (!normalized) {
+    return DEFAULT_CODEX_MODEL;
+  }
+
+  const availableModels = new Set(getAvailableCodexModels().map((model) => model.value));
+  if (availableModels.has(normalized)) {
+    return normalized;
+  }
+
+  codexLog.warn(
+    { savedModel: normalized, fallbackModel: DEFAULT_CODEX_MODEL },
+    "Saved Codex model is no longer available; falling back to the current default"
+  );
+  return DEFAULT_CODEX_MODEL;
+}
+
 type CodexUsage = {
   input_tokens: number;
   cached_input_tokens?: number;
@@ -993,8 +1011,17 @@ export class CodexSession {
   constructor() {
     // Load preferences
     const prefs = loadCodexPrefs();
-    this._model = prefs.model || DEFAULT_CODEX_MODEL;
+    this._model = resolveSavedCodexModel(prefs.model);
     this._reasoningEffort = (prefs.reasoningEffort as CodexEffortLevel) || DEFAULT_CODEX_EFFORT;
+
+    if (prefs.model && prefs.model !== this._model) {
+      void saveCodexPrefs({
+        ...prefs,
+        model: this._model,
+        reasoningEffort: this._reasoningEffort,
+        createdAt: new Date().toISOString(),
+      });
+    }
 
     if (prefs.threadId) {
       this.threadId = prefs.threadId;

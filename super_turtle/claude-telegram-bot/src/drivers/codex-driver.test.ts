@@ -70,6 +70,24 @@ describe("CodexDriver", () => {
     expect(reasoningEfforts).toEqual([undefined]);
   });
 
+  it("treats malformed resumed-thread history errors as crash-retry eligible", async () => {
+    const { CodexDriver } = await loadCodexDriverModule();
+    const driver = new CodexDriver();
+
+    expect(
+      driver.isCrashError(
+        `Codex stream error: {
+          "error": {
+            "message": "Invalid 'input[162].content': array too long. Expected an array with maximum length 0, but got an array with length 1 instead.",
+            "type": "invalid_request_error",
+            "param": "input[162].content",
+            "code": "array_above_max_length"
+          }
+        }`
+      )
+    ).toBe(true);
+  });
+
   it("flushes pending send_image requests for Codex MCP tool calls", async () => {
     const sendImageChecks: number[] = [];
 

@@ -155,6 +155,22 @@ describe("CodexSession", () => {
     expect(result.payload?.reasoningEffort).toBe("medium");
   });
 
+  it("falls back when saved prefs point at a model that is no longer available", async () => {
+    const result = await probeCodexSession({
+      DEFAULT_CODEX_MODEL: "gpt-5.3-codex",
+      OPENROUTER_API_KEY: undefined,
+      OPENROUTER_MODEL: undefined,
+      CODEX_PREFS_JSON: JSON.stringify({
+        model: "qwen/qwen3.6-plus:free",
+        reasoningEffort: "medium",
+      }),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.payload?.model).toBe("gpt-5.3-codex");
+    expect(result.payload?.reasoningEffort).toBe("medium");
+  });
+
   it("parses Codex transcripts into conversation history and injection evidence", async () => {
     const { parseCodexTranscript } = await loadCodexSessionModule("parse-transcript");
     const transcript = [
