@@ -1,5 +1,5 @@
 /**
- * Command handlers for Claude Telegram Bot.
+ * Command handlers for the SuperTurtle Telegram runtime.
  */
 
 import { createHash } from "crypto";
@@ -27,10 +27,6 @@ import {
   BUTTON_LABEL_MAX_LENGTH,
   CODEX_AVAILABLE,
   CODEX_CLI_AVAILABLE,
-  CODEX_ENABLED,
-  CODEX_USER_ENABLED,
-  IS_MACOS,
-  IS_LINUX,
   CTL_PATH,
   BOT_DIR,
   TOKEN_PREFIX,
@@ -44,7 +40,6 @@ import {
   TELEPORT_DISABLED_MESSAGE,
   getCodexUnavailableReason,
 } from "../config";
-import { getContextReport } from "../context-command";
 import { isAuthorized } from "../security";
 import { escapeHtml, convertMarkdownToHtml } from "../formatting";
 import { getJobs } from "../cron";
@@ -64,15 +59,12 @@ const LIVE_SUBTURTLE_BOARD_MAX_BUTTONS = 8;
 const LIVE_SUBTURTLE_BOARD_LOCK_WAIT_MS = 10_000;
 const LIVE_SUBTURTLE_BOARD_LOCK_STALE_MS = 120_000;
 const LIVE_SUBTURTLE_BOARD_LOCK_RETRY_MS = 50;
-const CLAUDE_USAGE_RATE_LIMIT_MESSAGE =
-  "Claude usage is temporarily unavailable due to Anthropic service limits. This comes from Anthropic's usage endpoint, not from Super Turtle.";
-
 const LOCAL_TELEGRAM_COMMANDS = [
   { command: "new", description: "Start a fresh session" },
   { command: "stop", description: "Stop current work" },
-  { command: "model", description: "Switch driver, model, or effort" },
-  { command: "usage", description: "Show subscription usage" },
-  { command: "context", description: "Show context usage" },
+  { command: "model", description: "Switch Codex model or effort" },
+  { command: "usage", description: "Show Codex usage" },
+  { command: "context", description: "Context command unavailable" },
   { command: "status", description: "Show detailed status" },
   { command: "looplogs", description: "Show main loop logs" },
   { command: "pinologs", description: "Show Pino logs" },
@@ -174,12 +166,6 @@ export async function handleStopCommand(ctx: Context): Promise<void> {
 function getCodexUnavailableMessage(): string {
   const reason = getCodexUnavailableReason();
   if (!reason) return "❌ Codex is unavailable.";
-  if (!CODEX_USER_ENABLED) {
-    return (
-      `❌ ${reason}\n` +
-      `Run \`superturtle init\` and enable Codex integration to allow driver switching.`
-    );
-  }
   if (!CODEX_CLI_AVAILABLE) {
     return `❌ ${reason}`;
   }
@@ -199,27 +185,18 @@ export function formatModelInfo(model: string, effort: string): { modelName: str
 
 export function getSettingsOverviewLines(): string[] {
   const { modelName, effortStr } = formatModelInfo(session.model, session.effort);
-  const isCodex = session.activeDriver === "codex";
-  const driverLabel = isCodex ? "Codex 🟢" : "Claude 🔵";
-  const activeModelLine = isCodex
-    ? `${escapeHtml(codexSession.model)} | ${escapeHtml(codexSession.reasoningEffort)}`
-    : `${modelName}${effortStr}`;
+  const activeModelLine = `${escapeHtml(codexSession.model)} | ${escapeHtml(codexSession.reasoningEffort)}`;
 
   return [
-    `${driverLabel} · ${activeModelLine}`,
+    `Codex 🟢 · ${activeModelLine || `${modelName}${effortStr}`}`,
   ];
 }
 
 export async function buildSessionOverviewLines(title: string): Promise<string[]> {
   const lines: string[] = [`<b>${title}</b>\n`, ...getSettingsOverviewLines(), ""];
   const isSyntheticTestRuntime = (process.env.TELEGRAM_BOT_TOKEN || "") === "test-token";
-  const [usageLines, codexQuotaLines] = isSyntheticTestRuntime
-    ? [[], []]
-    : await Promise.all([
-        getUsageLines(),
-        CODEX_ENABLED ? getCodexQuotaLines() : Promise.resolve<string[]>([]),
-      ]);
-  lines.push(formatUnifiedUsage(usageLines, codexQuotaLines, CODEX_ENABLED), "");
+  const codexQuotaLines = isSyntheticTestRuntime ? [] : await getCodexQuotaLines();
+  lines.push(formatUnifiedUsage(codexQuotaLines), "");
   return lines;
 }
 
@@ -598,7 +575,7 @@ export async function startRemoteSelfUpdate(options: {
         cwd: WORKING_DIR,
         env: {
           ...process.env,
-          CLAUDE_WORKING_DIR: WORKING_DIR,
+          SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
           SUPER_TURTLE_DIR: join(BOT_DIR, ".."),
         },
         stdin: "ignore",
@@ -1192,7 +1169,7 @@ export function parseCtlListOutput(output: string): ListedSubTurtle[] {
     let timeRemaining = "";
 
     if (status === "running") {
-      const typeMatch = remainder.match(/^(yolo-codex-spark|yolo-codex|slow|yolo)\b\s*(.*)$/);
+      const typeMatch = remainder.match(/^(yolo-codex-spark|yolo-codex)\b\s*(.*)$/);
       if (typeMatch) {
         type = typeMatch[1]!;
         remainder = typeMatch[2] || "";
@@ -1330,7 +1307,6 @@ export function listSubturtles(): ListedSubTurtle[] {
     env: {
       ...process.env,
       SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
-      CLAUDE_WORKING_DIR: WORKING_DIR,
     },
   });
   const output = proc.stdout.toString().trim();
@@ -1413,7 +1389,7 @@ export async function handleStatus(ctx: Context): Promise<void> {
   const lines = await buildSessionOverviewLines("Status");
   lines.push(
     "",
-    `<b>Runtime:</b> ${escapeHtml(SUPERTURTLE_RUNTIME_PROFILE)} · driver ${escapeHtml(session.activeDriver)}`,
+    `<b>Runtime:</b> ${escapeHtml(SUPERTURTLE_RUNTIME_PROFILE)} · driver codex`,
     "<b>Teleport:</b> disabled in this branch"
   );
 
@@ -1496,8 +1472,7 @@ export async function handlePinologs(ctx: Context): Promise<void> {
 }
 
 /**
- * /resume - Show list of sessions to resume with inline keyboard.
- * Routes to Claude or Codex based on activeDriver.
+ * /resume - Show list of Codex sessions to resume with inline keyboard.
  */
 export async function handleResume(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -1507,77 +1482,38 @@ export async function handleResume(ctx: Context): Promise<void> {
     return;
   }
 
-  if (session.activeDriver === "codex" && !CODEX_AVAILABLE) {
-    session.activeDriver = "claude";
-    await ctx.reply(`${getCodexUnavailableMessage()}\nFalling back to Claude sessions.`);
+  if (!CODEX_AVAILABLE) {
+    await ctx.reply(getCodexUnavailableMessage());
+    return;
   }
 
-  const formatResumeButtonLabel = (
-    driverEmoji: "🔵" | "🟢",
-    savedAt: string,
-    title: string
-  ): string => {
+  const formatResumeButtonLabel = (savedAt: string, title: string): string => {
     const date = new Date(savedAt);
     const dateStr = Number.isNaN(date.getTime())
       ? "-.- --:--"
       : `${date.getDate()}.${date.getMonth() + 1} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
     const rawTitle = title.trim() || "Untitled";
-    const base = `${driverEmoji} ${dateStr} ${rawTitle}`;
+    const base = `🟢 ${dateStr} ${rawTitle}`;
     if (base.length <= BUTTON_LABEL_MAX_LENGTH) return base;
     return `${base.slice(0, Math.max(1, BUTTON_LABEL_MAX_LENGTH - 1)).trimEnd()}…`;
   };
-  type ResumeOption = {
-    session_id: string;
-    saved_at: string;
-    working_dir: string;
-    title: string;
-    driverEmoji: "🔵" | "🟢";
-    callbackData: string;
-  };
-
-  // Gather both drivers so users can switch contexts without using /switch first.
-  let claudeSessions: Array<{
-    session_id: string;
-    saved_at: string;
-    working_dir: string;
-    title: string;
-  }> = session.getSessionList();
-  let codexSessions: Array<{
-    session_id: string;
-    saved_at: string;
-    working_dir: string;
-    title: string;
-  }> = [];
-
-  if (CODEX_AVAILABLE) {
-    codexSessions = await codexSession.getSessionListLive(RESUME_SESSIONS_LIMIT);
-    if (codexSessions.length === 0) {
-      codexSessions = codexSession.getSessionList();
-    }
+  let codexSessions = await codexSession.getSessionListLive(RESUME_SESSIONS_LIMIT);
+  if (codexSessions.length === 0) {
+    codexSessions = codexSession.getSessionList();
   }
-
-  // Hide only the active driver's current session from the picker.
-  // Inactive-driver sessions should remain selectable so users can switch back.
-  const currentClaudeSessionId = session.sessionId;
   const currentCodexSessionId = codexSession.getThreadId();
-  if (session.activeDriver === "claude" && currentClaudeSessionId) {
-    claudeSessions = claudeSessions.filter((s) => s.session_id !== currentClaudeSessionId);
-  }
-  if (session.activeDriver === "codex" && currentCodexSessionId) {
+  if (currentCodexSessionId) {
     codexSessions = codexSessions.filter((s) => s.session_id !== currentCodexSessionId);
   }
 
   // Keep lists short for Telegram and quick scanning.
   const byNewest = (a: { saved_at: string }, b: { saved_at: string }) =>
     (Date.parse(b.saved_at || "") || 0) - (Date.parse(a.saved_at || "") || 0);
-  claudeSessions = claudeSessions.sort(byNewest).slice(0, RESUME_SESSIONS_LIMIT);
   codexSessions = codexSessions.sort(byNewest).slice(0, RESUME_SESSIONS_LIMIT);
 
-  const hasCurrentSession =
-    (session.activeDriver === "claude" && Boolean(session.sessionId)) ||
-    (session.activeDriver === "codex" && Boolean(codexSession.getThreadId()));
+  const hasCurrentSession = Boolean(currentCodexSessionId);
 
-  if (!hasCurrentSession && claudeSessions.length === 0 && codexSessions.length === 0) {
+  if (!hasCurrentSession && codexSessions.length === 0) {
     await ctx.reply("❌ No saved sessions.");
     return;
   }
@@ -1585,34 +1521,19 @@ export async function handleResume(ctx: Context): Promise<void> {
   const buttons: Array<Array<{ text: string; callback_data: string }>> = [];
 
   if (hasCurrentSession) {
-    const currentDriverName = session.activeDriver === "codex" ? "Codex 🟢" : "Claude 🔵";
     buttons.push([
       {
-        text: `▶ Continue current (${currentDriverName})`,
+        text: "▶ Continue current (Codex 🟢)",
         callback_data: "resume_current",
       },
     ]);
   }
 
-  const mergedSessions: ResumeOption[] = [
-    ...claudeSessions.map((s) => ({
-      ...s,
-      driverEmoji: "🔵" as const,
-      callbackData: `resume:${s.session_id}`,
-    })),
-    ...codexSessions.map((s) => ({
-      ...s,
-      driverEmoji: "🟢" as const,
-      callbackData: `codex_resume:${s.session_id}`,
-    })),
-  ]
-    .sort((a, b) => byNewest(a, b));
-
-  for (const s of mergedSessions) {
+  for (const s of codexSessions) {
     buttons.push([
       {
-        text: formatResumeButtonLabel(s.driverEmoji, s.saved_at, s.title),
-        callback_data: s.callbackData,
+        text: formatResumeButtonLabel(s.saved_at, s.title),
+        callback_data: `codex_resume:${s.session_id}`,
       },
     ]);
   }
@@ -1624,7 +1545,7 @@ export async function handleResume(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.reply("📋 <b>Resume Session</b>\n\n🔵 Claude + 🟢 Codex\nSelect a session to continue:", {
+  await ctx.reply("📋 <b>Resume Codex Session</b>\n\nSelect a session to continue:", {
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: buttons,
@@ -1633,8 +1554,7 @@ export async function handleResume(ctx: Context): Promise<void> {
 }
 
 /**
- * /model - Show current model and let user switch model/effort.
- * Routes to Claude or Codex model selection based on activeDriver.
+ * /model - Show current Codex model and let user switch model/effort.
  */
 export async function handleModel(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -1644,48 +1564,15 @@ export async function handleModel(ctx: Context): Promise<void> {
     return;
   }
 
-  // Support direct driver switch: /model claude or /model codex
   const args = ctx.message?.text?.split(/\s+/).slice(1) || [];
   const target = args[0]?.toLowerCase();
 
-  if (target === "claude" || target === "codex") {
-    const error = await performDriverSwitch(target);
-    if (error) {
-      await ctx.reply(error);
-      return;
-    }
-    // Show the model picker for the new driver
-    if (target === "codex") {
-      return handleCodexModel(ctx);
-    }
-    const picker = buildClaudeModelPickerMessage();
-    await ctx.reply(picker.text, {
-      parse_mode: "HTML",
-      reply_markup: picker.replyMarkup,
-    });
-    return;
-  }
-
   if (target) {
-    await ctx.reply(`❌ Unknown driver: ${target}. Use /model claude or /model codex`);
+    await ctx.reply("ℹ️ SuperTurtle is codex-only in this branch. Use /model with no arguments.");
     return;
   }
 
-  if (session.activeDriver === "codex" && !CODEX_AVAILABLE) {
-    session.activeDriver = "claude";
-    await ctx.reply(`${getCodexUnavailableMessage()}\nUsing Claude model controls.`);
-  }
-
-  // Route based on active driver
-  if (session.activeDriver === "codex") {
-    return handleCodexModel(ctx);
-  }
-
-  const picker = buildClaudeModelPickerMessage();
-  await ctx.reply(picker.text, {
-    parse_mode: "HTML",
-    reply_markup: picker.replyMarkup,
-  });
+  return handleCodexModel(ctx);
 }
 
 /**
@@ -1699,7 +1586,7 @@ export async function handleSwitch(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.reply("/switch has been merged into /model. Use /model to change your driver, model, or effort level.");
+  await ctx.reply("/switch no longer changes drivers in this branch. Use /model for Codex settings.");
 }
 
 /**
@@ -1708,18 +1595,19 @@ export async function handleSwitch(ctx: Context): Promise<void> {
 export async function performDriverSwitch(
   driver: "claude" | "codex"
 ): Promise<string | null> {
-  if (driver === "codex" && !CODEX_AVAILABLE) {
+  if (driver !== "codex") {
+    return "❌ Claude Code driver support has been removed in this branch.";
+  }
+  if (!CODEX_AVAILABLE) {
     return getCodexUnavailableMessage();
   }
   await resetAllDriverSessions({ stopRunning: true });
-  if (driver === "codex") {
-    try {
-      await codexSession.startNewThread();
-    } catch (error) {
-      return `❌ Failed to switch to Codex: ${String(error).slice(0, 100)}`;
-    }
+  try {
+    await codexSession.startNewThread();
+  } catch (error) {
+    return `❌ Failed to switch to Codex: ${String(error).slice(0, 100)}`;
   }
-  session.activeDriver = driver;
+  session.activeDriver = "codex";
   return null;
 }
 
@@ -1748,61 +1636,13 @@ type ModelPickerMarkup = {
   inline_keyboard: ModelPickerButton[][];
 };
 
-function buildDriverRow(): ModelPickerButton[][] {
-  const codexButton = CODEX_AVAILABLE
-    ? {
-        text: `${session.activeDriver === "codex" ? "✔ " : ""}Codex 🟢`,
-        callback_data: "switch:codex",
-      }
-    : {
-        text: "Codex (unavailable)",
-        callback_data: "switch:codex_unavailable",
-      };
-  return [[
-    {
-      text: `${session.activeDriver === "claude" ? "✔ " : ""}Claude Code 🔵`,
-      callback_data: "switch:claude",
-    },
-    codexButton,
-  ]];
-}
-
 export function buildClaudeModelPickerMessage(): {
   text: string;
   replyMarkup: ModelPickerMarkup;
 } {
-  const models = getAvailableModels();
-  const currentModel = models.find((m) => m.value === session.model);
-  const currentEffort = EFFORT_DISPLAY[session.effort];
-
-  const modelButtons = models.map((m) => [{
-    text: `${m.value === session.model ? "✔ " : ""}${m.displayName}`,
-    callback_data: `model:${m.value}`,
-  }]);
-
-  const isHaiku = session.model.includes("haiku");
-  const effortButtons = isHaiku
-    ? []
-    : [(Object.entries(EFFORT_DISPLAY) as [EffortLevel, string][]).map(
-        ([level, label]) => ({
-          text: `${level === session.effort ? "✔ " : ""}${label}`,
-          callback_data: `effort:${level}`,
-        })
-      )];
-
-  const modelName = currentModel?.displayName || session.model;
-  const modelDesc = currentModel?.description ? ` — ${currentModel.description}` : "";
-  const driverRow = buildDriverRow();
-
   return {
-    text:
-      `<b>Driver:</b> Claude Code 🔵\n` +
-      `<b>Model:</b> ${modelName}${modelDesc}\n` +
-      `<b>Effort:</b> ${currentEffort}\n\n` +
-      `Select driver, model, or effort level:`,
-    replyMarkup: {
-      inline_keyboard: [...driverRow, ...modelButtons, ...effortButtons],
-    },
+    text: "Claude Code driver support has been removed in this branch.",
+    replyMarkup: { inline_keyboard: [] },
   };
 }
 
@@ -1836,275 +1676,15 @@ export async function buildCodexModelPickerMessage(): Promise<{
 
   const modelName = currentModel?.displayName || codexSession.model;
   const modelDesc = currentModel?.description ? ` — ${currentModel.description}` : "";
-  const driverRow = buildDriverRow();
-
   return {
     text:
-      `<b>Driver:</b> Codex 🟢\n` +
       `<b>Codex Model:</b> ${modelName}${modelDesc}\n` +
       `<b>Reasoning Effort:</b> ${currentEffort}\n\n` +
-      `Select driver, model, or reasoning effort:`,
+      `Select model or reasoning effort:`,
     replyMarkup: {
-      inline_keyboard: [...driverRow, ...modelButtons, ...effortButtons],
+      inline_keyboard: [...modelButtons, ...effortButtons],
     },
   };
-}
-
-type JsonObj = Record<string, unknown>;
-
-function coerceNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function getNestedString(obj: JsonObj, path: string[]): string | null {
-  let current: unknown = obj;
-  for (const part of path) {
-    if (!current || typeof current !== "object") return null;
-    current = (current as JsonObj)[part];
-  }
-  return typeof current === "string" && current.trim().length > 0 ? current.trim() : null;
-}
-
-function extractTokenFromObject(obj: JsonObj, depth = 0): string | null {
-  if (depth > 6) return null;
-
-  const candidatePaths = [
-    ["claudeAiOauth", "accessToken"],
-    ["claudeAiOauth", "access_token"],
-    ["claudeAiOauth", "token"],
-    ["oauth", "accessToken"],
-    ["oauth", "access_token"],
-    ["oauth", "token"],
-    ["accessToken"],
-    ["access_token"],
-    ["token"],
-  ];
-
-  for (const path of candidatePaths) {
-    const token = getNestedString(obj, path);
-    if (token) return token;
-  }
-
-  for (const value of Object.values(obj)) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-    const nested = extractTokenFromObject(value as JsonObj, depth + 1);
-    if (nested) return nested;
-  }
-
-  return null;
-}
-
-function extractTokenFromPayload(payload: string): string | null {
-  const trimmed = payload.trim();
-  if (!trimmed) return null;
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (typeof parsed === "string" && parsed.trim().length > 0) {
-      return parsed.trim();
-    }
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return extractTokenFromObject(parsed as JsonObj);
-    }
-  } catch {
-    // Not JSON — treat as raw token string.
-  }
-
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readTokenFromCredentialFile(path: string): string | null {
-  try {
-    const file = Bun.file(path);
-    if (file.size <= 0) return null;
-    const text = require("fs").readFileSync(path, "utf-8");
-    return extractTokenFromPayload(text);
-  } catch {
-    return null;
-  }
-}
-
-function isLikelyTestToken(token: string): boolean {
-  const normalized = token.trim().toLowerCase();
-  if (!normalized) return false;
-  if (normalized === "test-claude-token") return true;
-  return /^(test|fake|dummy)[-_].*token$/.test(normalized);
-}
-
-function shouldRejectToken(token: string): boolean {
-  const isTestRuntime = (process.env.TELEGRAM_BOT_TOKEN || "") === "test-token";
-  return !isTestRuntime && isLikelyTestToken(token);
-}
-
-/**
- * Retrieve Claude Code OAuth access token from platform keychain with file fallback.
- */
-function getClaudeAccessToken(): string | null {
-  try {
-    const user = process.env.USER || "unknown";
-    const home = process.env.HOME || "";
-    const credPaths = [
-      `${home}/.config/claude-code/credentials.json`,
-      `${home}/.claude/credentials.json`,
-    ];
-
-    if (IS_MACOS) {
-      const keychainCommands: string[][] = [
-        [
-          "security",
-          "find-generic-password",
-          "-s",
-          "Claude Code-credentials",
-          "-a",
-          user,
-          "-w",
-        ],
-        [
-          "security",
-          "find-generic-password",
-          "-s",
-          "Claude Code-credentials",
-          "-w",
-        ],
-      ];
-
-      for (const cmd of keychainCommands) {
-        const proc = Bun.spawnSync(cmd);
-        if (proc.exitCode !== 0) continue;
-        const token = extractTokenFromPayload(proc.stdout.toString());
-        if (token && !shouldRejectToken(token)) return token;
-      }
-    }
-
-    if (IS_LINUX && Bun.which("secret-tool")) {
-      const secretToolCommands: string[][] = [
-        [
-          "secret-tool",
-          "lookup",
-          "service",
-          "Claude Code-credentials",
-          "username",
-          user,
-        ],
-        [
-          "secret-tool",
-          "lookup",
-          "service",
-          "Claude Code-credentials",
-        ],
-      ];
-
-      for (const cmd of secretToolCommands) {
-        const proc = Bun.spawnSync(cmd);
-        if (proc.exitCode !== 0) continue;
-        const token = extractTokenFromPayload(proc.stdout.toString());
-        if (token && !shouldRejectToken(token)) return token;
-      }
-    }
-
-    for (const path of credPaths) {
-      const token = readTokenFromCredentialFile(path);
-      if (token && !shouldRejectToken(token)) return token;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Fetch and format usage info as HTML lines. Returns empty array on failure.
- */
-export async function getUsageLines(): Promise<string[]> {
-  try {
-    const token = getClaudeAccessToken();
-    if (!token) return [];
-
-    const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "anthropic-beta": "oauth-2025-04-20",
-      },
-    });
-    if (!res.ok) {
-      if (res.status === 429) {
-        return [`<i>${CLAUDE_USAGE_RATE_LIMIT_MESSAGE}</i>`];
-      }
-      if (res.status === 401 || res.status === 403) {
-        return ["<i>Claude credentials were rejected. Re-run Claude login.</i>"];
-      }
-      return [];
-    }
-
-    const data = (await res.json()) as Record<string, unknown>;
-
-    const bar = (pct: number): string => {
-      const filled = Math.round(pct / 5);
-      const empty = 20 - filled;
-      return "\u2588".repeat(filled) + "\u2591".repeat(empty);
-    };
-
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const resetStr = (iso: string): string => {
-      const d = new Date(iso);
-      const timeStr = d.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: d.getMinutes() ? "2-digit" : undefined,
-        timeZone: tz,
-      }).toLowerCase();
-      return `Resets ${timeStr} (${tz})`;
-    };
-
-    const lines: string[] = [];
-    const sections: [string, string][] = [
-      ["five_hour", "Session"],
-      ["seven_day", "Week (all)"],
-      ["seven_day_sonnet", "Week (Sonnet)"],
-      ["seven_day_opus", "Week (Opus)"],
-    ];
-
-    for (const [key, label] of sections) {
-      const entry = data[key];
-      if (!entry) continue;
-      if (typeof entry !== "object" || Array.isArray(entry)) continue;
-
-      const entryObj = entry as JsonObj;
-      const utilizationRaw =
-        entryObj.utilization ??
-        entryObj.usedPercent ??
-        entryObj.used_percent ??
-        entryObj.utilizationPercent;
-      const resetsRaw = entryObj.resets_at ?? entryObj.resetsAt;
-
-      const utilization = coerceNumber(utilizationRaw);
-      if (utilization === null || typeof resetsRaw !== "string" || !resetsRaw.trim()) {
-        continue;
-      }
-
-      const pctValue = utilization <= 1 ? utilization * 100 : utilization;
-      const pct = Math.max(0, Math.min(100, Math.round(pctValue)));
-      const reset = resetStr(resetsRaw);
-      lines.push(`<code>${bar(pct)}</code> ${pct}% ${label}\n${reset}`);
-    }
-
-    return lines;
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Parse percentage from Claude usage bar line (e.g., "▓▓░░░░ 45% Session")
- */
-function parseClaudePercentage(line: string): number | null {
-  const match = line.match(/(\d+)%/);
-  return match?.[1] ? parseInt(match[1], 10) : null;
 }
 
 /**
@@ -2127,118 +1707,57 @@ function getStatusEmoji(pct: number | null): string {
 }
 
 /**
- * Format unified usage display combining Claude and Codex data.
+ * Format Codex usage display from quota data.
  */
-export function formatUnifiedUsage(
-  usageLines: string[],
-  codexLines: string[],
-  codexEnabled: boolean
-): string {
-  const sections: string[] = [];
+export function formatUnifiedUsage(codexLines: string[]): string {
+  let codexStatus = "❓";
+  let codexHighestPct = 0;
+  let codexDataMissing = true;
+  let codexPlanType = "";
+  let codexDisplayLines = [...codexLines];
 
-  // Extract Claude usage data
-  let claudeStatus = "❓";
-  let claudeHighestPct = 0;
-  let claudeDataMissing = true;
-  const claudeSection: string[] = [];
+  if (codexDisplayLines.length > 0 && codexDisplayLines[0]?.startsWith("__CODEX_PLAN_TYPE__")) {
+    codexPlanType = codexDisplayLines[0].replace("__CODEX_PLAN_TYPE__", "");
+    codexDisplayLines = codexDisplayLines.slice(1);
+  }
 
-  if (usageLines.length > 0) {
-    for (const line of usageLines) {
-      const pct = parseClaudePercentage(line);
+  if (codexDisplayLines.length > 0 && !codexDisplayLines[0]?.includes("Failed to fetch")) {
+    for (const line of codexDisplayLines) {
+      const pct = parseCodexPercentage(line);
       if (pct !== null) {
-        claudeDataMissing = false;
-        claudeHighestPct = Math.max(claudeHighestPct, pct);
+        codexDataMissing = false;
+        codexHighestPct = Math.max(codexHighestPct, pct);
       }
     }
-    if (!claudeDataMissing) {
-      claudeStatus = getStatusEmoji(claudeHighestPct);
+    if (!codexDataMissing) {
+      codexStatus = getStatusEmoji(codexHighestPct);
     }
-    claudeSection.push(`${claudeStatus} <b>Claude Code</b>`);
-    claudeSection.push(...usageLines.map((line) => `   ${line}`));
-  } else {
-    claudeSection.push(`❓ <b>Claude Code</b>`);
-    claudeSection.push(`   <i>No usage data available</i>`);
+    return [
+      `${codexStatus} <b>Codex${codexPlanType ? ` (${escapeHtml(codexPlanType)})` : ""}</b>`,
+      ...codexDisplayLines.map((line) => `   ${line}`),
+      "",
+      codexDataMissing
+        ? `❓ <b>Status:</b> Codex quota data unavailable`
+        : codexHighestPct >= 95
+          ? `🔴 <b>Status:</b> Codex critical`
+          : codexHighestPct >= 80
+            ? `⚠️ <b>Status:</b> Codex nearing limit`
+            : `✅ <b>Status:</b> Codex operating normally`,
+    ].join("\n");
   }
 
-  sections.push(claudeSection.join("\n"));
-
-  // Extract Codex quota data
-  if (codexEnabled) {
-    let codexStatus = "❓";
-    let codexHighestPct = 0;
-    let codexDataMissing = true;
-    let codexPlanType = "";
-    const codexSection: string[] = [];
-    let codexDisplayLines = [...codexLines];
-
-    // Extract plan type from special marker (first line)
-    if (codexDisplayLines.length > 0 && codexDisplayLines[0]?.startsWith("__CODEX_PLAN_TYPE__")) {
-      codexPlanType = codexDisplayLines[0].replace("__CODEX_PLAN_TYPE__", "");
-      codexDisplayLines = codexDisplayLines.slice(1);
-    }
-
-    if (codexDisplayLines.length > 0 && !codexDisplayLines[0]?.includes("Failed to fetch")) {
-      for (const line of codexDisplayLines) {
-        const pct = parseCodexPercentage(line);
-        if (pct !== null) {
-          codexDataMissing = false;
-          codexHighestPct = Math.max(codexHighestPct, pct);
-        }
-      }
-      if (!codexDataMissing) {
-        codexStatus = getStatusEmoji(codexHighestPct);
-      }
-      const codexHeader = `${codexStatus} <b>Codex${codexPlanType ? ` (${escapeHtml(codexPlanType)})` : ""}</b>`;
-      codexSection.push(codexHeader);
-      codexSection.push(...codexDisplayLines.map((line) => `   ${line}`));
-    } else if (codexDisplayLines.length > 0) {
-      codexSection.push(`⚠️ <b>Codex</b>`);
-      codexSection.push(...codexDisplayLines.map((line) => `   ${line}`));
-    } else {
-      codexSection.push(`❓ <b>Codex</b>`);
-      codexSection.push(`   <i>No quota data available</i>`);
-    }
-
-    sections.push(codexSection.join("\n"));
-
-    // Add summary line
-    const bothOk = claudeHighestPct < 80 && codexHighestPct < 80;
-    const anyWarning = claudeHighestPct >= 80 || codexHighestPct >= 80;
-    const anyCritical = claudeHighestPct >= 95 || codexHighestPct >= 95;
-
-    let statusSummary = "";
-    if (claudeDataMissing || codexDataMissing) {
-      statusSummary = `❓ <b>Status:</b> Partial data — check above`;
-    } else if (anyCritical) {
-      statusSummary = `🔴 <b>Status:</b> One or more services critical`;
-    } else if (anyWarning) {
-      statusSummary = `⚠️ <b>Status:</b> One or more services nearing limit`;
-    } else if (bothOk) {
-      statusSummary = `✅ <b>Status:</b> All services operating normally`;
-    } else {
-      statusSummary = `❓ <b>Status:</b> Check data above`;
-    }
-    sections.push(statusSummary);
-  } else {
-    // Just show Claude status
-    let statusSummary = "";
-    if (claudeDataMissing) {
-      statusSummary = `❓ <b>Status:</b> Claude usage data unavailable`;
-    } else if (claudeHighestPct >= 95) {
-      statusSummary = `🔴 <b>Status:</b> Claude Code critical`;
-    } else if (claudeHighestPct >= 80) {
-      statusSummary = `⚠️ <b>Status:</b> Claude Code nearing limit`;
-    } else {
-      statusSummary = `✅ <b>Status:</b> Claude Code operating normally`;
-    }
-    sections.push(statusSummary);
+  if (codexDisplayLines.length > 0) {
+    return [
+      `⚠️ <b>Codex</b>`,
+      ...codexDisplayLines.map((line) => `   ${line}`),
+    ].join("\n");
   }
 
-  return sections.join("\n\n");
+  return "❓ <b>Codex</b>\n   <i>No quota data available</i>";
 }
 
 /**
- * /usage - Show Claude subscription usage and Codex quota in unified display.
+ * /usage - Show Codex quota and recent token usage.
  */
 export async function handleUsage(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -2248,25 +1767,17 @@ export async function handleUsage(ctx: Context): Promise<void> {
     return;
   }
 
-  const [usageLines, codexQuotaLines] = await Promise.all([
-    getUsageLines(),
-    CODEX_ENABLED ? getCodexQuotaLines() : Promise.resolve<string[]>([]),
-  ]);
-
-  const hasClaudeData = usageLines.length > 0;
-  const hasCodexData = !CODEX_ENABLED || codexQuotaLines.length > 0;
-
-  if (!hasClaudeData && !hasCodexData) {
-    await ctx.reply("❌ <b>Failed to fetch usage data</b>\n\nCould not retrieve Claude or Codex quota information.", {
+  const codexQuotaLines = await getCodexQuotaLines();
+  if (codexQuotaLines.length === 0 && !codexSession.lastUsage) {
+    await ctx.reply("❌ <b>Failed to fetch Codex usage data</b>", {
       parse_mode: "HTML",
     });
     return;
   }
 
-  let unifiedOutput = formatUnifiedUsage(usageLines, codexQuotaLines, CODEX_ENABLED);
+  let unifiedOutput = formatUnifiedUsage(codexQuotaLines);
 
-  // Add Codex token usage from last turn if available
-  if (CODEX_ENABLED && codexSession.lastUsage) {
+  if (codexSession.lastUsage) {
     const usage = codexSession.lastUsage;
     const codexTokenUsage = [
       "",
@@ -2697,7 +2208,7 @@ function formatContextForTelegram(markdown: string): string[] {
 }
 
 /**
- * /context - Show Claude Code context usage for the active session.
+ * /context - Not supported in the codex-only branch.
  */
 export async function handleContext(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -2707,50 +2218,7 @@ export async function handleContext(ctx: Context): Promise<void> {
     return;
   }
 
-  if (session.activeDriver === "codex") {
-    await ctx.reply("ℹ️ /context is currently available only for Claude sessions.");
-    return;
-  }
-
-  if (!session.isActive || !session.sessionId) {
-    await ctx.reply("❌ No active session. Send a message or use /resume first.");
-    return;
-  }
-
-  if (session.isRunning) {
-    await ctx.reply("⏳ Query is running. Use /stop, then /context.");
-    return;
-  }
-
-  const progress = await ctx.reply("📊 Fetching context usage...");
-
-  try {
-    const result = await getContextReport(session.sessionId, WORKING_DIR, session.model);
-    if (!result.ok) {
-      await ctx.reply(`❌ ${result.error}`);
-      return;
-    }
-
-    const raw = result.markdown.trim();
-    const payload = raw.startsWith("## Context Usage") ? raw : `## Context Usage\n\n${raw}`;
-    const chunks = formatContextForTelegram(payload);
-    if (chunks.length === 0) {
-      await ctx.reply("❌ Context output is empty.");
-      return;
-    }
-
-    for (let i = 0; i < chunks.length; i++) {
-      await ctx.reply(chunks[i]!, { parse_mode: "HTML" });
-    }
-  } catch (error) {
-    await ctx.reply(`❌ Failed to fetch context: ${String(error).slice(0, 200)}`);
-  } finally {
-    try {
-      await ctx.api.deleteMessage(progress.chat.id, progress.message_id);
-    } catch {
-      // Ignore failures to remove transient progress messages.
-    }
-  }
+  await ctx.reply("ℹ️ /context is not available in the codex-only branch.");
 }
 
 /**
@@ -3618,25 +3086,14 @@ export async function handleDebug(ctx: Context): Promise<void> {
   const lines: string[] = ["🔍 <b>Debug — Internal State</b>\n"];
 
   // ── Driver / Session ──
-  const driverLabel = session.activeDriver === "codex" ? "Codex 🟢" : "Claude 🔵";
   const { modelName, effortStr } = formatModelInfo(session.model, session.effort);
-  const claudeRunning = session.isRunning;
   const codexRunning = codexSession.isRunning;
   const anyDriverRunning = isAnyDriverRunning();
 
   lines.push(`<b>Driver</b>`);
-  lines.push(`  Active: ${driverLabel}`);
+  lines.push(`  Active: Codex 🟢`);
   lines.push(`  Model: ${escapeHtml(modelName)}${escapeHtml(effortStr)}`);
-  lines.push(`  Claude session: ${session.isActive ? `active (${session.sessionId?.slice(0, 8)}…)` : "none"}`);
-  lines.push(`  Claude running: ${claudeRunning ? "✅ yes" : "no"}`);
-  if (session.queryStarted) {
-    const elapsed = Math.round((now - session.queryStarted.getTime()) / 1000);
-    lines.push(`  Claude query elapsed: ${elapsed}s`);
-  }
-  if (session.currentTool) {
-    lines.push(`  Claude current tool: <code>${escapeHtml(session.currentTool)}</code>`);
-  }
-  lines.push(`  Codex session: ${codexSession.isActive ? "active" : "none"}`);
+  lines.push(`  Codex session: ${session.isActive ? `active (${session.sessionId?.slice(0, 8)}…)` : "none"}`);
   lines.push(`  Codex running: ${codexRunning ? "✅ yes" : "no"}`);
   if (codexRunning && codexSession.runningSince) {
     const elapsed = Math.round((now - codexSession.runningSince.getTime()) / 1000);

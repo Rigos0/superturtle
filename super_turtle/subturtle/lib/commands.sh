@@ -65,8 +65,6 @@ is_running() {
 required_clis_for_loop_type() {
   local loop_type="$1"
   case "$loop_type" in
-    slow) echo "claude codex" ;;
-    yolo) echo "claude" ;;
     yolo-codex|yolo-codex-spark) echo "codex" ;;
     *) echo "" ;;
   esac
@@ -86,7 +84,7 @@ is_loop_type_supported_here() {
 list_supported_loop_types() {
   local -a supported=()
   local candidate
-  for candidate in slow yolo yolo-codex yolo-codex-spark; do
+  for candidate in yolo-codex yolo-codex-spark; do
     if is_loop_type_supported_here "$candidate"; then
       supported+=("$candidate")
     fi
@@ -119,16 +117,10 @@ validate_loop_type_prereqs() {
   supported_types="$(list_supported_loop_types)"
   suggestion=""
 
-  if [[ "$loop_type" == "slow" ]] && is_loop_type_supported_here "yolo"; then
-    suggestion="Try --type yolo (Claude-only) on this machine."
-  elif [[ "$loop_type" == "slow" ]] && is_loop_type_supported_here "yolo-codex"; then
-    suggestion="Try --type yolo-codex (Codex-only) on this machine."
+  if [[ "$loop_type" == "yolo-codex-spark" ]] && is_loop_type_supported_here "yolo-codex"; then
+    suggestion="Try --type yolo-codex until Codex Spark is available."
   elif [[ "$loop_type" == "yolo-codex" || "$loop_type" == "yolo-codex-spark" ]]; then
-    if is_loop_type_supported_here "yolo"; then
-      suggestion="Try --type yolo (Claude) until Codex CLI is installed."
-    fi
-  elif [[ "$loop_type" == "yolo" ]] && is_loop_type_supported_here "yolo-codex"; then
-    suggestion="Try --type yolo-codex (Codex) until Claude CLI is installed."
+    suggestion="Install the Codex CLI to enable Codex-backed SubTurtle loops."
   fi
 
   echo "[subturtle:${name}] ERROR: loop type '${loop_type}' requires missing CLI(s): ${missing_clis[*]}" >&2
@@ -142,9 +134,9 @@ validate_loop_type_prereqs() {
 validate_known_loop_type() {
   local loop_type="$1"
   case "$loop_type" in
-    slow|yolo|yolo-codex|yolo-codex-spark) ;;
+    yolo-codex|yolo-codex-spark) ;;
     *)
-      echo "ERROR: unknown SubTurtle type '${loop_type}' (must be: slow, yolo, yolo-codex, yolo-codex-spark)" >&2
+      echo "ERROR: unknown SubTurtle type '${loop_type}' (must be: yolo-codex, yolo-codex-spark)" >&2
       exit 1
       ;;
   esac
@@ -167,7 +159,7 @@ reconcile_live_subturtle_board() {
   command -v bun >/dev/null 2>&1 || return 0
 
   (
-    export CLAUDE_WORKING_DIR="${PROJECT_DIR}"
+    export SUPER_TURTLE_PROJECT_DIR="${PROJECT_DIR}"
 
     if [[ -f "${PROJECT_DIR}/.superturtle/.env" ]]; then
       set -a

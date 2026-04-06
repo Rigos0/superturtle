@@ -156,11 +156,11 @@ export function createDashboardRoutes({
       },
     },
     {
-      pattern: /^\/api\/sessions\/(claude|codex)\/([^/]+)\/turns$/,
+      pattern: /^\/api\/sessions\/(codex)\/([^/]+)\/turns$/,
       handler: async (_req, url, match) => {
         const driver = decodeURIComponent(match[1] ?? "") as SessionDriver;
         const sessionId = decodeURIComponent(match[2] ?? "");
-        if ((driver !== "claude" && driver !== "codex") || !validateSessionId(sessionId)) {
+        if (driver !== "codex" || !validateSessionId(sessionId)) {
           return notFoundResponse("Invalid session identifier");
         }
         const rawLimit = parseInt(url.searchParams.get("limit") || "200", 10);
@@ -173,11 +173,11 @@ export function createDashboardRoutes({
       },
     },
     {
-      pattern: /^\/api\/sessions\/(claude|codex)\/([^/]+)$/,
+      pattern: /^\/api\/sessions\/(codex)\/([^/]+)$/,
       handler: async (_req, _url, match) => {
         const driver = decodeURIComponent(match[1] ?? "") as SessionDriver;
         const sessionId = decodeURIComponent(match[2] ?? "");
-        if ((driver !== "claude" && driver !== "codex") || !validateSessionId(sessionId)) {
+        if (driver !== "codex" || !validateSessionId(sessionId)) {
           return notFoundResponse("Invalid session identifier");
         }
         const detail = await buildSessionDetail(driver, sessionId);
@@ -293,11 +293,11 @@ export function createDashboardRoutes({
       },
     },
     {
-      pattern: /^\/dashboard\/sessions\/(claude|codex)\/([^/]+)$/,
+      pattern: /^\/dashboard\/sessions\/(codex)\/([^/]+)$/,
       handler: async (_req, url, match) => {
         const driver = decodeURIComponent(match[1] ?? "") as SessionDriver;
         const sessionId = decodeURIComponent(match[2] ?? "");
-        if ((driver !== "claude" && driver !== "codex") || !validateSessionId(sessionId)) {
+        if (driver !== "codex" || !validateSessionId(sessionId)) {
           return notFoundResponse("Invalid session identifier");
         }
         const detail = await buildSessionDetail(driver, sessionId);

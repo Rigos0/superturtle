@@ -118,32 +118,28 @@ def test_require_cli_exits_with_clear_error(monkeypatch, capsys) -> None:
     monkeypatch.setattr(subturtle_loops.shutil, "which", lambda _cli: None)
 
     with pytest.raises(SystemExit) as excinfo:
-        subturtle_loops._require_cli("default", "claude")
-
-    assert excinfo.value.code == 1
-    assert "'claude' not found on PATH" in capsys.readouterr().err
-
-
-def test_run_slow_loop_checks_codex_before_start(monkeypatch, tmp_path, capsys) -> None:
-    _write_state_file(tmp_path)
-
-    def fake_which(cli: str) -> str | None:
-        return "/usr/bin/claude" if cli == "claude" else None
-
-    monkeypatch.setattr(subturtle_loops.shutil, "which", fake_which)
-
-    with pytest.raises(SystemExit) as excinfo:
-        subturtle_loops.run_slow_loop(tmp_path, "default")
+        subturtle_loops._require_cli("default", "codex")
 
     assert excinfo.value.code == 1
     assert "'codex' not found on PATH" in capsys.readouterr().err
 
 
-def test_run_yolo_loop_retries_on_oserror(monkeypatch, tmp_path, capsys) -> None:
+def test_run_yolo_codex_loop_checks_codex_before_start(monkeypatch, tmp_path, capsys) -> None:
+    _write_state_file(tmp_path)
+    monkeypatch.setattr(subturtle_loops.shutil, "which", lambda _cli: None)
+
+    with pytest.raises(SystemExit) as excinfo:
+        subturtle_loops.run_yolo_codex_loop(tmp_path, "default")
+
+    assert excinfo.value.code == 1
+    assert "'codex' not found on PATH" in capsys.readouterr().err
+
+
+def test_run_yolo_codex_loop_retries_on_oserror(monkeypatch, tmp_path, capsys) -> None:
     _write_state_file(tmp_path)
     monkeypatch.setattr(subturtle_loops, "_require_cli", lambda _name, _cli: None)
 
-    class BrokenClaude:
+    class BrokenCodex:
         def execute(self, _prompt: str) -> str:
             raise OSError("launch failed")
 
@@ -153,16 +149,16 @@ def test_run_yolo_loop_retries_on_oserror(monkeypatch, tmp_path, capsys) -> None
     def stop_after_retry(_delay: int) -> None:
         raise StopLoop
 
-    monkeypatch.setattr(subturtle_loops, "Claude", lambda **_kwargs: BrokenClaude())
+    monkeypatch.setattr(subturtle_loops, "Codex", lambda **_kwargs: BrokenCodex())
     monkeypatch.setattr(subturtle_loops.time, "sleep", stop_after_retry)
 
     with pytest.raises(StopLoop):
-        subturtle_loops.run_yolo_loop(tmp_path, "default")
+        subturtle_loops.run_yolo_codex_loop(tmp_path, "default")
 
     assert "retrying in" in capsys.readouterr().err
 
 
-def test_run_yolo_loop_marks_failure_pending_after_max_consecutive_failures(
+def test_run_yolo_codex_loop_marks_failure_pending_after_max_consecutive_failures(
     monkeypatch, tmp_path, capsys
 ) -> None:
     state_dir = tmp_path / ".superturtle/subturtles" / "worker-max-failures"
@@ -177,12 +173,12 @@ def test_run_yolo_loop_marks_failure_pending_after_max_consecutive_failures(
 
     attempts = {"count": 0}
 
-    class BrokenClaude:
+    class BrokenCodex:
         def execute(self, _prompt: str) -> str:
             attempts["count"] += 1
             raise OSError("launch failed")
 
-    monkeypatch.setattr(subturtle_loops, "Claude", lambda **_kwargs: BrokenClaude())
+    monkeypatch.setattr(subturtle_loops, "Codex", lambda **_kwargs: BrokenCodex())
 
     store = ConductorStateStore(tmp_path / ".superturtle" / "state")
     initial = store.make_worker_state(
@@ -191,12 +187,12 @@ def test_run_yolo_loop_marks_failure_pending_after_max_consecutive_failures(
         updated_by="supervisor",
         run_id="run-max-failures",
         workspace=str(state_dir),
-        loop_type="yolo",
+        loop_type="yolo-codex",
         current_task="Recover from repeated agent failures",
     )
     store.write_worker_state(initial)
 
-    subturtle_loops.run_yolo_loop(state_dir, "worker-max-failures")
+    subturtle_loops.run_yolo_codex_loop(state_dir, "worker-max-failures")
 
     assert attempts["count"] == subturtle_loops.MAX_CONSECUTIVE_FAILURES
 
@@ -219,7 +215,7 @@ def test_run_yolo_loop_marks_failure_pending_after_max_consecutive_failures(
     assert "FATAL: reached 5 consecutive agent failures" in capsys.readouterr().err
 
 
-def test_run_yolo_loop_resets_failure_counter_after_success(monkeypatch, tmp_path) -> None:
+def test_run_yolo_codex_loop_resets_failure_counter_after_success(monkeypatch, tmp_path) -> None:
     _write_state_file(tmp_path)
     monkeypatch.setattr(subturtle_loops, "_require_cli", lambda _name, _cli: None)
     monkeypatch.setattr(subturtle_loops.time, "sleep", lambda _delay: None)
@@ -229,7 +225,7 @@ def test_run_yolo_loop_resets_failure_counter_after_success(monkeypatch, tmp_pat
     checkpoint_iterations = []
     failure_records = []
 
-    class SequencedClaude:
+    class SequencedCodex:
         def execute(self, _prompt: str) -> str:
             index = attempts["count"]
             attempts["count"] += 1
@@ -253,11 +249,11 @@ def test_run_yolo_loop_resets_failure_counter_after_success(monkeypatch, tmp_pat
     ) -> None:
         failure_records.append((message, error_type))
 
-    monkeypatch.setattr(subturtle_loops, "Claude", lambda **_kwargs: SequencedClaude())
+    monkeypatch.setattr(subturtle_loops, "Codex", lambda **_kwargs: SequencedCodex())
     monkeypatch.setattr(subturtle_loops, "_record_checkpoint", fake_record_checkpoint)
     monkeypatch.setattr(subturtle_loops, "_record_failure_pending", fake_record_failure_pending)
 
-    subturtle_loops.run_yolo_loop(tmp_path, "default")
+    subturtle_loops.run_yolo_codex_loop(tmp_path, "default")
 
     assert attempts["count"] == 10
     assert checkpoint_iterations == [5]

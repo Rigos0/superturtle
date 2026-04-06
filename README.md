@@ -58,10 +58,10 @@ superturtle init --token <BOT_TOKEN> --user <TELEGRAM_USER_ID> --openai-key <KEY
 ## Architecture
 
 - **Meta Agent** — the bot itself. Plans, delegates, supervises.
-- **SubTurtles** — autonomous workers running in ralph loops (yolo, slow, yolo-codex, yolo-codex-spark).
+- **SubTurtles** — autonomous workers running in Codex-backed ralph loops (`yolo-codex`, `yolo-codex-spark`).
 - **Conductor state** — durable worker lifecycle/event state in `.superturtle/state/` with wakeup/inbox delivery.
 - **MCP servers** — stickers, bot-control, ask-user (inline buttons).
-- **Drivers** — Codex and Claude Code, combined in one runtime.
+- **Driver** — Codex, as the single runtime driver in this branch.
 
 <p align="center">
   <img src="assets/readme-stickers/architecture-gear-turtle.png" width="108" alt="Architecture" />
@@ -111,26 +111,14 @@ SubTurtles are spec-driven through an enforced `CLAUDE.md` backlog structure, an
 
 Loop types:
 
-- **yolo** — single Claude Code call per iteration. Fast, autonomous ralph loop.
-- **slow** — plan, groom, execute, review. Four agent calls per iteration. More careful, better for complex or risky work.
-- **yolo-codex** — same as yolo but runs Codex instead of Claude. The default for straightforward coding tasks.
-- **yolo-codex-spark** — same as yolo-codex but with Codex Spark for faster iterations.
+- **yolo-codex** — single Codex call per iteration. The default for straightforward coding tasks.
+- **yolo-codex-spark** — same as `yolo-codex` but with Codex Spark for faster iterations.
 
 `yolo-codex` is the closest SubTurtle loop to the ralph loop pattern:
 
 ```python
 while not finished:
     codex.execute()
-```
-
-`slow` is the more structured loop type:
-
-```python
-while not finished:
-    plan = claude.plan()
-    claude.groom(plan)
-    codex.execute(plan)
-    claude.review(plan)
 ```
 
 ## What it looks like

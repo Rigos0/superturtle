@@ -6,13 +6,11 @@
 
 import type { Context } from "grammy";
 import { unlinkSync } from "fs";
-import { session, getAvailableModels, EFFORT_DISPLAY, type EffortLevel } from "../session";
+import { session } from "../session";
 import { codexSession } from "../codex-session";
 import {
   ALLOWED_USERS,
   CODEX_AVAILABLE,
-  CODEX_CLI_AVAILABLE,
-  CODEX_USER_ENABLED,
   CTL_PATH,
   IPC_DIR,
   SUPERTURTLE_SUBTURTLES_DIR,
@@ -41,9 +39,7 @@ import { removeJob } from "../cron";
 import {
   buildSubturtleBacklogMessage,
   buildSubturtleLogMessage,
-  buildClaudeModelPickerMessage,
   buildCodexModelPickerMessage,
-  buildSessionOverviewLines,
   buildSubturtleMenuMessage,
   listSubturtles,
   chunkText,
@@ -75,12 +71,6 @@ function isSafeCallbackId(value: string): boolean {
 }
 
 function codexUnavailableCallbackText(): string {
-  if (!CODEX_USER_ENABLED) {
-    return "Codex disabled in config";
-  }
-  if (!CODEX_CLI_AVAILABLE) {
-    return "Codex CLI unavailable";
-  }
   return "Codex unavailable";
 }
 
@@ -176,52 +166,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
     callbackDataTruncated: callbackData.length > 200,
   });
 
-  // 2. Handle model selection: model:{model_id}
-  if (callbackData.startsWith("model:")) {
-    const modelId = callbackData.replace("model:", "");
-    const models = getAvailableModels();
-    const model = models.find((m) => m.value === modelId);
-    if (model) {
-      session.model = modelId;
-      // Reset effort to high if switching to Haiku (no effort support)
-      if (modelId.includes("haiku")) {
-        session.effort = "high";
-      }
-      const picker = buildClaudeModelPickerMessage();
-      await ctx.editMessageText(picker.text, {
-        parse_mode: "HTML",
-        reply_markup: picker.replyMarkup,
-      });
-      await ctx.answerCallbackQuery({ text: `Switched to ${model.displayName}` });
-    } else {
-      await ctx.answerCallbackQuery({ text: "Unknown model" });
-    }
-    return;
-  }
-
-  // 3. Handle effort selection: effort:{level}
-  if (callbackData.startsWith("effort:")) {
-    const effort = callbackData.replace("effort:", "") as EffortLevel;
-    if (effort in EFFORT_DISPLAY) {
-      session.effort = effort;
-      const picker = buildClaudeModelPickerMessage();
-      await ctx.editMessageText(picker.text, {
-        parse_mode: "HTML",
-        reply_markup: picker.replyMarkup,
-      });
-      await ctx.answerCallbackQuery({ text: `Effort set to ${EFFORT_DISPLAY[effort]}` });
-    } else {
-      await ctx.answerCallbackQuery({ text: "Unknown effort level" });
-    }
-    return;
-  }
-
   if (callbackData === "switch:codex_unavailable") {
     await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
     return;
   }
 
-  // 3b. Handle Codex model selection: codex_model:{model_id}
+  // 2. Handle Codex model selection: codex_model:{model_id}
   if (callbackData.startsWith("codex_model:")) {
     if (!CODEX_AVAILABLE) {
       await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
@@ -311,36 +261,30 @@ export async function handleCallback(ctx: Context): Promise<void> {
 
   // 4. Handle driver selection: switch:{driver}
   if (callbackData.startsWith("switch:")) {
-    const driver = callbackData.replace("switch:", "") as "claude" | "codex";
-    if (driver === "claude") {
+    const driver = callbackData.replace("switch:", "");
+    if (driver !== "codex") {
+      await ctx.answerCallbackQuery({
+        text: "Claude Code driver support has been removed in this branch.",
+        show_alert: true,
+      });
+      return;
+    }
+    if (!CODEX_AVAILABLE) {
+      await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
+      return;
+    }
+    try {
       await resetAllDriverSessions({ stopRunning: true });
-      session.activeDriver = "claude";
-      const picker = buildClaudeModelPickerMessage();
+      await codexSession.startNewThread();
+      session.activeDriver = "codex";
+      const picker = await buildCodexModelPickerMessage();
       await ctx.editMessageText(picker.text, {
         parse_mode: "HTML",
         reply_markup: picker.replyMarkup,
       });
-      await ctx.answerCallbackQuery({ text: "Switched to Claude Code" });
-    } else if (driver === "codex") {
-      if (!CODEX_AVAILABLE) {
-        await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
-        return;
-      }
-      try {
-        await resetAllDriverSessions({ stopRunning: true });
-        await codexSession.startNewThread();
-        session.activeDriver = "codex";
-        const picker = await buildCodexModelPickerMessage();
-        await ctx.editMessageText(picker.text, {
-          parse_mode: "HTML",
-          reply_markup: picker.replyMarkup,
-        });
-        await ctx.answerCallbackQuery({ text: "Switched to Codex" });
-      } catch (error) {
-        await ctx.answerCallbackQuery({ text: `Codex error: ${String(error).slice(0, 50)}` });
-      }
-    } else {
-      await ctx.answerCallbackQuery({ text: "Unknown driver" });
+      await ctx.answerCallbackQuery({ text: "Switched to Codex" });
+    } catch (error) {
+      await ctx.answerCallbackQuery({ text: `Codex error: ${String(error).slice(0, 50)}` });
     }
     return;
   }
@@ -868,7 +812,6 @@ async function handleSubturtleMenuCallback(ctx: Context): Promise<void> {
       env: {
         ...process.env,
         SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
-        CLAUDE_WORKING_DIR: WORKING_DIR,
       },
     });
     const output = proc.stdout.toString().trim();
@@ -931,7 +874,6 @@ async function handleSubturtlePickCallback(
       env: {
         ...process.env,
         SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
-        CLAUDE_WORKING_DIR: WORKING_DIR,
       },
     });
     const turtles = parseCtlListOutput(proc.stdout.toString());
@@ -1118,57 +1060,34 @@ async function handleSubturtleStopCallback(
  * Handle resume current session callback (resume_current).
  */
 async function handleResumeCurrentCallback(ctx: Context): Promise<void> {
-  if (session.activeDriver === "codex") {
-    if (!CODEX_AVAILABLE) {
-      await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
-      return;
-    }
-
-    const currentThreadId = codexSession.getThreadId();
-    if (!currentThreadId) {
-      await ctx.answerCallbackQuery({ text: "No active Codex session", show_alert: true });
-      return;
-    }
-
-    try {
-      await ctx.editMessageText("✅ Continuing current Codex session.");
-    } catch (error) {
-      callbackLog.debug({ err: error, chatId: ctx.chat?.id }, "Failed to edit resume_current message");
-    }
-    await ctx.answerCallbackQuery({ text: "Continuing current Codex session" });
-
-    const recentPreview = formatRecentMessages(codexSession.recentMessages, "Current Codex session");
-    if (recentPreview) {
-      await ctx.reply(recentPreview);
-    } else {
-      await ctx.reply("ℹ️ Current Codex session is already linked. Send a message to continue.");
-    }
+  if (!CODEX_AVAILABLE) {
+    await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
     return;
   }
 
-  const currentSessionId = session.sessionId;
-  if (!currentSessionId) {
-    await ctx.answerCallbackQuery({ text: "No active Claude session", show_alert: true });
+  const currentThreadId = codexSession.getThreadId();
+  if (!currentThreadId) {
+    await ctx.answerCallbackQuery({ text: "No active Codex session", show_alert: true });
     return;
   }
 
   try {
-    await ctx.editMessageText("✅ Continuing current Claude session.");
+    await ctx.editMessageText("✅ Continuing current Codex session.");
   } catch (error) {
     callbackLog.debug({ err: error, chatId: ctx.chat?.id }, "Failed to edit resume_current message");
   }
-  await ctx.answerCallbackQuery({ text: "Continuing current Claude session" });
+  await ctx.answerCallbackQuery({ text: "Continuing current Codex session" });
 
-  const recentPreview = formatRecentMessages(session.recentMessages, "Current Claude session");
+  const recentPreview = formatRecentMessages(codexSession.recentMessages, "Current Codex session");
   if (recentPreview) {
     await ctx.reply(recentPreview);
   } else {
-    await ctx.reply("ℹ️ Current Claude session is already linked. Send a message to continue.");
+    await ctx.reply("ℹ️ Current Codex session is already linked. Send a message to continue.");
   }
 }
 
 /**
- * Handle resume session callback (resume:{session_id}).
+ * Handle legacy resume session callback (resume:{session_id}).
  */
 async function handleResumeCallback(
   ctx: Context,
@@ -1190,7 +1109,7 @@ async function handleResumeCallback(
   }
 
   // Resume the selected session
-  const [success, message] = session.resumeSession(sessionId);
+  const [success, message] = await codexSession.resumeSession(sessionId);
 
   if (!success) {
     await ctx.answerCallbackQuery({ text: message, show_alert: true });
@@ -1204,12 +1123,11 @@ async function handleResumeCallback(
     callbackLog.debug({ err: error, chatId }, "Failed to edit resume message");
   }
   await ctx.answerCallbackQuery({ text: "Session resumed!" });
-  session.activeDriver = "claude";
+  session.activeDriver = "codex";
 
-  const sessionEntry = session.getSessionList().find((s) => s.session_id === sessionId);
-  // Prefer in-memory buffer (current bot session) over persisted data
-  const inMemoryMessages = session.recentMessages.length > 0
-    ? session.recentMessages
+  const sessionEntry = codexSession.getSessionList().find((s) => s.session_id === sessionId);
+  const inMemoryMessages = codexSession.recentMessages.length > 0
+    ? codexSession.recentMessages
     : undefined;
   const headline = formatSessionHeadline(sessionEntry?.saved_at, sessionEntry?.title);
   const recentPreview = formatRecentMessages(

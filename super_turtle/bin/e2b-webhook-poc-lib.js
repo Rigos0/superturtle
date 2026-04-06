@@ -4,7 +4,6 @@ const fs = require("fs");
 const os = require("os");
 const { dirname, join, resolve } = require("path");
 const crypto = require("crypto");
-const { spawnSync } = require("child_process");
 const {
   fetchTeleportTarget,
   mergeSessionSnapshot,
@@ -39,10 +38,6 @@ const DEFAULT_REMOTE_MODE = "control";
 const DEFAULT_REMOTE_CODEX_AUTH_PATH = join(".codex", "auth.json");
 const DEFAULT_REMOTE_PROJECT_ENV_PATH = join(".superturtle", ".env");
 const MANAGED_RUNTIME_MANIFEST_RELATIVE_PATH = join(".superturtle", "managed-runtime.json");
-const DEFAULT_CLAUDE_CREDENTIAL_PATHS = [
-  join(".config", "claude-code", "credentials.json"),
-  join(".claude", "credentials.json"),
-];
 
 async function emitProgress(options, stage, extra = {}) {
   if (!options || typeof options.onProgress !== "function") {
@@ -252,76 +247,6 @@ function extractTokenFromCredentialPayload(rawValue) {
   return candidates.find((candidate) => candidate.length > 0) || null;
 }
 
-function readClaudeAccessTokenFromFile(path) {
-  try {
-    if (!path || !fs.existsSync(path)) {
-      return null;
-    }
-    return extractTokenFromCredentialPayload(fs.readFileSync(path, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-function discoverClaudeAccessToken() {
-  const envCandidates = [
-    process.env.SUPERTURTLE_CLAUDE_ACCESS_TOKEN,
-    process.env.CLAUDE_CODE_OAUTH_TOKEN,
-  ];
-  for (const candidate of envCandidates) {
-    const token = extractTokenFromCredentialPayload(candidate);
-    if (token) {
-      return token;
-    }
-  }
-
-  const user = process.env.USER || "unknown";
-  if (process.platform === "darwin") {
-    const attempts = [
-      ["security", ["find-generic-password", "-s", "Claude Code-credentials", "-a", user, "-w"]],
-      ["security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"]],
-    ];
-    for (const [command, args] of attempts) {
-      const result = spawnSync(command, args, { stdio: "pipe" });
-      if (result.status === 0) {
-        const token = extractTokenFromCredentialPayload(result.stdout.toString("utf-8"));
-        if (token) {
-          return token;
-        }
-      }
-    }
-  }
-
-  if (
-    process.platform === "linux" &&
-    spawnSync("sh", ["-c", "command -v secret-tool"], { stdio: "ignore" }).status === 0
-  ) {
-    const attempts = [
-      ["secret-tool", ["lookup", "service", "Claude Code-credentials", "username", user]],
-      ["secret-tool", ["lookup", "service", "Claude Code-credentials"]],
-    ];
-    for (const [command, args] of attempts) {
-      const result = spawnSync(command, args, { stdio: "pipe" });
-      if (result.status === 0) {
-        const token = extractTokenFromCredentialPayload(result.stdout.toString("utf-8"));
-        if (token) {
-          return token;
-        }
-      }
-    }
-  }
-
-  const home = process.env.HOME || os.homedir();
-  for (const relativePath of DEFAULT_CLAUDE_CREDENTIAL_PATHS) {
-    const token = readClaudeAccessTokenFromFile(resolve(home, relativePath));
-    if (token) {
-      return token;
-    }
-  }
-
-  return null;
-}
-
 function getLocalCodexAuthSourcePath() {
   const override = process.env.SUPERTURTLE_TELEPORT_CODEX_AUTH_PATH;
   if (override && override.trim()) {
@@ -340,12 +265,8 @@ function hasLocalCodexAuth(path = getLocalCodexAuthSourcePath()) {
 }
 
 function buildLocalAuthBootstrap(projectEnv = {}) {
-  const claudeAccessToken =
-    extractTokenFromCredentialPayload(projectEnv.CLAUDE_CODE_OAUTH_TOKEN) ||
-    discoverClaudeAccessToken();
   const codexAuthSourcePath = hasLocalCodexAuth() ? getLocalCodexAuthSourcePath() : null;
   return {
-    claudeAccessToken,
     codexAuthSourcePath,
   };
 }
@@ -551,7 +472,7 @@ function buildRemoteEnv(
 ) {
   const env = {
     ...projectEnv,
-    CLAUDE_WORKING_DIR: remoteRoot,
+    SUPER_TURTLE_PROJECT_DIR: remoteRoot,
     SUPERTURTLE_RUNTIME_PROFILE: "managed",
     SUPERTURTLE_DRIVER: remoteDriver || "codex",
     TELEGRAM_TRANSPORT: "webhook",
@@ -564,13 +485,6 @@ function buildRemoteEnv(
     PORT: String(port),
     TURTLE_GREETINGS: "false",
   };
-  const claudeAccessToken =
-    extractTokenFromCredentialPayload(env.CLAUDE_CODE_OAUTH_TOKEN) ||
-    authBootstrap.claudeAccessToken ||
-    null;
-  if (claudeAccessToken) {
-    env.CLAUDE_CODE_OAUTH_TOKEN = claudeAccessToken;
-  }
   const requiredKeys = ["TELEGRAM_BOT_TOKEN"];
   for (const key of requiredKeys) {
     if (!env[key] || !String(env[key]).trim()) {
@@ -671,8 +585,8 @@ function buildRemoteAuthFinalizeCommand(config) {
   return [
     "set -euo pipefail",
     "export PATH=\"$HOME/.bun/bin:$HOME/.local/bin:$PATH\"",
-    "mkdir -p \"$HOME/.local/bin\" \"$HOME/.codex\" \"$HOME/.claude\"",
-    "chmod 700 \"$HOME/.codex\" \"$HOME/.claude\"",
+    "mkdir -p \"$HOME/.local/bin\" \"$HOME/.codex\"",
+    "chmod 700 \"$HOME/.codex\"",
     `if [ -f ${shellEscape(remoteProjectEnvPath)} ]; then chmod 600 ${shellEscape(remoteProjectEnvPath)}; fi`,
     `if [ -f ${shellEscape(remoteCodexAuthPath)} ]; then chmod 600 ${shellEscape(remoteCodexAuthPath)}; fi`,
     "if ! command -v codex >/dev/null 2>&1; then " +
@@ -697,7 +611,7 @@ function buildRemoteStartCommand(config) {
     `if [ -f ${shellEscape(config.pidPath)} ]; then kill "$(cat ${shellEscape(config.pidPath)})" >/dev/null 2>&1 || true; rm -f ${shellEscape(config.pidPath)}; fi`,
     "superturtle stop >/tmp/superturtle-e2b-stop.log 2>&1 || true",
     `: > ${shellEscape(config.logPath)}`,
-    `export CLAUDE_WORKING_DIR=${shellEscape(config.remoteRoot)}`,
+    `export SUPER_TURTLE_PROJECT_DIR=${shellEscape(config.remoteRoot)}`,
     "export SUPERTURTLE_RESTART_ON_CRASH=1",
     `echo $$ > ${shellEscape(config.pidPath)}`,
     `exec superturtle service run >> ${shellEscape(config.logPath)} 2>&1`,
@@ -833,7 +747,7 @@ function shouldRunFullBootstrap(config, remoteManifest) {
 
 async function bootstrapRemoteDriverAuth(sandbox, config, remoteEnv, authBootstrap = {}) {
   await sandbox.commands.run(
-    "set -euo pipefail && mkdir -p \"$HOME/.codex\" \"$HOME/.claude\" \"$HOME/.local/bin\"",
+    "set -euo pipefail && mkdir -p \"$HOME/.codex\" \"$HOME/.local/bin\"",
     {
       envs: remoteEnv,
       timeoutMs: 30_000,
@@ -1258,7 +1172,6 @@ async function tailTeleportLogs(projectRoot, lines = 50) {
 }
 
 module.exports = {
-  DEFAULT_CLAUDE_CREDENTIAL_PATHS,
   DEFAULT_HEALTH_PATH,
   DEFAULT_REMOTE_CODEX_AUTH_PATH,
   DEFAULT_READY_PATH,
@@ -1279,7 +1192,6 @@ module.exports = {
   buildRemoteStartCommand,
   buildStateRecord,
   buildWebhookUrl,
-  discoverClaudeAccessToken,
   extractTokenFromCredentialPayload,
   formatStateSummary,
   getBoundProjectRoot,

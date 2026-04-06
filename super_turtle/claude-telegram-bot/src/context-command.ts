@@ -1,7 +1,3 @@
-import { homedir } from "os";
-import { join } from "path";
-import { CLAUDE_CLI_PATH } from "./config";
-
 type ContextResult =
   | { ok: true; markdown: string }
   | { ok: false; error: string };
@@ -87,68 +83,13 @@ export function findLatestContextOutput(
   return fallback;
 }
 
-async function findSessionLogPath(sessionId: string): Promise<string | null> {
-  const projectsDir = join(homedir(), ".claude", "projects");
-  const glob = new Bun.Glob(`**/${sessionId}.jsonl`);
-
-  try {
-    for await (const absPath of glob.scan({
-      cwd: projectsDir,
-      absolute: true,
-      followSymlinks: false,
-    })) {
-      return absPath;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
 export async function getContextReport(
-  sessionId: string,
-  workingDir: string,
-  model?: string
+  _sessionId: string,
+  _workingDir: string,
+  _model?: string
 ): Promise<ContextResult> {
-  const sessionLogPath = await findSessionLogPath(sessionId);
-  if (!sessionLogPath) {
-    return {
-      ok: false,
-      error: "Could not locate Claude session log for the active session.",
-    };
-  }
-
-  const startedAtMs = Date.now();
-  const args = [CLAUDE_CLI_PATH, "-p", "-r", sessionId];
-  if (model) {
-    args.push("--model", model);
-  }
-  args.push("/context");
-  const proc = Bun.spawnSync(args, {
-    cwd: workingDir,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  const stderr = Buffer.from(proc.stderr).toString("utf-8").trim();
-
-  const file = Bun.file(sessionLogPath);
-  const sessionLogText = await file.text();
-  const contextMarkdown = findLatestContextOutput(sessionLogText, startedAtMs);
-
-  if (!proc.success && !contextMarkdown) {
-    return {
-      ok: false,
-      error: stderr || "Failed to run Claude /context command.",
-    };
-  }
-
-  if (!contextMarkdown) {
-    return {
-      ok: false,
-      error: "Context output is not available for this session yet.",
-    };
-  }
-
-  return { ok: true, markdown: contextMarkdown };
+  return {
+    ok: false,
+    error: "/context is not available in the codex-only branch.",
+  };
 }

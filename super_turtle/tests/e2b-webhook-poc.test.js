@@ -53,16 +53,16 @@ const { loadDotEnvFileIntoProcess } = require("../bin/e2b-webhook-poc.js");
   }
   delete process.env.NEW_ONLY;
 
-  const parsed = parseDotEnv(`
+const parsed = parseDotEnv(`
 # comment
 TELEGRAM_BOT_TOKEN=123:abc
 TELEGRAM_ALLOWED_USERS="12345"
-CLAUDE_WORKING_DIR='/tmp/project'
+SUPER_TURTLE_PROJECT_DIR='/tmp/project'
 `);
   assert.deepStrictEqual(parsed, {
     TELEGRAM_BOT_TOKEN: "123:abc",
     TELEGRAM_ALLOWED_USERS: "12345",
-    CLAUDE_WORKING_DIR: "/tmp/project",
+    SUPER_TURTLE_PROJECT_DIR: "/tmp/project",
   });
   assert.strictEqual(
     extractTokenFromCredentialPayload('{"claudeAiOauth":{"accessToken":"token-123"}}'),
@@ -87,7 +87,7 @@ CLAUDE_WORKING_DIR='/tmp/project'
   const remoteEnv = buildRemoteEnv(
     {
       TELEGRAM_BOT_TOKEN: "123:abc",
-      CLAUDE_WORKING_DIR: "/local/path",
+      SUPER_TURTLE_PROJECT_DIR: "/local/path",
       OPENAI_API_KEY: "sk-test",
     },
     "/home/user/project",
@@ -98,10 +98,9 @@ CLAUDE_WORKING_DIR='/tmp/project'
     "/readyz",
     "agent",
     "codex",
-    { claudeAccessToken: "claude-token-123" }
+    {}
   );
-  assert.strictEqual(remoteEnv.CLAUDE_WORKING_DIR, "/home/user/project");
-  assert.strictEqual(remoteEnv.CLAUDE_CODE_OAUTH_TOKEN, "claude-token-123");
+  assert.strictEqual(remoteEnv.SUPER_TURTLE_PROJECT_DIR, "/home/user/project");
   assert.strictEqual(remoteEnv.SUPERTURTLE_RUNTIME_PROFILE, "managed");
   assert.strictEqual(remoteEnv.SUPERTURTLE_DRIVER, "codex");
   assert.strictEqual(remoteEnv.TELEGRAM_TRANSPORT, "webhook");
@@ -145,11 +144,11 @@ CLAUDE_WORKING_DIR='/tmp/project'
   assert.deepStrictEqual(
     parseDotEnv(serializeDotEnv({
       TELEGRAM_BOT_TOKEN: "123:abc",
-      CLAUDE_CODE_OAUTH_TOKEN: "token-with-specials:/+=",
+      SUPER_TURTLE_PROJECT_DIR: "/tmp/project with spaces",
     })),
     {
       TELEGRAM_BOT_TOKEN: "123:abc",
-      CLAUDE_CODE_OAUTH_TOKEN: "token-with-specials:/+=",
+      SUPER_TURTLE_PROJECT_DIR: "/tmp/project with spaces",
     }
   );
 
@@ -226,7 +225,7 @@ CLAUDE_WORKING_DIR='/tmp/project'
     pidPath: "/tmp/superturtle-e2b-bot.pid",
   });
   assert.match(startCommand, /echo \$\$ > '\/tmp\/superturtle-e2b-bot\.pid'/);
-  assert.match(startCommand, /export CLAUDE_WORKING_DIR='\/home\/user\/project'/);
+  assert.match(startCommand, /export SUPER_TURTLE_PROJECT_DIR='\/home\/user\/project'/);
   assert.match(startCommand, /export SUPERTURTLE_RESTART_ON_CRASH=1/);
   assert.match(startCommand, /superturtle stop >/);
   assert.match(startCommand, /exec superturtle service run/);
@@ -317,13 +316,10 @@ CLAUDE_WORKING_DIR='/tmp/project'
   fs.writeFileSync(join(codexDir, "auth.json"), "{\"token\":\"demo\"}\n", "utf-8");
 
   const originalHome = process.env.HOME;
-  const originalClaudeToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   try {
     process.env.HOME = tmpHome;
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = "claude-env-token";
 
     const bootstrap = buildLocalAuthBootstrap({});
-    assert.strictEqual(bootstrap.claudeAccessToken, "claude-env-token");
     assert.strictEqual(hasLocalCodexAuth(), true);
     assert.strictEqual(bootstrap.codexAuthSourcePath, join(tmpHome, ".codex", "auth.json"));
   } finally {
@@ -331,11 +327,6 @@ CLAUDE_WORKING_DIR='/tmp/project'
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
-    }
-    if (originalClaudeToken === undefined) {
-      delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
-    } else {
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = originalClaudeToken;
     }
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

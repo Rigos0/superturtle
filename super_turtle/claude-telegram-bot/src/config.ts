@@ -1,5 +1,5 @@
 /**
- * Configuration for Claude Telegram Bot.
+ * Configuration for the SuperTurtle Telegram runtime.
  *
  * All environment variables, paths, constants, and safety settings.
  */
@@ -21,7 +21,7 @@ export const IS_MACOS = platform() === "darwin";
 export const IS_LINUX = platform() === "linux";
 export const IS_WINDOWS = platform() === "win32";
 
-// Ensure necessary paths are available for Claude's bash commands.
+// Ensure necessary paths are available for CLI child processes.
 // LaunchAgents (macOS) don't inherit the full shell environment;
 // systemd services (Linux) may have similarly restricted PATHs.
 const EXTRA_PATHS = [
@@ -64,7 +64,7 @@ export const ALLOWED_USERS: number[] = (
   .map((x) => parseInt(x.trim(), 10))
   .filter((x) => !isNaN(x));
 
-export const WORKING_DIR = process.env.CLAUDE_WORKING_DIR || HOME;
+export const WORKING_DIR = process.env.SUPER_TURTLE_PROJECT_DIR?.trim() || HOME;
 
 // Package root: where Super Turtle code is installed.
 // In dev: /path/to/repo/super_turtle
@@ -82,9 +82,8 @@ export const SUPERTURTLE_RUNTIME_UPDATE_PACKAGE =
 export const SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL =
   process.env.SUPERTURTLE_RUNTIME_UPDATE_REGISTRY_URL?.trim() || "https://registry.npmjs.org";
 
-export type ClaudeEffortLevel = "low" | "medium" | "high";
 export type CodexEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
-export type MainProvider = "claude" | "codex";
+export type MainProvider = "codex";
 export type SuperTurtleDriver = MainProvider;
 export type SuperTurtleRuntimeProfile = "local" | "managed";
 export type SuperTurtleRuntimeRole = "local" | "teleport-remote";
@@ -92,20 +91,8 @@ export type SuperTurtleRemoteMode = "control" | "agent";
 
 export const TELEPORT_DISABLED_MESSAGE =
   "Teleport is disabled in this branch. Use SUPERTURTLE_RUNTIME_PROFILE=managed for the managed E2B runtime.";
-export const MANAGED_DRIVER_UNSUPPORTED_MESSAGE =
-  "Managed runtime currently supports SUPERTURTLE_DRIVER=codex only in this branch.";
-
-const DEFAULT_CLAUDE_MODEL_FALLBACK = "claude-opus-4-6";
-const DEFAULT_CLAUDE_EFFORT_FALLBACK: ClaudeEffortLevel = "high";
 const DEFAULT_CODEX_MODEL_FALLBACK = "gpt-5.3-codex";
 const DEFAULT_CODEX_EFFORT_FALLBACK: CodexEffortLevel = "medium";
-
-const VALID_CLAUDE_MODELS = new Set([
-  "claude-opus-4-6",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5-20251001",
-]);
-const VALID_CLAUDE_EFFORTS = new Set<ClaudeEffortLevel>(["low", "medium", "high"]);
 const VALID_CODEX_MODELS = new Set([
   "gpt-5.3-codex",
   "gpt-5.3-codex-spark",
@@ -172,19 +159,6 @@ function parseOptionalBool(raw: string | undefined): boolean | null {
   return null;
 }
 
-function parseDriverValue(
-  envKey: string,
-  rawValue: string | undefined
-): SuperTurtleDriver | null {
-  const value = rawValue?.trim().toLowerCase();
-  if (!value) return null;
-  if (value === "claude" || value === "codex") {
-    return value;
-  }
-  configLog.warn(`Invalid ${envKey}="${value}". Ignoring it.`);
-  return null;
-}
-
 function parseRuntimeProfileValue(
   envKey: string,
   rawValue: string | undefined
@@ -229,21 +203,10 @@ function noteLegacyRuntimeInput(envKey: string): void {
 noteLegacyRuntimeInput("SUPERTURTLE_RUNTIME_ROLE");
 noteLegacyRuntimeInput("SUPERTURTLE_REMOTE_MODE");
 noteLegacyRuntimeInput("SUPERTURTLE_MANAGED_CLOUD");
-noteLegacyRuntimeInput("SUPERTURTLE_REMOTE_DRIVER");
-noteLegacyRuntimeInput("MAIN_PROVIDER");
 
 const explicitRuntimeProfile = parseRuntimeProfileValue(
   "SUPERTURTLE_RUNTIME_PROFILE",
   process.env.SUPERTURTLE_RUNTIME_PROFILE
-);
-const explicitDriver = parseDriverValue(
-  "SUPERTURTLE_DRIVER",
-  process.env.SUPERTURTLE_DRIVER
-);
-const legacyMainProvider = parseDriverValue("MAIN_PROVIDER", process.env.MAIN_PROVIDER);
-const legacyRemoteDriver = parseDriverValue(
-  "SUPERTURTLE_REMOTE_DRIVER",
-  process.env.SUPERTURTLE_REMOTE_DRIVER
 );
 const legacyRuntimeRole = parseLegacyRuntimeRole(process.env.SUPERTURTLE_RUNTIME_ROLE);
 const legacyRemoteMode = parseLegacyRemoteMode(process.env.SUPERTURTLE_REMOTE_MODE);
@@ -254,7 +217,7 @@ if (legacyRuntimeInputs.length > 0) {
     {
       legacyRuntimeInputs,
     },
-    "Legacy runtime env vars are being accepted temporarily. Runtime decisions now resolve through SUPERTURTLE_RUNTIME_PROFILE and SUPERTURTLE_DRIVER."
+    "Legacy runtime env vars are being accepted temporarily. Runtime decisions now resolve through SUPERTURTLE_RUNTIME_PROFILE."
   );
 }
 
@@ -280,25 +243,6 @@ function resolveRuntimeProfile(): {
   return { profile: "local", error: null };
 }
 
-function resolveDriver(profile: SuperTurtleRuntimeProfile): SuperTurtleDriver {
-  return (
-    explicitDriver ||
-    legacyRemoteDriver ||
-    legacyMainProvider ||
-    (profile === "managed" ? "codex" : "claude")
-  );
-}
-
-export const DEFAULT_CLAUDE_MODEL = parseDefaultModel(
-  "DEFAULT_CLAUDE_MODEL",
-  DEFAULT_CLAUDE_MODEL_FALLBACK,
-  VALID_CLAUDE_MODELS
-);
-export const DEFAULT_CLAUDE_EFFORT = parseDefaultEffort(
-  "DEFAULT_CLAUDE_EFFORT",
-  DEFAULT_CLAUDE_EFFORT_FALLBACK,
-  VALID_CLAUDE_EFFORTS
-);
 export const DEFAULT_CODEX_MODEL = resolveDefaultCodexModel();
 export const DEFAULT_CODEX_EFFORT = parseDefaultEffort(
   "DEFAULT_CODEX_EFFORT",
@@ -309,11 +253,9 @@ export const CODEX_OPENROUTER_ENABLED = !!(OPENROUTER_API_KEY && OPENROUTER_MODE
 const resolvedRuntimeProfile = resolveRuntimeProfile();
 export const SUPERTURTLE_RUNTIME_PROFILE: SuperTurtleRuntimeProfile =
   resolvedRuntimeProfile.profile;
-export const SUPERTURTLE_DRIVER: SuperTurtleDriver =
-  resolveDriver(SUPERTURTLE_RUNTIME_PROFILE);
-export const SUPERTURTLE_DRIVER_EXPLICITLY_SET =
-  explicitDriver !== null || legacyRemoteDriver !== null || legacyMainProvider !== null;
-export const MAIN_PROVIDER: MainProvider = SUPERTURTLE_DRIVER;
+export const SUPERTURTLE_DRIVER: SuperTurtleDriver = "codex";
+export const SUPERTURTLE_DRIVER_EXPLICITLY_SET = false;
+export const MAIN_PROVIDER: MainProvider = "codex";
 export const SUPERTURTLE_RUNTIME_ROLE: SuperTurtleRuntimeRole =
   SUPERTURTLE_RUNTIME_PROFILE === "managed" ? "teleport-remote" : "local";
 export const SUPERTURTLE_REMOTE_MODE: SuperTurtleRemoteMode =
@@ -321,11 +263,7 @@ export const SUPERTURTLE_REMOTE_MODE: SuperTurtleRemoteMode =
 export const SUPERTURTLE_MANAGED_CLOUD =
   SUPERTURTLE_RUNTIME_PROFILE === "managed";
 export const TELEPORT_DISABLED_IN_THIS_BRANCH = true;
-export const RUNTIME_CONTRACT_ERROR =
-  resolvedRuntimeProfile.error ||
-  (SUPERTURTLE_RUNTIME_PROFILE === "managed" && SUPERTURTLE_DRIVER !== "codex"
-    ? MANAGED_DRIVER_UNSUPPORTED_MESSAGE
-    : null);
+export const RUNTIME_CONTRACT_ERROR = resolvedRuntimeProfile.error;
 
 process.env.SUPERTURTLE_RUNTIME_PROFILE = SUPERTURTLE_RUNTIME_PROFILE;
 process.env.SUPERTURTLE_DRIVER = SUPERTURTLE_DRIVER;
@@ -401,9 +339,6 @@ export const SUPERTURTLE_DATA_DIR = `${WORKING_DIR}/.superturtle`;
 export const SUPERTURTLE_SUBTURTLES_DIR = `${SUPERTURTLE_DATA_DIR}/subturtles`;
 export const SUPERTURTLE_SUBTURTLE_ARCHIVE_DIR = `${SUPERTURTLE_SUBTURTLES_DIR}/.archive`;
 export const SUPERTURTLE_TELEPORT_DIR = `${SUPERTURTLE_DATA_DIR}/teleport`;
-export const CODEX_USER_ENABLED =
-  (process.env.CODEX_ENABLED || "false").toLowerCase() === "true";
-export const CODEX_ENABLED = CODEX_USER_ENABLED;
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "never" | "on-request" | "on-failure" | "untrusted";
@@ -464,31 +399,6 @@ export const META_CODEX_NETWORK_ACCESS = parseMetaCodexNetworkAccess(
   process.env.META_CODEX_NETWORK_ACCESS
 );
 
-// ============== Claude CLI Path ==============
-
-function resolveClaudeCliPath(): string | null {
-  const envPath = process.env.CLAUDE_CLI_PATH;
-  if (envPath && existsSync(envPath)) return envPath;
-
-  const whichResult = Bun.which("claude");
-  if (whichResult) return whichResult;
-
-  if (existsSync("/usr/local/bin/claude")) return "/usr/local/bin/claude";
-  return null;
-}
-
-// Auto-detect from PATH, or use environment override
-function findClaudeCli(): string {
-  const resolvedPath = resolveClaudeCliPath();
-  if (resolvedPath) return resolvedPath;
-
-  // Final fallback
-  return "/usr/local/bin/claude";
-}
-
-export const CLAUDE_CLI_AVAILABLE = resolveClaudeCliPath() !== null;
-export const CLAUDE_CLI_PATH = findClaudeCli();
-
 function resolveCodexCliPath(): string | null {
   const fromPath = Bun.which("codex");
   if (fromPath) return fromPath;
@@ -517,12 +427,9 @@ export const CODEX_CLI_AVAILABLE =
   codexCliAvailableOverride !== null
     ? codexCliAvailableOverride
     : CODEX_CLI_PATH !== null;
-export const CODEX_AVAILABLE = CODEX_USER_ENABLED && CODEX_CLI_AVAILABLE;
+export const CODEX_AVAILABLE = CODEX_CLI_AVAILABLE;
 
 export function getCodexUnavailableReason(): string | null {
-  if (!CODEX_USER_ENABLED) {
-    return "Codex is disabled in config (CODEX_ENABLED=false).";
-  }
   if (!CODEX_CLI_AVAILABLE) {
     return "Codex CLI is not installed or not available on PATH.";
   }

@@ -21,8 +21,6 @@ import {
   BUTTON_LABEL_MAX_LENGTH,
   CODEX_AVAILABLE,
   CODEX_CLI_AVAILABLE,
-  CODEX_ENABLED,
-  CODEX_USER_ENABLED,
   RESTART_FILE,
   IPC_DIR,
 } from "../config";
@@ -161,9 +159,6 @@ function tryAcquirePendingRequestLock(filepath: string): (() => void) | null {
 }
 
 function codexUnavailableBotControlMessage(): string {
-  if (!CODEX_USER_ENABLED) {
-    return "Codex is disabled in config (CODEX_ENABLED=false).";
-  }
   if (!CODEX_CLI_AVAILABLE) {
     return "Codex CLI is not installed or not available on PATH.";
   }
@@ -752,13 +747,10 @@ async function executeBotControlAction(
   try {
     switch (action) {
     case "usage": {
-      const { formatUnifiedUsage, getCodexQuotaLines, getUsageLines } = await import("./commands");
-      const [usageLines, codexLines] = await Promise.all([
-        getUsageLines(),
-        CODEX_ENABLED ? getCodexQuotaLines() : Promise.resolve<string[]>([]),
-      ]);
-      if (usageLines.length === 0) return "Failed to fetch usage data.";
-      const unified = formatUnifiedUsage(usageLines, codexLines, CODEX_ENABLED);
+      const { formatUnifiedUsage, getCodexQuotaLines } = await import("./commands");
+      const codexLines = await getCodexQuotaLines();
+      if (codexLines.length === 0) return "Failed to fetch usage data.";
+      const unified = formatUnifiedUsage(codexLines);
       // Strip HTML tags but keep the unicode bar characters intact.
       const plain = unified.replace(/<[^>]+>/g, "");
       return `USAGE DATA (show this to the user as-is, in a code block):\n\n${plain}`;
@@ -841,46 +833,29 @@ async function executeBotControlAction(
     case "switch_driver": {
       const { buildSessionOverviewLines, resetAllDriverSessions } = await import("./commands");
       const driver = params.driver?.toLowerCase();
-      if (driver !== "claude" && driver !== "codex") {
-        return `Invalid driver "${params.driver ?? ""}". Use: claude or codex`;
+      if (driver !== "codex") {
+        return "Claude Code driver support has been removed in this branch.";
       }
 
-      if (driver === "codex" && !CODEX_AVAILABLE) {
+      if (!CODEX_AVAILABLE) {
         return `Cannot switch to Codex: ${codexUnavailableBotControlMessage()}`;
       }
 
       await resetAllDriverSessions({ stopRunning: true });
-
-      if (driver === "codex") {
-        await codexSession.startNewThread();
-        session.activeDriver = "codex";
-        if (chatId) {
-          try {
-            const lines = await buildSessionOverviewLines("Switched to Codex 🟢");
-            await bot.api.sendMessage(chatId, lines.join("\n"), { parse_mode: "HTML" });
-          } catch (err) {
-            streamLog.warn(
-              { err, action: "switch_driver", driver: "codex", chatId },
-              "Failed to send switch overview"
-            );
-          }
-        }
-        return "Switched to Codex";
-      }
-
-      session.activeDriver = "claude";
+      await codexSession.startNewThread();
+      session.activeDriver = "codex";
       if (chatId) {
         try {
-          const lines = await buildSessionOverviewLines("Switched to Claude Code 🔵");
+          const lines = await buildSessionOverviewLines("Switched to Codex 🟢");
           await bot.api.sendMessage(chatId, lines.join("\n"), { parse_mode: "HTML" });
         } catch (err) {
           streamLog.warn(
-            { err, action: "switch_driver", driver: "claude", chatId },
+            { err, action: "switch_driver", driver: "codex", chatId },
             "Failed to send switch overview"
           );
         }
       }
-      return "Switched to Claude Code";
+      return "Switched to Codex";
     }
 
     case "new_session": {
@@ -921,30 +896,18 @@ async function executeBotControlAction(
       if (!sessionId) return "Missing session_id parameter.";
 
       const isCodexSession = "reasoningEffort" in sessionObj;
-      const sessions = isCodexSession
-        ? [
-          ...(await (sessionObj as CodexSession).getSessionListLive()),
-          ...sessionObj.getSessionList(),
-        ]
-        : sessionObj.getSessionList();
+      const sessions = [
+        ...(await (sessionObj as CodexSession).getSessionListLive()),
+        ...sessionObj.getSessionList(),
+      ];
       const match = sessions.find(
         (s) => s.session_id === sessionId || s.session_id.startsWith(sessionId),
       );
       if (!match) return `No session found matching "${sessionId}".`;
 
-      let result: [success: boolean, message: string];
-
       await sessionObj.stop();
-
-      if (isCodexSession) {
-        // Codex resumeSession is async
-        result = await (sessionObj as CodexSession).resumeSession(match.session_id);
-      } else {
-        // Claude resumeSession is synchronous
-        result = (sessionObj as ClaudeSession).resumeSession(match.session_id);
-      }
-
-      session.activeDriver = isCodexSession ? "codex" : "claude";
+      const result = await (sessionObj as CodexSession).resumeSession(match.session_id);
+      session.activeDriver = "codex";
       const [success, message] = result;
       return success ? `Resumed: "${match.title}"` : `Failed: ${message}`;
     }

@@ -1,7 +1,7 @@
 /**
- * Claude Telegram Bot - TypeScript/Bun Edition
+ * SuperTurtle Telegram runtime - TypeScript/Bun Edition
  *
- * Control Claude Code from your phone via Telegram.
+ * Control Codex from your phone via Telegram.
  */
 
 import type { Context } from "grammy";
@@ -13,16 +13,13 @@ import {
   ALLOWED_USERS,
   RESTART_FILE,
   SELF_UPDATE_STATE_FILE,
-  CLAUDE_CLI_AVAILABLE,
   CODEX_AVAILABLE,
   CODEX_CLI_AVAILABLE,
-  CODEX_USER_ENABLED,
   RUNTIME_CONTRACT_ERROR,
   TOKEN_PREFIX,
   IPC_DIR,
   SUPERTURTLE_DATA_DIR,
   SUPERTURTLE_DRIVER,
-  SUPERTURTLE_DRIVER_EXPLICITLY_SET,
   SUPERTURTLE_RUNTIME_PROFILE,
   TURTLE_GREETINGS_ENABLED,
   getCodexUnavailableReason,
@@ -401,7 +398,6 @@ function refreshConductorHandoff(): void {
       env: {
         ...process.env,
         SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
-        CLAUDE_WORKING_DIR: WORKING_DIR,
       },
     }
   );
@@ -473,8 +469,7 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
       ""
     );
 
-    const primaryDriver: DriverId = session.activeDriver;
-    const fallbackDriver: DriverId = primaryDriver === "codex" ? "claude" : "codex";
+    const primaryDriver: DriverId = "codex";
     const state = new StreamingState();
     const statusCallback = createSilentStatusCallback(cronCtx, state);
     let response = "";
@@ -489,30 +484,15 @@ async function drainPreparedSnapshotsWhenIdle(): Promise<void> {
         continue;
       }
 
-      try {
-        response = await runMessageWithDriver(primaryDriver, {
-          message: buildPreparedSnapshotPrompt(snapshot),
-          source: "background_snapshot",
-          username: "cron",
-          userId: target.userId,
-          chatId: snapshot.chatId,
-          ctx: cronCtx,
-          statusCallback,
-        });
-      } catch (error) {
-        if (!isLikelyQuotaOrLimitError(error)) {
-          throw error;
-        }
-        response = await runMessageWithDriver(fallbackDriver, {
-          message: buildPreparedSnapshotPrompt(snapshot),
-          source: "background_snapshot",
-          username: "cron",
-          userId: target.userId,
-          chatId: snapshot.chatId,
-          ctx: cronCtx,
-          statusCallback,
-        });
-      }
+      response = await runMessageWithDriver(primaryDriver, {
+        message: buildPreparedSnapshotPrompt(snapshot),
+        source: "background_snapshot",
+        username: "cron",
+        userId: target.userId,
+        chatId: snapshot.chatId,
+        ctx: cronCtx,
+        statusCallback,
+      });
 
       const notificationText = getSilentNotificationText(state.getSilentCapturedText(), response);
       if (notificationText) {
@@ -993,50 +973,31 @@ const startCronTimer = () => {
                 continue;
               }
 
-              const primaryDriver: DriverId = session.activeDriver;
-              const fallbackDriver: DriverId = primaryDriver === "codex" ? "claude" : "codex";
+              const primaryDriver: DriverId = "codex";
               const state = new StreamingState();
               const statusCallback = createSilentStatusCallback(cronCtx, state);
 
               let response = "";
               let driverUsed: DriverId = primaryDriver;
-              let fallbackAttempted = false;
 
-              try {
-                response = await runMessageWithDriver(primaryDriver, {
-                  message: job.prompt,
-                  source: "cron_silent",
-                  username: "cron",
-                  userId: resolvedUserId,
-                  chatId: resolvedChatId,
-                  ctx: cronCtx,
-                  statusCallback,
-                });
-              } catch (error) {
-                if (!isLikelyQuotaOrLimitError(error)) {
-                  throw error;
-                }
-                fallbackAttempted = true;
-                response = await runMessageWithDriver(fallbackDriver, {
-                  message: job.prompt,
-                  source: "cron_silent",
-                  username: "cron",
-                  userId: resolvedUserId,
-                  chatId: resolvedChatId,
-                  ctx: cronCtx,
-                  statusCallback,
-                });
-                driverUsed = fallbackDriver;
-              }
+              response = await runMessageWithDriver(primaryDriver, {
+                message: job.prompt,
+                source: "cron_silent",
+                username: "cron",
+                userId: resolvedUserId,
+                chatId: resolvedChatId,
+                ctx: cronCtx,
+                statusCallback,
+              });
 
               cronLog.info(
                 {
                   cronJobId: job.id,
                   driverUsed,
                   primaryDriver,
-                  fallbackAttempted,
+                  fallbackAttempted: false,
                 },
-                `[cron:${job.id}] primary_driver=${primaryDriver} fallback_attempted=${fallbackAttempted} driver_used=${driverUsed}`
+                `[cron:${job.id}] primary_driver=${primaryDriver} fallback_attempted=false driver_used=${driverUsed}`
               );
 
               const notificationText = getSilentNotificationText(state.getSilentCapturedText(), response);
@@ -1164,12 +1125,10 @@ botLog.info(
 );
 botLog.info(
   {
-    claudeCli: CLAUDE_CLI_AVAILABLE,
-    codexPref: CODEX_USER_ENABLED,
     codexCli: CODEX_CLI_AVAILABLE,
     codexAvailable: CODEX_AVAILABLE,
   },
-  `Driver capabilities: claude_cli=${CLAUDE_CLI_AVAILABLE} codex_pref=${CODEX_USER_ENABLED} codex_cli=${CODEX_CLI_AVAILABLE} codex_available=${CODEX_AVAILABLE}`
+  `Runtime capabilities: codex_cli=${CODEX_CLI_AVAILABLE} codex_available=${CODEX_AVAILABLE}`
 );
 botLog.info("Starting bot...");
 
@@ -1178,19 +1137,7 @@ if (RUNTIME_CONTRACT_ERROR) {
   process.exit(1);
 }
 
-const startupDriver: DriverId =
-  SUPERTURTLE_RUNTIME_PROFILE === "managed"
-    ? "codex"
-    : SUPERTURTLE_DRIVER_EXPLICITLY_SET
-      ? SUPERTURTLE_DRIVER
-      : session.activeDriver;
-
-if (startupDriver === "claude" && !CLAUDE_CLI_AVAILABLE) {
-  botLog.error(
-    "Claude CLI is required when the active runtime driver is Claude. Install Claude Code or set CLAUDE_CLI_PATH."
-  );
-  process.exit(1);
-}
+const startupDriver: DriverId = "codex";
 
 if (startupDriver === "codex" && !CODEX_AVAILABLE) {
   botLog.error(
@@ -1199,9 +1146,7 @@ if (startupDriver === "codex" && !CODEX_AVAILABLE) {
   process.exit(1);
 }
 
-if (SUPERTURTLE_RUNTIME_PROFILE === "managed" || SUPERTURTLE_DRIVER_EXPLICITLY_SET) {
-  session.activeDriver = startupDriver;
-}
+session.activeDriver = startupDriver;
 
 if (SUPERTURTLE_RUNTIME_PROFILE === "managed") {
   botLog.info("Starting in managed mode with Codex as the active driver");
@@ -1323,17 +1268,12 @@ if (existsSync(RESTART_FILE)) {
           // Restore the codex driver regardless of whether resume succeeded —
           // a fresh thread will be created on the next message if needed.
           session.activeDriver = "codex";
-        } else if (savedDriver === "codex" && !CODEX_AVAILABLE) {
-          // Codex was active but is now unavailable — fall back to Claude
-          session.activeDriver = "claude";
-          botLog.warn("Codex was active but is unavailable after restart; falling back to Claude");
         } else {
-          // savedDriver === "claude" (or unknown → default)
-          const [ok] = session.resumeLast();
+          const [ok] = await session.resumeLast();
           if (ok) {
-            botLog.info("Auto-resumed last Claude session after restart");
+            botLog.info("Auto-resumed last Codex session after restart");
           }
-          // activeDriver stays "claude" — no need to set explicitly
+          session.activeDriver = "codex";
         }
       }
 

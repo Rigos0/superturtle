@@ -64,7 +64,6 @@ export function stopAllRunningSubturtles(): StopSubturtlesResult {
       env: {
         ...process.env,
         SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
-        CLAUDE_WORKING_DIR: WORKING_DIR,
       },
     });
     const listOutput = `${listProc.stdout.toString()}\n${listProc.stderr.toString()}`;

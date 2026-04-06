@@ -309,142 +309,22 @@ function mergeTrackedSession(
 
 function getDriverRunningSnapshot(driver: SessionDriver): DriverRunningState {
   const executingDriverId = getExecutingDriverId();
-  const activeDriverId = executingDriverId || session.activeDriver;
+  const activeDriverId = (executingDriverId || "codex") as SessionDriver;
   if (executingDriverId) {
     return {
       activeDriverId,
       executingDriverId,
-      isRunning: executingDriverId === driver,
+      isRunning: driver === "codex" && executingDriverId === "codex",
     };
   }
 
-  const claudeRunning = session.isRunning;
   const codexRunning = codexSession.isRunning;
-  if (activeDriverId === "claude" && (claudeRunning || codexRunning)) {
-    return {
-      activeDriverId,
-      executingDriverId,
-      isRunning: driver === "claude",
-    };
-  }
-  if (activeDriverId === "codex" && (claudeRunning || codexRunning)) {
-    return {
-      activeDriverId,
-      executingDriverId,
-      isRunning: driver === "codex",
-    };
-  }
-
   return {
-    activeDriverId,
+    activeDriverId: "codex",
     executingDriverId,
-    isRunning: driver === "claude" ? claudeRunning : codexRunning,
+    isRunning: driver === "codex" && codexRunning,
   };
 }
-
-const claudeProvider: SessionObservabilityProvider = {
-  driver: "claude",
-
-  async listTrackedSessions(): Promise<SavedSession[]> {
-    return session.getSessionList();
-  },
-
-  getActiveSessionSnapshot(): SavedSession | null {
-    if (!session.sessionId) return null;
-    const preview = buildRecentPreview(session.recentMessages);
-    return {
-      session_id: session.sessionId,
-      saved_at: session.lastActivity?.toISOString() || new Date().toISOString(),
-      working_dir: WORKING_DIR,
-      title: session.conversationTitle || "Active Claude session",
-      ...(preview ? { preview } : {}),
-      ...(session.recentMessages.length > 0 ? { recentMessages: session.recentMessages } : {}),
-    };
-  },
-
-  getRunningState(): DriverRunningState {
-    return getDriverRunningSnapshot("claude");
-  },
-
-  getDriverProcessState(): DriverProcessState {
-    const runningState = this.getRunningState();
-    return buildDriverProcessState(
-      "claude",
-      runningState,
-      session.queryStarted,
-      session.currentTool || session.lastTool || "idle",
-      runningState.isRunning ? session.currentTool || session.lastTool || "query running" : null,
-      {
-        sessionId: session.sessionId,
-        model: session.model,
-        effort: session.effort,
-        isActive: session.isActive,
-        currentTool: session.currentTool,
-        lastTool: session.lastTool,
-        lastError: session.lastError,
-        queryStarted: session.queryStarted,
-        lastActivity: session.lastActivity,
-      }
-    );
-  },
-
-  getDefaultMeta(): SessionMetaView {
-    return buildDefaultMetaView({
-      model: session.model,
-      effort: session.effort,
-    });
-  },
-
-  getActiveMeta(isRunning: boolean): SessionMetaView {
-    return buildActiveMetaView({
-      model: session.model,
-      effort: session.effort,
-      lastUsage: session.lastUsage as Record<string, unknown> | null,
-      lastError: session.lastError,
-      lastErrorTime: session.lastErrorTime,
-      currentTool: session.currentTool,
-      lastTool: session.lastTool,
-      queryStarted: session.queryStarted,
-    }, isRunning);
-  },
-
-  async loadDurableHistory(sessionId: string, saved: SavedSession | null): Promise<SessionHistoryView | null> {
-    return buildTurnLogHistory("claude", sessionId) || buildSavedSessionHistory(saved);
-  },
-
-  async loadDisplayHistory(
-    sessionId: string,
-    saved: SavedSession | null,
-    activeSession: SavedSession | null
-  ): Promise<SessionHistoryView | null> {
-    const durableHistory = await this.loadDurableHistory(sessionId, saved);
-    if (!activeSession || activeSession.session_id !== sessionId) {
-      return durableHistory;
-    }
-    return mergeActiveHistory(durableHistory, buildSavedSessionHistory(activeSession));
-  },
-
-  listTurns(sessionId: string, limit: number): TurnLogEntry[] {
-    return readTurnLogEntries({ driver: "claude", sessionId, limit });
-  },
-
-  getInstructionDelivery(): InstructionDeliveryInfo {
-    return buildInstructionDelivery([
-      {
-        label: "Project instructions",
-        description: "Claude Code runs from the repo root with --setting-sources user,project, so project instructions are loaded by the CLI.",
-      },
-      {
-        label: "META prompt",
-        description: "The wrapper passes META_SHARED.md via --system-prompt on each query.",
-      },
-      {
-        label: "Date/time prefix",
-        description: "The wrapper prepends the date/time prefix when starting a new session.",
-      },
-    ]);
-  },
-};
 
 const codexProvider: SessionObservabilityProvider = {
   driver: "codex",
@@ -599,24 +479,22 @@ const codexProvider: SessionObservabilityProvider = {
   },
 };
 
-const observabilityProviders: Record<SessionDriver, SessionObservabilityProvider> = {
-  claude: claudeProvider,
-  codex: codexProvider,
-};
-
 export function getSessionObservabilityProvider(driver: SessionDriver): SessionObservabilityProvider {
-  return observabilityProviders[driver];
+  return codexProvider;
 }
 
 export function getSessionObservabilityProviders(): SessionObservabilityProvider[] {
-  return [observabilityProviders.claude, observabilityProviders.codex];
+  return [codexProvider];
 }
 
 export function getDashboardDriverRunningState(): Record<SessionDriver, DriverRunningState> {
-  const claude = observabilityProviders.claude.getRunningState();
-  const codex = observabilityProviders.codex.getRunningState();
+  const codex = codexProvider.getRunningState();
   return {
-    claude,
+    claude: {
+      activeDriverId: "codex",
+      executingDriverId: null,
+      isRunning: false,
+    },
     codex,
   };
 }

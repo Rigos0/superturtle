@@ -24,7 +24,7 @@ PROJECT_DIR="${1:?project-dir required}"
 PORT="${2:-3000}"
 WORKSPACE_DIR="${3:-.}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="${SUPER_TURTLE_PROJECT_DIR:-${CLAUDE_WORKING_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}}"
+ROOT_DIR="${SUPER_TURTLE_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 
 require_cmd() {
   local cmd="$1"

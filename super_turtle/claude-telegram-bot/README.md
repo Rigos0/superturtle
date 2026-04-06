@@ -119,7 +119,7 @@ The canonical env file lives at `.superturtle/.env` (created by `superturtle ini
 TELEGRAM_BOT_TOKEN=<telegram_bot_token_from_botfather>  # From @BotFather
 
 # Recommended
-CLAUDE_WORKING_DIR=/path/to/your/folder    # Where Claude runs (loads CLAUDE.md, skills, MCP)
+SUPER_TURTLE_PROJECT_DIR=/path/to/your/folder  # Project root for Codex sessions, CLAUDE.md, skills, and MCP
 OPENAI_API_KEY=<optional_openai_api_key>   # For voice transcription
 E2B_API_KEY=<optional_e2b_api_key>         # Required for BYO-E2B /teleport
 
@@ -131,12 +131,6 @@ The repo-root `.env.example` is the reference template. The actual env file is `
 Send your bot a private message once to persist the Telegram owner automatically. `TELEGRAM_ALLOWED_USERS` remains available only as a legacy fallback.
 
 ### Codex Configuration (Optional)
-
-Enable Codex usage reporting in `/usage` by setting:
-
-```bash
-CODEX_ENABLED=true
-```
 
 To run Codex through OpenRouter instead of the default OpenAI path, set these two env vars:
 
@@ -163,21 +157,19 @@ META_CODEX_NETWORK_ACCESS=false
 
 Notes:
 
-- `CODEX_ENABLED` defaults to `false`, so Claude usage remains the only section shown in `/usage` unless you explicitly enable Codex.
 - `META_CODEX_SANDBOX_MODE`, `META_CODEX_APPROVAL_POLICY`, and `META_CODEX_NETWORK_ACCESS` default to least-privilege values (`workspace-write`, `never`, network disabled).
 - When both `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` are set, Codex sessions use that OpenRouter model as the default Codex model.
 - Codex usage stats are fetched from a local Codex CLI instance (`codex` must be installed and available in PATH).
 - The bot parses local Codex history to extract usage data (requests and estimated token counts over the last 7 days).
 - No API keys required for Codex usage reporting — only the local `codex` CLI tool.
 - `OPENAI_API_KEY` is still used for voice transcription and is separate from Codex usage reporting.
-- If `CODEX_ENABLED=true` but Codex is not installed/available, the bot keeps working and shows Codex usage as unavailable.
 - Codex workflows still require an active CLOTH subscription (see section above).
 
 If you are using SubTurtles, the recommended Codex worker type is `yolo-codex` (see [SubTurtle docs](../meta/META_SHARED.md)).
 
-**File access paths:** By default, Claude can access:
+**File access paths:** By default, Codex can access:
 
-- `CLAUDE_WORKING_DIR` (or home directory if not set)
+- `SUPER_TURTLE_PROJECT_DIR` (or home directory if not set)
 - `~/Documents`, `~/Downloads`, `~/Desktop`
 - `~/.claude` (for Claude Code plans and settings)
 
@@ -315,10 +307,10 @@ Multiple layers protect against misuse:
 - Ensure `OPENAI_API_KEY` is set in `.env`
 - Verify the key is valid and has credits
 
-**Claude can't access files**
+**Codex can't access files**
 
-- Check `CLAUDE_WORKING_DIR` points to an existing directory
-- Verify `ALLOWED_PATHS` includes directories you want Claude to access
+- Check `SUPER_TURTLE_PROJECT_DIR` points to an existing directory
+- Verify `ALLOWED_PATHS` includes directories you want Codex to access
 - Ensure the bot process has read/write permissions
 
 **MCP tools not working**

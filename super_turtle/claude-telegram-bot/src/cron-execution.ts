@@ -73,35 +73,19 @@ export async function executeNonSilentCronJob(
       return;
     }
 
-    const primaryDriver: DriverId = session.activeDriver;
-    const fallbackDriver: DriverId = primaryDriver === "codex" ? "claude" : "codex";
+    const primaryDriver: DriverId = "codex";
     const state = new StreamingState();
     const statusCallback = createStatusCallback(cronCtx, state);
 
-    try {
-      await runMessageWithDriver(primaryDriver, {
-        message: injectedPrompt,
-        source: "cron_scheduled",
-        username: "cron",
-        userId: target.userId,
-        chatId: target.chatId,
-        ctx: cronCtx,
-        statusCallback,
-      });
-    } catch (error) {
-      if (!isLikelyQuotaOrLimitError(error)) {
-        throw error;
-      }
-      await runMessageWithDriver(fallbackDriver, {
-        message: injectedPrompt,
-        source: "cron_scheduled",
-        username: "cron",
-        userId: target.userId,
-        chatId: target.chatId,
-        ctx: cronCtx,
-        statusCallback,
-      });
-    }
+    await runMessageWithDriver(primaryDriver, {
+      message: injectedPrompt,
+      source: "cron_scheduled",
+      username: "cron",
+      userId: target.userId,
+      chatId: target.chatId,
+      ctx: cronCtx,
+      statusCallback,
+    });
   } catch (error) {
     if (wasBackgroundRunPreempted() && isLikelyCancellationError(error)) {
       cronLog.info(

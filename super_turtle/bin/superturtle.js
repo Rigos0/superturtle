@@ -24,7 +24,6 @@ const {
   createStripeCheckoutSession,
   createStripeCustomerPortalSession,
   fetchCloudStatus,
-  fetchClaudeAuthStatus,
   fetchWhoAmI,
   getControlPlaneBaseUrl,
   hasCachedSnapshot,
@@ -38,9 +37,7 @@ const {
   persistSessionIfChanged,
   readSession,
   releaseRuntimeLease,
-  revokeClaudeAuth,
   resumeManagedInstance,
-  setupClaudeAuth,
   startLogin,
   writeSession,
 } = require("./cloud");
@@ -339,7 +336,7 @@ function buildServiceCommand({ cwd, logPath, restartOnCrash, keepAwakeCommand = 
   return (
     `set -o pipefail` +
     ` && cd "${BOT_DIR}"` +
-    ` && export CLAUDE_WORKING_DIR="${cwd}"` +
+    ` && export SUPER_TURTLE_PROJECT_DIR="${cwd}"` +
     ` && export SUPER_TURTLE_DIR="${PACKAGE_ROOT}"` +
     ` && export SUPERTURTLE_RUN_LOOP=1` +
     ` && export SUPERTURTLE_LOOP_LOG_PATH="${logPath}"` +
@@ -979,16 +976,7 @@ function updateManagedRuntimeManifest(cwd, installSpec, version) {
     ((projectEnv.SUPERTURTLE_RUNTIME_ROLE || process.env.SUPERTURTLE_RUNTIME_ROLE) === "teleport-remote"
       ? "managed"
       : "local");
-  const driver =
-    (
-      projectEnv.SUPERTURTLE_DRIVER ||
-      process.env.SUPERTURTLE_DRIVER ||
-      projectEnv.SUPERTURTLE_REMOTE_DRIVER ||
-      process.env.SUPERTURTLE_REMOTE_DRIVER ||
-      projectEnv.MAIN_PROVIDER ||
-      process.env.MAIN_PROVIDER ||
-      (runtimeProfile === "managed" ? "codex" : "claude")
-    ).trim();
+  const driver = "codex";
   const nextPayload =
     existing && typeof existing === "object" && !Array.isArray(existing) ? { ...existing } : {};
   nextPayload.runtime_install_spec = installSpec;
@@ -1011,7 +999,7 @@ function launchDetachedServiceRunner(cwd) {
     ],
     {
       cwd,
-      env: { ...process.env, CLAUDE_WORKING_DIR: cwd },
+      env: { ...process.env, SUPER_TURTLE_PROJECT_DIR: cwd },
       stdio: "ignore",
       detached: true,
     }
@@ -1102,7 +1090,7 @@ async function serviceSelfUpdateRunner() {
       ],
       {
         cwd,
-        env: { ...process.env, CLAUDE_WORKING_DIR: cwd },
+        env: { ...process.env, SUPER_TURTLE_PROJECT_DIR: cwd },
         stdio: "pipe",
       }
     );
@@ -1646,7 +1634,7 @@ async function init() {
     }
 
     let envContent = `TELEGRAM_BOT_TOKEN=${token}\n`;
-    envContent += `CLAUDE_WORKING_DIR=${projectRoot}\n`;
+    envContent += `SUPER_TURTLE_PROJECT_DIR=${projectRoot}\n`;
     if (openaiKey) {
       envContent += `OPENAI_API_KEY=${openaiKey}\n`;
     }
@@ -1785,7 +1773,7 @@ async function serviceRun() {
     ...process.env,
     ...projectEnv,
     SUPER_TURTLE_DIR: PACKAGE_ROOT,
-    CLAUDE_WORKING_DIR: cwd,
+    SUPER_TURTLE_PROJECT_DIR: cwd,
   };
   const logPaths = getLogPaths(cwd, env);
   const existingPid = readServicePid(cwd);
@@ -2050,7 +2038,7 @@ async function start() {
     ...process.env,
     ...projectEnv,
     SUPER_TURTLE_DIR: PACKAGE_ROOT,
-    CLAUDE_WORKING_DIR: cwd,
+    SUPER_TURTLE_PROJECT_DIR: cwd,
   };
   const tmuxSession = resolveTmuxSession(cwd, env);
   const logPaths = getLogPaths(cwd, env);
@@ -2076,7 +2064,7 @@ async function start() {
       "-e",
       `SUPER_TURTLE_DIR=${PACKAGE_ROOT}`,
       "-e",
-      `CLAUDE_WORKING_DIR=${cwd}`,
+      `SUPER_TURTLE_PROJECT_DIR=${cwd}`,
       "-e",
       `SUPERTURTLE_TMUX_SESSION=${tmuxSession}`,
       ...Object.entries(env)
@@ -2412,141 +2400,6 @@ function parseCloudArgs(args, parseOptions = {}) {
   return options;
 }
 
-function extractTokenFromCredentialPayload(raw) {
-  const trimmed = String(raw || "").trim();
-  if (!trimmed) return null;
-
-  const candidates = [];
-  try {
-    const parsed = JSON.parse(trimmed);
-    const visit = (value) => {
-      if (!value || typeof value !== "object") return;
-      if (Array.isArray(value)) {
-        for (const item of value) visit(item);
-        return;
-      }
-      for (const [key, child] of Object.entries(value)) {
-        if (
-          typeof child === "string" &&
-          ["accessToken", "access_token", "oauthAccessToken", "token"].includes(key)
-        ) {
-          candidates.push(child.trim());
-        } else {
-          visit(child);
-        }
-      }
-    };
-    visit(parsed);
-  } catch {
-    candidates.push(trimmed);
-  }
-
-  return candidates.find((candidate) => candidate.length > 0) || null;
-}
-
-function readClaudeAccessTokenFromFile(path) {
-  try {
-    if (!fs.existsSync(path)) return null;
-    return extractTokenFromCredentialPayload(fs.readFileSync(path, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-function discoverClaudeAccessToken() {
-  const envCandidates = [
-    process.env.SUPERTURTLE_CLAUDE_ACCESS_TOKEN,
-    process.env.CLAUDE_CODE_OAUTH_TOKEN,
-  ];
-  for (const candidate of envCandidates) {
-    const token = extractTokenFromCredentialPayload(candidate);
-    if (token) return token;
-  }
-
-  const user = process.env.USER || "unknown";
-  if (process.platform === "darwin") {
-    const attempts = [
-      ["security", ["find-generic-password", "-s", "Claude Code-credentials", "-a", user, "-w"]],
-      ["security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"]],
-    ];
-    for (const [command, args] of attempts) {
-      const result = spawnSync(command, args, { stdio: "pipe" });
-      if (result.status === 0) {
-        const token = extractTokenFromCredentialPayload(result.stdout.toString("utf-8"));
-        if (token) return token;
-      }
-    }
-  }
-
-  if (process.platform === "linux" && spawnSync("sh", ["-c", "command -v secret-tool"], { stdio: "ignore" }).status === 0) {
-    const attempts = [
-      ["secret-tool", ["lookup", "service", "Claude Code-credentials", "username", user]],
-      ["secret-tool", ["lookup", "service", "Claude Code-credentials"]],
-    ];
-    for (const [command, args] of attempts) {
-      const result = spawnSync(command, args, { stdio: "pipe" });
-      if (result.status === 0) {
-        const token = extractTokenFromCredentialPayload(result.stdout.toString("utf-8"));
-        if (token) return token;
-      }
-    }
-  }
-
-  const home = process.env.HOME || "";
-  const fileCandidates = [
-    resolve(home, ".config", "claude-code", "credentials.json"),
-    resolve(home, ".claude", "credentials.json"),
-  ];
-  for (const path of fileCandidates) {
-    const token = readClaudeAccessTokenFromFile(path);
-    if (token) return token;
-  }
-
-  return null;
-}
-
-function parseClaudeSetupArgs(args) {
-  const options = {
-    tokenEnv: null,
-    tokenFile: null,
-  };
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--token-env") {
-      const value = args[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error("Missing value for --token-env");
-      }
-      options.tokenEnv = value;
-      index += 1;
-      continue;
-    }
-    if (arg === "--token-file") {
-      const value = args[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error("Missing value for --token-file");
-      }
-      options.tokenFile = value;
-      index += 1;
-      continue;
-    }
-    throw new Error(`Unknown cloud Claude setup argument: ${arg}`);
-  }
-
-  return options;
-}
-
-function resolveClaudeSetupToken(options) {
-  if (options.tokenEnv) {
-    return extractTokenFromCredentialPayload(process.env[options.tokenEnv] || "");
-  }
-  if (options.tokenFile) {
-    return readClaudeAccessTokenFromFile(resolve(options.tokenFile));
-  }
-  return discoverClaudeAccessToken();
-}
-
 async function login() {
   let options;
   try {
@@ -2747,79 +2600,6 @@ async function cloudPortal() {
   console.log(`Portal URL: ${result.data.portal_url}`);
 }
 
-async function cloudClaudeStatus() {
-  const session = readSession();
-  if (!session?.access_token) {
-    console.error(`Not logged in. Run 'superturtle login'. Expected session file at ${getSessionPath()}`);
-    process.exit(1);
-  }
-
-  const result = await fetchClaudeAuthStatus(session);
-  console.log(`Control plane: ${getSessionControlPlaneBaseUrl(result.session)}`);
-  console.log(`Provider: ${result.data.provider}`);
-  console.log(`Configured: ${result.data.configured ? "yes" : "no"}`);
-  if (result.data.credential?.state) console.log(`State: ${result.data.credential.state}`);
-  if (result.data.credential?.account_email) {
-    console.log(`Claude account: ${result.data.credential.account_email}`);
-  }
-  if (result.data.credential?.last_validated_at) {
-    console.log(`Last validated: ${result.data.credential.last_validated_at}`);
-  }
-}
-
-async function cloudClaudeSetup() {
-  let options;
-  try {
-    options = parseClaudeSetupArgs(process.argv.slice(5));
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error("Usage: superturtle cloud claude setup [--token-env <env-var>|--token-file <path>]");
-    process.exit(1);
-  }
-
-  const session = readSession();
-  if (!session?.access_token) {
-    console.error(`Not logged in. Run 'superturtle login'. Expected session file at ${getSessionPath()}`);
-    process.exit(1);
-  }
-
-  const claudeAccessToken = resolveClaudeSetupToken(options);
-  if (!claudeAccessToken) {
-    throw new Error(
-      "No local Claude access token was found. Run Claude login locally or pass --token-env/--token-file."
-    );
-  }
-
-  const result = await setupClaudeAuth(session, claudeAccessToken);
-  console.log(`Control plane: ${getSessionControlPlaneBaseUrl(result.session)}`);
-  console.log(`Provider: ${result.data.provider}`);
-  console.log(`Configured: ${result.data.configured ? "yes" : "no"}`);
-  if (result.data.credential?.state) console.log(`State: ${result.data.credential.state}`);
-  if (result.data.credential?.account_email) {
-    console.log(`Claude account: ${result.data.credential.account_email}`);
-  }
-  if (result.data.credential?.last_validated_at) {
-    console.log(`Last validated: ${result.data.credential.last_validated_at}`);
-  }
-}
-
-async function cloudClaudeRevoke() {
-  const session = readSession();
-  if (!session?.access_token) {
-    console.error(`Not logged in. Run 'superturtle login'. Expected session file at ${getSessionPath()}`);
-    process.exit(1);
-  }
-
-  const result = await revokeClaudeAuth(session);
-  console.log(`Control plane: ${getSessionControlPlaneBaseUrl(result.session)}`);
-  console.log(`Provider: ${result.data.provider}`);
-  console.log(`Configured: ${result.data.configured ? "yes" : "no"}`);
-  if (result.data.credential?.state) console.log(`State: ${result.data.credential.state}`);
-  if (result.data.credential?.account_email) {
-    console.log(`Claude account: ${result.data.credential.account_email}`);
-  }
-}
-
 function logout() {
   const path = clearSession();
   console.log(`Removed local cloud session at ${path}`);
@@ -2885,19 +2665,7 @@ if (require.main === module) {
       break;
     case "cloud":
       if (process.argv[3] === "claude") {
-        if (process.argv[4] === "status") {
-          cloudClaudeStatus().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
-          break;
-        }
-        if (process.argv[4] === "setup") {
-          cloudClaudeSetup().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
-          break;
-        }
-        if (process.argv[4] === "revoke") {
-          cloudClaudeRevoke().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
-          break;
-        }
-        console.error("Usage: superturtle cloud claude <status|setup|revoke>");
+        console.error("superturtle cloud claude has been removed in this codex-only branch.");
         process.exit(1);
         break;
       }
@@ -2917,7 +2685,7 @@ if (require.main === module) {
         cloudResume().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
         break;
       }
-      console.error("Usage: superturtle cloud <status|resume|checkout|portal|claude>");
+      console.error("Usage: superturtle cloud <status|resume|checkout|portal>");
       process.exit(1);
       break;
     case "logout":
@@ -2939,7 +2707,7 @@ Usage: superturtle <command>
 
 Commands:
   init      Set up superturtle in the bound project repo
-  cloud     Hosted cloud commands (status, resume, checkout, portal, claude)
+  cloud     Hosted cloud commands (status, resume, checkout, portal)
   start     Launch the interactive tmux session and attach immediately
   service   Foreground service commands
   stop      Stop the bot and all SubTurtles
@@ -2970,10 +2738,7 @@ Cloud:
   superturtle cloud status
   superturtle cloud resume
   superturtle cloud checkout
-  superturtle cloud portal
-  superturtle cloud claude status
-  superturtle cloud claude setup
-  superturtle cloud claude revoke`);
+  superturtle cloud portal`);
       if (command && command !== "help" && command !== "--help" && command !== "-h") {
         process.exit(1);
       }

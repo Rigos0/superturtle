@@ -8,15 +8,12 @@ type ConfigProbeResult = {
 };
 
 type ConfigProbeOverrides = {
-  codexEnabled?: string | undefined;
   metaCodexSandboxMode?: string | undefined;
   metaCodexApprovalPolicy?: string | undefined;
   metaCodexNetworkAccess?: string | undefined;
   dashboardEnabled?: string | undefined;
   showToolStatus?: string | undefined;
   turtleGreetings?: string | undefined;
-  defaultClaudeModel?: string | undefined;
-  defaultClaudeEffort?: string | undefined;
   defaultCodexModel?: string | undefined;
   defaultCodexEffort?: string | undefined;
   openrouterApiKey?: string | undefined;
@@ -33,7 +30,6 @@ type ConfigProbeOverrides = {
 const configPath = resolve(import.meta.dir, "config.ts");
 
 const MARKERS = {
-  codexEnabled: "__CODEX_ENABLED__=",
   sandboxMode: "__META_CODEX_SANDBOX_MODE__=",
   approvalPolicy: "__META_CODEX_APPROVAL_POLICY__=",
   networkAccess: "__META_CODEX_NETWORK_ACCESS__=",
@@ -42,8 +38,6 @@ const MARKERS = {
   dashboardPublicBaseUrl: "__DASHBOARD_PUBLIC_BASE_URL__=",
   showToolStatus: "__SHOW_TOOL_STATUS__=",
   turtleGreetingsEnabled: "__TURTLE_GREETINGS_ENABLED__=",
-  defaultClaudeModel: "__DEFAULT_CLAUDE_MODEL__=",
-  defaultClaudeEffort: "__DEFAULT_CLAUDE_EFFORT__=",
   defaultCodexModel: "__DEFAULT_CODEX_MODEL__=",
   defaultCodexEffort: "__DEFAULT_CODEX_EFFORT__=",
   codexOpenrouterEnabled: "__CODEX_OPENROUTER_ENABLED__=",
@@ -58,7 +52,7 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
     ...process.env,
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
-    CLAUDE_WORKING_DIR: process.cwd(),
+    SUPER_TURTLE_PROJECT_DIR: process.cwd(),
   };
 
   const applyOverride = (envKey: string, value: string | undefined) => {
@@ -69,15 +63,12 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
     env[envKey] = value;
   };
 
-  applyOverride("CODEX_ENABLED", overrides.codexEnabled);
   applyOverride("META_CODEX_SANDBOX_MODE", overrides.metaCodexSandboxMode);
   applyOverride("META_CODEX_APPROVAL_POLICY", overrides.metaCodexApprovalPolicy);
   applyOverride("META_CODEX_NETWORK_ACCESS", overrides.metaCodexNetworkAccess);
   applyOverride("DASHBOARD_ENABLED", overrides.dashboardEnabled);
   applyOverride("SHOW_TOOL_STATUS", overrides.showToolStatus);
   applyOverride("TURTLE_GREETINGS", overrides.turtleGreetings);
-  applyOverride("DEFAULT_CLAUDE_MODEL", overrides.defaultClaudeModel);
-  applyOverride("DEFAULT_CLAUDE_EFFORT", overrides.defaultClaudeEffort);
   applyOverride("DEFAULT_CODEX_MODEL", overrides.defaultCodexModel);
   applyOverride("DEFAULT_CODEX_EFFORT", overrides.defaultCodexEffort);
   applyOverride("OPENROUTER_API_KEY", overrides.openrouterApiKey);
@@ -92,7 +83,6 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
 
   const script = `
     const config = await import(${JSON.stringify(configPath)});
-    console.log(${JSON.stringify(MARKERS.codexEnabled)} + String(config.CODEX_ENABLED));
     console.log(${JSON.stringify(MARKERS.sandboxMode)} + String(config.META_CODEX_SANDBOX_MODE));
     console.log(${JSON.stringify(MARKERS.approvalPolicy)} + String(config.META_CODEX_APPROVAL_POLICY));
     console.log(${JSON.stringify(MARKERS.networkAccess)} + String(config.META_CODEX_NETWORK_ACCESS));
@@ -101,8 +91,6 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
     console.log(${JSON.stringify(MARKERS.dashboardPublicBaseUrl)} + String(config.DASHBOARD_PUBLIC_BASE_URL));
     console.log(${JSON.stringify(MARKERS.showToolStatus)} + String(config.SHOW_TOOL_STATUS));
     console.log(${JSON.stringify(MARKERS.turtleGreetingsEnabled)} + String(config.TURTLE_GREETINGS_ENABLED));
-    console.log(${JSON.stringify(MARKERS.defaultClaudeModel)} + String(config.DEFAULT_CLAUDE_MODEL));
-    console.log(${JSON.stringify(MARKERS.defaultClaudeEffort)} + String(config.DEFAULT_CLAUDE_EFFORT));
     console.log(${JSON.stringify(MARKERS.defaultCodexModel)} + String(config.DEFAULT_CODEX_MODEL));
     console.log(${JSON.stringify(MARKERS.defaultCodexEffort)} + String(config.DEFAULT_CODEX_EFFORT));
     console.log(${JSON.stringify(MARKERS.codexOpenrouterEnabled)} + String(config.CODEX_OPENROUTER_ENABLED));
@@ -146,16 +134,14 @@ function expectedDashboardPort(seed: string): string {
 }
 
 describe("config defaults", () => {
-  it("uses expected default runtime values when env vars are unset", async () => {
+  it("uses expected default codex-only runtime values when env vars are unset", async () => {
     const result = await probeConfig({
-      codexEnabled: undefined,
       metaCodexSandboxMode: undefined,
       metaCodexApprovalPolicy: undefined,
       metaCodexNetworkAccess: undefined,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(extractMarker(result.stdout, MARKERS.codexEnabled)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.sandboxMode)).toBe("workspace-write");
     expect(extractMarker(result.stdout, MARKERS.approvalPolicy)).toBe("never");
     expect(extractMarker(result.stdout, MARKERS.networkAccess)).toBe("false");
@@ -166,29 +152,25 @@ describe("config defaults", () => {
     );
     expect(extractMarker(result.stdout, MARKERS.showToolStatus)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.turtleGreetingsEnabled)).toBe("false");
-    expect(extractMarker(result.stdout, MARKERS.defaultClaudeModel)).toBe("claude-opus-4-6");
-    expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("high");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("medium");
     expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("local");
-    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("claude");
+    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("codex");
     expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toBe("null");
-    expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("claude");
+    expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("codex");
   });
 });
 
 describe("config overrides", () => {
   it("accepts explicit valid Codex runtime policy values", async () => {
     const result = await probeConfig({
-      codexEnabled: "true",
       metaCodexSandboxMode: "workspace-write",
       metaCodexApprovalPolicy: "on-request",
       metaCodexNetworkAccess: "false",
     });
 
     expect(result.exitCode).toBe(0);
-    expect(extractMarker(result.stdout, MARKERS.codexEnabled)).toBe("true");
     expect(extractMarker(result.stdout, MARKERS.sandboxMode)).toBe("workspace-write");
     expect(extractMarker(result.stdout, MARKERS.approvalPolicy)).toBe("on-request");
     expect(extractMarker(result.stdout, MARKERS.networkAccess)).toBe("false");
@@ -228,16 +210,12 @@ describe("config overrides", () => {
 
   it("accepts explicit valid default model and effort overrides", async () => {
     const result = await probeConfig({
-      defaultClaudeModel: "claude-sonnet-4-6",
-      defaultClaudeEffort: "medium",
       defaultCodexModel: "gpt-5.3-codex-spark",
       defaultCodexEffort: "low",
       mainProvider: "codex",
     });
 
     expect(result.exitCode).toBe(0);
-    expect(extractMarker(result.stdout, MARKERS.defaultClaudeModel)).toBe("claude-sonnet-4-6");
-    expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("medium");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex-spark");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("low");
     expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("false");
@@ -295,18 +273,18 @@ describe("config overrides", () => {
     );
   });
 
-  it("marks managed plus claude as unsupported", async () => {
+  it("ignores attempts to force a non-codex driver", async () => {
     const result = await probeConfig({
       runtimeProfile: "managed",
       driver: "claude",
+      mainProvider: "claude",
     });
 
     expect(result.exitCode).toBe(0);
     expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("managed");
-    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("claude");
-    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toContain(
-      "Managed runtime currently supports SUPERTURTLE_DRIVER=codex only in this branch."
-    );
+    expect(extractMarker(result.stdout, MARKERS.driver)).toBe("codex");
+    expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toBe("null");
+    expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("codex");
   });
 
   it("falls back to safe defaults for invalid policy values", async () => {
@@ -324,19 +302,15 @@ describe("config overrides", () => {
 
   it("falls back to built-in defaults for invalid default model and effort values", async () => {
     const result = await probeConfig({
-      defaultClaudeModel: "claude-bad-model",
-      defaultClaudeEffort: "turbo",
       defaultCodexModel: "gpt-bad-codex",
       defaultCodexEffort: "ultra",
       mainProvider: "gemini",
     });
 
     expect(result.exitCode).toBe(0);
-    expect(extractMarker(result.stdout, MARKERS.defaultClaudeModel)).toBe("claude-opus-4-6");
-    expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("high");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("medium");
     expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("false");
-    expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("claude");
+    expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("codex");
   });
 });

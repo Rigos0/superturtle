@@ -95,14 +95,14 @@ export function setExecutingDriverForTests(driverId: DriverId | null): void {
 export async function runMessageWithActiveDriver(
   input: DriverMessageInput
 ): Promise<string> {
-  return runMessageWithDriver(session.activeDriver, input);
+  return runMessageWithDriver("codex", input);
 }
 
 export async function runMessageWithDriver(
   driverId: DriverId,
   input: DriverMessageInput
 ): Promise<string> {
-  const driver = getDriver(driverId);
+  const driver = getDriver();
   let message = input.message;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -200,11 +200,11 @@ export function isActiveDriverSessionActive(): boolean {
 }
 
 export function getDriverAuditType(baseType: string): string {
-  return session.activeDriver === "codex" ? `${baseType}_CODEX` : baseType;
+  return `${baseType}_CODEX`;
 }
 
 export function isAnyDriverRunning(): boolean {
-  return session.isRunning || codexSession.isRunning;
+  return codexSession.isRunning || session.isRunning;
 }
 
 async function waitForDriversToBecomeIdle(timeoutMs = STOP_SETTLE_TIMEOUT_MS): Promise<boolean> {
@@ -243,13 +243,7 @@ export async function preemptBackgroundRunForUserPriority(): Promise<boolean> {
 
 export async function stopActiveDriverQuery(): Promise<"stopped" | "pending" | false> {
   const current = getCurrentDriver();
-  const currentResult = await current.stop();
-  let stopResult = currentResult;
-
-  if (!stopResult) {
-    const fallbackDriverId: DriverId = session.activeDriver === "codex" ? "claude" : "codex";
-    stopResult = await getDriver(fallbackDriverId).stop();
-  }
+  const stopResult = await current.stop();
 
   if (!stopResult) {
     return false;
@@ -263,10 +257,10 @@ export async function stopActiveDriverQuery(): Promise<"stopped" | "pending" | f
   if (!idle) {
     routingLog.warn(
       {
-        activeDriver: session.activeDriver,
+        activeDriver: "codex",
         stopResult,
-        claudeRunning: session.isRunning,
         codexRunning: codexSession.isRunning,
+        facadeRunning: session.isRunning,
       },
       "Driver stop did not settle; force-resetting stuck run state"
     );

@@ -10,17 +10,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from . import prompts
 from . import statefile
-from .subturtle_loop.agents import Claude, Codex
+from .subturtle_loop.agents import Codex
 
 # Package root (super_turtle/), used for resolving skills directory.
 _SUPER_TURTLE_DIR = os.environ.get(
     "SUPER_TURTLE_DIR", str(Path(__file__).resolve().parent.parent)
 )
 _SKILLS_DIR = os.path.join(_SUPER_TURTLE_DIR, "skills")
-
-STATS_SCRIPT = Path(__file__).resolve().parent / "claude-md-guard" / "stats.sh"
 
 RETRY_DELAY = 10  # seconds to wait after an agent crash before retrying
 MAX_CONSECUTIVE_FAILURES = 5
@@ -206,81 +203,6 @@ def _run_single_agent_loop(
     _finalize_loop(state_dir, name, project_dir, iteration, stopped_by_directive)
 
 
-def run_slow_loop(state_dir: Path, name: str, skills: list[str] | None = None) -> None:
-    """Slow loop: Plan -> Groom -> Execute -> Review. 4 agent calls per iteration."""
-    if skills is None:
-        skills = []
-    _require_cli(name, "claude")
-    _require_cli(name, "codex")
-
-    state_file, state_ref = _resolve_state_ref(state_dir, name)
-    prompt_bundle = prompts.build_prompts(state_ref)
-
-    _log_loop_start(name, "slow loop: plan -> groom -> execute -> review", state_ref, skills)
-
-    add_dirs = _skill_dirs(skills)
-    claude = Claude(add_dirs=add_dirs)
-    codex = Codex(add_dirs=add_dirs)
-    project_dir = Path.cwd()
-    iteration = 0
-    consecutive_failures = 0
-    stopped_by_directive = False
-
-    while True:
-        if _should_stop(state_file, name):
-            stopped_by_directive = True
-            break
-        iteration += 1
-        print(f"[subturtle:{name}] === slow iteration {iteration} ===")
-        try:
-            plan = claude.plan(prompt_bundle["planner"])
-
-            stats = subprocess.check_output(
-                ["bash", str(STATS_SCRIPT), str(state_file)], text=True
-            )
-            claude.execute(prompt_bundle["groomer"].format(stats=stats, plan=plan))
-
-            codex.execute(prompt_bundle["executor"].format(plan=plan))
-
-            claude.execute(prompt_bundle["reviewer"].format(plan=plan))
-            _record_checkpoint(state_dir, name, project_dir, "slow", iteration)
-            consecutive_failures = 0
-        except (subprocess.CalledProcessError, OSError) as error:
-            consecutive_failures, should_stop = _handle_agent_failure(
-                state_dir,
-                name,
-                project_dir,
-                "slow",
-                error,
-                consecutive_failures,
-            )
-            if should_stop:
-                break
-
-        if _should_stop(state_file, name):
-            stopped_by_directive = True
-            break
-
-    _finalize_loop(state_dir, name, project_dir, iteration, stopped_by_directive)
-
-
-def run_yolo_loop(state_dir: Path, name: str, skills: list[str] | None = None) -> None:
-    """Yolo loop: single Claude call per iteration. Ralph loop style."""
-    if skills is None:
-        skills = []
-    _require_cli(name, "claude")
-
-    claude = Claude(add_dirs=_skill_dirs(skills))
-    _run_single_agent_loop(
-        state_dir=state_dir,
-        name=name,
-        loop_type="yolo",
-        loop_description="yolo loop: claude",
-        skills=skills,
-        execute_iteration=claude.execute,
-    )
-
-
 def run_yolo_codex_loop(
     state_dir: Path, name: str, skills: list[str] | None = None
 ) -> None:
@@ -320,8 +242,6 @@ def run_yolo_codex_spark_loop(
 
 
 LOOP_TYPES = {
-    "slow": run_slow_loop,
-    "yolo": run_yolo_loop,
     "yolo-codex": run_yolo_codex_loop,
     "yolo-codex-spark": run_yolo_codex_spark_loop,
 }
@@ -330,7 +250,7 @@ LOOP_TYPES = {
 def run_loop(
     state_dir: Path,
     name: str,
-    loop_type: str = "slow",
+    loop_type: str = "yolo-codex",
     skills: list[str] | None = None,
 ) -> None:
     """Dispatch to the appropriate loop function."""
@@ -351,14 +271,11 @@ def run_loop(
 
 
 __all__ = [
-    "Claude",
     "Codex",
     "LOOP_TYPES",
     "MAX_CONSECUTIVE_FAILURES",
     "MAX_FAILURES_MESSAGE",
     "run_loop",
-    "run_slow_loop",
-    "run_yolo_loop",
     "run_yolo_codex_loop",
     "run_yolo_codex_spark_loop",
     "_archive_workspace",
