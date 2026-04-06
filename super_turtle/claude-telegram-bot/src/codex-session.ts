@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import {
+  CODEX_OPENROUTER_ENABLED,
   WORKING_DIR,
   BOT_DIR,
   CODEX_META_BOOTSTRAP_PROMPT,
@@ -17,6 +18,8 @@ import {
   META_CODEX_APPROVAL_POLICY,
   META_CODEX_NETWORK_ACCESS,
   META_CODEX_SANDBOX_MODE,
+  OPENROUTER_API_KEY,
+  OPENROUTER_MODEL,
   TOKEN_PREFIX,
 } from "./config";
 import { formatCodexToolStatus } from "./formatting";
@@ -43,6 +46,7 @@ const MAX_RECENT_MESSAGES = 10;
 const MAX_MESSAGE_TEXT = 500;
 const APP_SERVER_TIMEOUT_MS = 6000;
 const MODEL_CACHE_TTL_MS = 60_000;
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const EVENT_STREAM_STALL_TIMEOUT_MS = (() => {
   const raw = process.env.CODEX_EVENT_STREAM_STALL_TIMEOUT_MS;
   if (!raw) return 120_000;
@@ -450,8 +454,32 @@ const DEFAULT_CODEX_MODELS: CodexModelInfo[] = [
   { value: "gpt-5.2-codex", displayName: "GPT-5.2 Codex", description: "Previous generation" },
 ];
 
+function mergeCodexModelCatalog(models: CodexModelInfo[]): CodexModelInfo[] {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    if (!model.value || seen.has(model.value)) return false;
+    seen.add(model.value);
+    return true;
+  });
+}
+
+function getConfiguredOpenRouterModels(): CodexModelInfo[] {
+  if (!CODEX_OPENROUTER_ENABLED || !OPENROUTER_MODEL) {
+    return [];
+  }
+
+  return [{
+    value: OPENROUTER_MODEL,
+    displayName: OPENROUTER_MODEL,
+    description: "Configured via OpenRouter",
+  }];
+}
+
 export function getAvailableCodexModels(): CodexModelInfo[] {
-  return DEFAULT_CODEX_MODELS;
+  return mergeCodexModelCatalog([
+    ...getConfiguredOpenRouterModels(),
+    ...DEFAULT_CODEX_MODELS,
+  ]);
 }
 
 type AppServerModel = {
@@ -724,13 +752,7 @@ async function fetchModelsFromAppServer(): Promise<CodexModelInfo[]> {
     if (!cursor) break;
   }
 
-  // Deduplicate by model id while keeping order.
-  const seen = new Set<string>();
-  return models.filter((model) => {
-    if (seen.has(model.value)) return false;
-    seen.add(model.value);
-    return true;
-  });
+  return mergeCodexModelCatalog(models);
 }
 
 async function fetchConversationsFromAppServer(
@@ -814,7 +836,7 @@ async function fetchConversationsFromAppServer(
 
 export async function getAvailableCodexModelsLive(): Promise<CodexModelInfo[]> {
   if ((process.env.TELEGRAM_BOT_TOKEN || "") === "test-token") {
-    return DEFAULT_CODEX_MODELS;
+    return getAvailableCodexModels();
   }
 
   if (
@@ -826,14 +848,54 @@ export async function getAvailableCodexModelsLive(): Promise<CodexModelInfo[]> {
 
   const liveModels = await fetchModelsFromAppServer();
   if (liveModels.length > 0) {
+    const mergedModels = mergeCodexModelCatalog([
+      ...getConfiguredOpenRouterModels(),
+      ...liveModels,
+      ...DEFAULT_CODEX_MODELS,
+    ]);
     cachedModelCatalog = {
       fetchedAt: Date.now(),
-      models: liveModels,
+      models: mergedModels,
     };
-    return liveModels;
+    return mergedModels;
   }
 
-  return DEFAULT_CODEX_MODELS;
+  return getAvailableCodexModels();
+}
+
+function buildOpenRouterSdkOverrides(): Record<string, unknown> {
+  if (!CODEX_OPENROUTER_ENABLED) {
+    return {};
+  }
+
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    OPENROUTER_API_KEY,
+  };
+
+  // Older Codex CLI builds have inconsistently looked at OpenAI-style auth
+  // variables even when a custom provider is configured.
+  if (!env.OPENAI_API_KEY) {
+    env.OPENAI_API_KEY = OPENROUTER_API_KEY;
+  }
+  if (!env.CODEX_API_KEY) {
+    env.CODEX_API_KEY = OPENROUTER_API_KEY;
+  }
+
+  return {
+    env,
+    config: {
+      model_provider: "openrouter",
+      model_providers: {
+        openrouter: {
+          name: "openrouter",
+          base_url: OPENROUTER_BASE_URL,
+          wire_api: "responses",
+          env_key: "OPENROUTER_API_KEY",
+        },
+      },
+    },
+  };
 }
 
 /**
@@ -1037,18 +1099,29 @@ export class CodexSession {
 
       // Check if MCP servers are already configured in ~/.codex/config.toml
       const codexPathOverride = getCodexSdkPathOverride();
+      const openRouterOverrides = buildOpenRouterSdkOverrides();
       const hasExisting = await hasExistingMcpConfig();
       this.usingExistingMcpConfig = hasExisting;
       if (hasExisting) {
         codexLog.info("MCP servers found in ~/.codex/config.toml, using existing config");
         this.programmaticMcpChatId = null;
-        this.codex = new CodexImpl({ codexPathOverride });
+        this.codex = new CodexImpl({
+          codexPathOverride,
+          ...openRouterOverrides,
+        });
       } else {
         // Pass MCP config programmatically if not already configured
         codexLog.info("Passing MCP servers via Codex constructor");
         const mcpConfig = buildCodexMcpConfig(requestedChatId ?? undefined);
         this.programmaticMcpChatId = requestedChatId;
-        this.codex = new CodexImpl({ codexPathOverride, config: mcpConfig });
+        this.codex = new CodexImpl({
+          codexPathOverride,
+          ...openRouterOverrides,
+          config: {
+            ...((openRouterOverrides.config as Record<string, unknown> | undefined) || {}),
+            ...mcpConfig,
+          },
+        });
       }
     } catch (error) {
       throw new Error(formatCodexInitError(error));

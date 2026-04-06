@@ -19,6 +19,8 @@ type ConfigProbeOverrides = {
   defaultClaudeEffort?: string | undefined;
   defaultCodexModel?: string | undefined;
   defaultCodexEffort?: string | undefined;
+  openrouterApiKey?: string | undefined;
+  openrouterModel?: string | undefined;
   runtimeProfile?: string | undefined;
   driver?: string | undefined;
   runtimeRole?: string | undefined;
@@ -44,6 +46,7 @@ const MARKERS = {
   defaultClaudeEffort: "__DEFAULT_CLAUDE_EFFORT__=",
   defaultCodexModel: "__DEFAULT_CODEX_MODEL__=",
   defaultCodexEffort: "__DEFAULT_CODEX_EFFORT__=",
+  codexOpenrouterEnabled: "__CODEX_OPENROUTER_ENABLED__=",
   runtimeProfile: "__SUPERTURTLE_RUNTIME_PROFILE__=",
   driver: "__SUPERTURTLE_DRIVER__=",
   runtimeContractError: "__RUNTIME_CONTRACT_ERROR__=",
@@ -77,6 +80,8 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
   applyOverride("DEFAULT_CLAUDE_EFFORT", overrides.defaultClaudeEffort);
   applyOverride("DEFAULT_CODEX_MODEL", overrides.defaultCodexModel);
   applyOverride("DEFAULT_CODEX_EFFORT", overrides.defaultCodexEffort);
+  applyOverride("OPENROUTER_API_KEY", overrides.openrouterApiKey);
+  applyOverride("OPENROUTER_MODEL", overrides.openrouterModel);
   applyOverride("SUPERTURTLE_RUNTIME_PROFILE", overrides.runtimeProfile);
   applyOverride("SUPERTURTLE_DRIVER", overrides.driver);
   applyOverride("SUPERTURTLE_RUNTIME_ROLE", overrides.runtimeRole);
@@ -100,6 +105,7 @@ async function probeConfig(overrides: ConfigProbeOverrides): Promise<ConfigProbe
     console.log(${JSON.stringify(MARKERS.defaultClaudeEffort)} + String(config.DEFAULT_CLAUDE_EFFORT));
     console.log(${JSON.stringify(MARKERS.defaultCodexModel)} + String(config.DEFAULT_CODEX_MODEL));
     console.log(${JSON.stringify(MARKERS.defaultCodexEffort)} + String(config.DEFAULT_CODEX_EFFORT));
+    console.log(${JSON.stringify(MARKERS.codexOpenrouterEnabled)} + String(config.CODEX_OPENROUTER_ENABLED));
     console.log(${JSON.stringify(MARKERS.runtimeProfile)} + String(config.SUPERTURTLE_RUNTIME_PROFILE));
     console.log(${JSON.stringify(MARKERS.driver)} + String(config.SUPERTURTLE_DRIVER));
     console.log(${JSON.stringify(MARKERS.runtimeContractError)} + String(config.RUNTIME_CONTRACT_ERROR));
@@ -164,6 +170,7 @@ describe("config defaults", () => {
     expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("high");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("medium");
+    expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.runtimeProfile)).toBe("local");
     expect(extractMarker(result.stdout, MARKERS.driver)).toBe("claude");
     expect(extractMarker(result.stdout, MARKERS.runtimeContractError)).toBe("null");
@@ -233,7 +240,21 @@ describe("config overrides", () => {
     expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("medium");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex-spark");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("low");
+    expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("codex");
+  });
+
+  it("switches the default Codex model to the configured OpenRouter model", async () => {
+    const result = await probeConfig({
+      openrouterApiKey: "sk-or-test",
+      openrouterModel: "anthropic/claude-3.7-sonnet",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe(
+      "anthropic/claude-3.7-sonnet"
+    );
+    expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("true");
   });
 
   it("uses the new runtime contract env vars when provided", async () => {
@@ -315,6 +336,7 @@ describe("config overrides", () => {
     expect(extractMarker(result.stdout, MARKERS.defaultClaudeEffort)).toBe("high");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexModel)).toBe("gpt-5.3-codex");
     expect(extractMarker(result.stdout, MARKERS.defaultCodexEffort)).toBe("medium");
+    expect(extractMarker(result.stdout, MARKERS.codexOpenrouterEnabled)).toBe("false");
     expect(extractMarker(result.stdout, MARKERS.mainProvider)).toBe("claude");
   });
 });

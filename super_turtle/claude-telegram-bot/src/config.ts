@@ -74,6 +74,8 @@ export const SUPER_TURTLE_DIR = process.env.SUPER_TURTLE_DIR
   || resolve(dirname(import.meta.dir), "..");
 
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || "";
+export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || "";
 export const E2B_API_KEY = process.env.E2B_API_KEY || "";
 export const SUPERTURTLE_RUNTIME_UPDATE_PACKAGE =
   process.env.SUPERTURTLE_RUNTIME_UPDATE_PACKAGE?.trim() || "superturtle";
@@ -138,6 +140,28 @@ function parseDefaultEffort<T extends string>(
   if (allowed.has(value as T)) return value as T;
   configLog.warn(`Invalid ${envKey}="${value}". Falling back to "${fallback}".`);
   return fallback;
+}
+
+function resolveDefaultCodexModel(): string {
+  if (OPENROUTER_API_KEY && OPENROUTER_MODEL) {
+    return OPENROUTER_MODEL;
+  }
+
+  if (OPENROUTER_API_KEY && !OPENROUTER_MODEL) {
+    configLog.warn(
+      "OPENROUTER_API_KEY is set but OPENROUTER_MODEL is missing. Falling back to DEFAULT_CODEX_MODEL."
+    );
+  } else if (!OPENROUTER_API_KEY && OPENROUTER_MODEL) {
+    configLog.warn(
+      "OPENROUTER_MODEL is set but OPENROUTER_API_KEY is missing. Falling back to DEFAULT_CODEX_MODEL."
+    );
+  }
+
+  return parseDefaultModel(
+    "DEFAULT_CODEX_MODEL",
+    DEFAULT_CODEX_MODEL_FALLBACK,
+    VALID_CODEX_MODELS
+  );
 }
 
 function parseOptionalBool(raw: string | undefined): boolean | null {
@@ -275,16 +299,13 @@ export const DEFAULT_CLAUDE_EFFORT = parseDefaultEffort(
   DEFAULT_CLAUDE_EFFORT_FALLBACK,
   VALID_CLAUDE_EFFORTS
 );
-export const DEFAULT_CODEX_MODEL = parseDefaultModel(
-  "DEFAULT_CODEX_MODEL",
-  DEFAULT_CODEX_MODEL_FALLBACK,
-  VALID_CODEX_MODELS
-);
+export const DEFAULT_CODEX_MODEL = resolveDefaultCodexModel();
 export const DEFAULT_CODEX_EFFORT = parseDefaultEffort(
   "DEFAULT_CODEX_EFFORT",
   DEFAULT_CODEX_EFFORT_FALLBACK,
   VALID_CODEX_EFFORTS
 );
+export const CODEX_OPENROUTER_ENABLED = !!(OPENROUTER_API_KEY && OPENROUTER_MODEL);
 const resolvedRuntimeProfile = resolveRuntimeProfile();
 export const SUPERTURTLE_RUNTIME_PROFILE: SuperTurtleRuntimeProfile =
   resolvedRuntimeProfile.profile;

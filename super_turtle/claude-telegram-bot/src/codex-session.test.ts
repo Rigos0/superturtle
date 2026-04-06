@@ -21,10 +21,14 @@ type CodexSessionModule = typeof import("./codex-session");
 const codexSessionPath = resolve(import.meta.dir, "codex-session.ts");
 const codexProbeMarker = "__CODEX_SESSION_DEFAULTS__=";
 
-async function loadCodexSessionModule(tag: string): Promise<CodexSessionModule> {
+async function loadCodexSessionModule(
+  tag: string,
+  configOverrides: Record<string, unknown> = {}
+): Promise<CodexSessionModule> {
   const mockedConfig = {
     ...actualConfig,
     TOKEN_PREFIX: TEST_TOKEN_PREFIX,
+    ...configOverrides,
   };
   mock.module("./config", () => mockedConfig);
   return import(`./codex-session.ts?test=${tag}-${Date.now()}-${Math.random()}`);
@@ -137,6 +141,18 @@ describe("CodexSession", () => {
     expect(result.exitCode).toBe(0);
     expect(result.payload?.model).toBe("gpt-5.3-codex-spark");
     expect(result.payload?.reasoningEffort).toBe("low");
+  });
+
+  it("uses the configured OpenRouter model as the default Codex model", async () => {
+    const result = await probeCodexSession({
+      OPENROUTER_API_KEY: "sk-or-test",
+      OPENROUTER_MODEL: "openai/gpt-4.1",
+      CODEX_PREFS_JSON: undefined,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.payload?.model).toBe("openai/gpt-4.1");
+    expect(result.payload?.reasoningEffort).toBe("medium");
   });
 
   it("parses Codex transcripts into conversation history and injection evidence", async () => {
@@ -466,6 +482,67 @@ describe("CodexSession", () => {
       expect(typeof server.cwd).toBe("string");
       expect(server.cwd).toBe(WORKING_DIR);
     }
+  });
+
+  it("passes OpenRouter overrides into the Codex SDK when configured", async () => {
+    const constructorCalls: Array<Record<string, unknown> | undefined> = [];
+
+    mock.module("@openai/codex-sdk", () => ({
+      Codex: class {
+        constructor(options?: Record<string, unknown>) {
+          constructorCalls.push(options);
+        }
+
+        startThread() {
+          return {
+            id: "thread-openrouter-123",
+            run: async () => ({ finalResponse: "", usage: null }),
+            runStreamed: async () => ({ events: (async function* () {})() }),
+          };
+        }
+      },
+    }));
+
+    const { CodexSession, getAvailableCodexModels } = await loadCodexSessionModule(
+      "openrouter-config",
+      {
+        OPENROUTER_API_KEY: "sk-or-test",
+        OPENROUTER_MODEL: "anthropic/claude-3.7-sonnet",
+        CODEX_OPENROUTER_ENABLED: true,
+        DEFAULT_CODEX_MODEL: "anthropic/claude-3.7-sonnet",
+      }
+    );
+    const codex = new CodexSession();
+    await codex.startNewThread();
+
+    expect(codex.model).toBe("anthropic/claude-3.7-sonnet");
+    expect(getAvailableCodexModels()[0]).toEqual({
+      value: "anthropic/claude-3.7-sonnet",
+      displayName: "anthropic/claude-3.7-sonnet",
+      description: "Configured via OpenRouter",
+    });
+
+    expect(constructorCalls).toHaveLength(1);
+    expect(constructorCalls[0]).toMatchObject({
+      codexPathOverride: expect.any(String),
+      env: expect.objectContaining({
+        OPENROUTER_API_KEY: "sk-or-test",
+        OPENAI_API_KEY: "sk-or-test",
+        CODEX_API_KEY: "sk-or-test",
+      }),
+      config: {
+        model_provider: "openrouter",
+        model_providers: {
+          openrouter: {
+            name: "openrouter",
+            base_url: "https://openrouter.ai/api/v1",
+            wire_api: "responses",
+            env_key: "OPENROUTER_API_KEY",
+          },
+        },
+        mcp_servers: expect.any(Object),
+      },
+    });
   });
 
   it("rebuilds Codex MCP config with TELEGRAM_CHAT_ID when chat scope appears after init", async () => {

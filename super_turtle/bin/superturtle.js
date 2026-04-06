@@ -1726,6 +1726,7 @@ function shouldPassEnvKey(k) {
   return (
     k.startsWith("TELEGRAM_") ||
     k.startsWith("OPENAI_") ||
+    k.startsWith("OPENROUTER_") ||
     k.startsWith("CLAUDE_") ||
     k.startsWith("CODEX_") ||
     k.startsWith("E2B_") ||
