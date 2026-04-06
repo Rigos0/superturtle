@@ -72,6 +72,7 @@ describe("connection change notifications", () => {
     const result = await drainPendingConnectionChangeNotifications({
       chatId: 4242,
       directory: tempDir,
+      now: () => Date.parse("2026-04-05T10:00:02.000Z"),
       sendMessage,
     });
 
