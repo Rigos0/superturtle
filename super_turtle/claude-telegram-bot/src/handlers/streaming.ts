@@ -1196,6 +1196,15 @@ function isBlankProgressSummary(text: string): boolean {
   return text.replace(/[\u200B-\u200D\uFEFF]/g, "").trim().length === 0;
 }
 
+function progressSummariesMatch(left: string, right: string): boolean {
+  const normalizedLeft = normalizeProgressLine(toPlainProgressText(left));
+  const normalizedRight = normalizeProgressLine(toPlainProgressText(right));
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  return normalizedLeft === normalizedRight;
+}
+
 function recordProgressSnapshot(
   state: StreamingState,
   options: { force?: boolean; terminal?: boolean } = {}
@@ -1237,6 +1246,38 @@ function recordProgressSnapshot(
 
   state.progressSnapshots.push(snapshot);
   trimProgressSnapshots(state);
+}
+
+function pruneTrailingDuplicateFinalSuccessSnapshots(
+  state: StreamingState,
+  finalSummary: string
+): void {
+  while (state.progressSnapshots.length > 0) {
+    const lastSnapshot = state.progressSnapshots[state.progressSnapshots.length - 1];
+    if (
+      !lastSnapshot ||
+      lastSnapshot.progressState !== "Writing answer" ||
+      !progressSummariesMatch(lastSnapshot.summary, finalSummary)
+    ) {
+      break;
+    }
+    state.progressSnapshots.pop();
+  }
+}
+
+function finalizeExistingProgressHistory(state: StreamingState): boolean {
+  const lastSnapshot = state.progressSnapshots[state.progressSnapshots.length - 1];
+  if (!lastSnapshot) {
+    state.progressViewerCompleted = false;
+    state.selectedProgressSnapshotIndex = null;
+    return false;
+  }
+
+  lastSnapshot.elapsedMs = Math.max(0, Date.now() - state.statusStartedAt);
+  lastSnapshot.terminal = true;
+  state.progressViewerCompleted = true;
+  state.selectedProgressSnapshotIndex = state.progressSnapshots.length - 1;
+  return true;
 }
 
 function buildProgressKeyboard(state: StreamingState): InlineKeyboard | undefined {
@@ -2004,25 +2045,40 @@ export function createStatusCallback(
           finalOutput?.progressSummary ||
           state.lastAnswerPreview ||
           DEFAULT_PROGRESS_SUMMARY.Done;
+        let retainProgressMessage = false;
 
         if (finalOutput?.kind === "final_artifact") {
           await promoteFinalSegmentNotification(ctx, state);
+          await applyProgressStateUpdate(ctx, state, "Done", {
+            summary: doneSummary,
+            toolHint: null,
+            storeSnapshot: true,
+            terminalSnapshot: true,
+          });
+          retainProgressMessage = true;
+        } else if (!finalOutput) {
+          await applyProgressStateUpdate(ctx, state, "Done", {
+            summary: doneSummary,
+            toolHint: null,
+            storeSnapshot: true,
+            terminalSnapshot: true,
+          });
+          retainProgressMessage = true;
+        } else {
+          pruneTrailingDuplicateFinalSuccessSnapshots(state, doneSummary);
+          retainProgressMessage = finalizeExistingProgressHistory(state);
+          if (retainProgressMessage) {
+            await queueRenderedProgressMessageUpdate(ctx, state);
+          }
         }
 
-        await applyProgressStateUpdate(ctx, state, "Done", {
-          summary: doneSummary,
-          toolHint: null,
-          storeSnapshot: true,
-          terminalSnapshot: true,
-        });
-
-        if (!finalOutput || finalOutput.kind !== "final_artifact") {
+        if (finalOutput?.kind !== "final_artifact") {
           await promoteFinalSegmentNotification(ctx, state);
         }
         await teardownStreamingState(ctx, state, {
           chatId,
           clearRegisteredState: true,
-          retainProgressMessage: outboundMessageKind === null,
+          retainProgressMessage: retainProgressMessage && outboundMessageKind === null,
         });
       }
     } catch (error) {
