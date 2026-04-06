@@ -60,8 +60,8 @@ Each message type has a dedicated async handler:
 
 All config via `.superturtle/.env` (created by `superturtle init`). The repo-root `.env.example` is reference material only. Key variables:
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS` (required)
-- `CLAUDE_WORKING_DIR` - Working directory for Claude
-- `ALLOWED_PATHS` - Directories Claude can access
+- `SUPER_TURTLE_PROJECT_DIR` - Project root for Codex sessions, CLAUDE.md, and skills
+- `ALLOWED_PATHS` - Directories Codex can access
 - `OPENAI_API_KEY` - For voice transcription
 
 MCP servers defined in `mcp-config.ts`.

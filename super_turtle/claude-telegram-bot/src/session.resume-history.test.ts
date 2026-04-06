@@ -3,7 +3,7 @@ import { readFileSync, rmSync, writeFileSync } from "fs";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 
 const { SESSION_FILE, WORKING_DIR } = await import("./config");
 const { appendTurnLogEntry, clearTurnLogFile } = await import("./turn-log");

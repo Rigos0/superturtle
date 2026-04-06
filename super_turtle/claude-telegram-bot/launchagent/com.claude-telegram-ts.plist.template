@@ -26,8 +26,8 @@
         <key>TELEGRAM_ALLOWED_USERS</key>
         <string>123456789</string>
 
-        <!-- Recommended: Working directory for Claude -->
-        <key>CLAUDE_WORKING_DIR</key>
+        <!-- Recommended: Project root for Codex sessions -->
+        <key>SUPER_TURTLE_PROJECT_DIR</key>
         <string>/Users/USERNAME/Dev/agentic</string>
 
         <!-- Optional: Global npm binary or source checkout launcher -->
@@ -38,7 +38,7 @@
         <key>OPENAI_API_KEY</key>
         <string>sk-...</string>
 
-        <!-- Optional: Comma-separated paths Claude can access -->
+        <!-- Optional: Comma-separated paths Codex can access -->
         <key>ALLOWED_PATHS</key>
         <string>/Users/USERNAME/Dev,/Users/USERNAME/Documents</string>
 

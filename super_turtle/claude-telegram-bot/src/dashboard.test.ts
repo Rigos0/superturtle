@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach } from
 import { join, resolve } from "path";
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 
-process.env.CLAUDE_WORKING_DIR ||= resolve(import.meta.dir, "../../..");
+process.env.SUPER_TURTLE_PROJECT_DIR ||= resolve(import.meta.dir, "../../..");
 
 const { DASHBOARD_AUTH_TOKEN, WORKING_DIR, SUPERTURTLE_DATA_DIR } = await import("./config");
 
@@ -243,13 +243,13 @@ function runSubturtleLogsRouteProbeInIsolatedProcess(): {
     const { mkdirSync, rmSync, writeFileSync } = await import("fs");
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = "123";
-    process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workspaceRoot)};
+    process.env.SUPER_TURTLE_PROJECT_DIR = ${JSON.stringify(workspaceRoot)};
     console.log = () => {};
     console.warn = () => {};
     console.error = () => {};
     const { routes } = await import("./src/dashboard.ts");
     const testTurtleName = "__test_logs_turtle__";
-    const testDir = join(process.env.CLAUDE_WORKING_DIR, ".superturtle/subturtles", testTurtleName);
+    const testDir = join(process.env.SUPER_TURTLE_PROJECT_DIR, ".superturtle/subturtles", testTurtleName);
     mkdirSync(testDir, { recursive: true });
     writeFileSync(join(testDir, "subturtle.pid"), "99999");
     writeFileSync(join(testDir, "subturtle.log"), "line1\\nline2\\nline3\\n");

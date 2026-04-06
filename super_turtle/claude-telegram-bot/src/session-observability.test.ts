@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { resolve } from "path";
 
-process.env.CLAUDE_WORKING_DIR ||= resolve(import.meta.dir, "../../..");
+process.env.SUPER_TURTLE_PROJECT_DIR ||= resolve(import.meta.dir, "../../..");
 
 const { WORKING_DIR } = await import("./config");
 
@@ -50,40 +50,40 @@ describe("session observability providers", () => {
     setExecutingDriverForTests(null);
   });
 
-  it("builds a Claude active-session snapshot from runtime state", () => {
-    session.sessionId = "claude-runtime-session";
-    session.conversationTitle = "Claude runtime title";
-    session.lastActivity = new Date("2026-03-07T18:00:00.000Z");
-    session.recentMessages = [
-      {
-        role: "user",
-        text: "hello from claude",
-        timestamp: "2026-03-07T18:00:00.000Z",
-      },
-    ];
+  it("builds a Codex active-session snapshot from runtime state", () => {
+    codexSession.getActiveSessionSnapshot = () => ({
+      session_id: "codex-runtime-session",
+      saved_at: "2026-03-07T18:00:00.000Z",
+      working_dir: WORKING_DIR,
+      title: "Codex runtime title",
+      recentMessages: [
+        {
+          role: "user",
+          text: "hello from codex",
+          timestamp: "2026-03-07T18:00:00.000Z",
+        },
+      ],
+    });
 
-    const provider = getSessionObservabilityProvider("claude");
+    const provider = getSessionObservabilityProvider("codex");
     const snapshot = provider.getActiveSessionSnapshot();
 
     expect(snapshot).not.toBeNull();
     expect(snapshot).toMatchObject({
-      session_id: "claude-runtime-session",
-      title: "Claude runtime title",
+      session_id: "codex-runtime-session",
+      title: "Codex runtime title",
       working_dir: WORKING_DIR,
     });
   });
 
-  it("builds provider-owned driver process state for Claude", () => {
-    session.activeDriver = "claude";
-    session.currentTool = "running tests";
-
-    const provider = getSessionObservabilityProvider("claude");
+  it("builds provider-owned driver process state for Codex", () => {
+    const provider = getSessionObservabilityProvider("codex");
     const state = provider.getDriverProcessState();
 
-    expect(state.processId).toBe("driver-claude");
-    expect(state.label).toBe("Claude driver");
-    expect(state.detail).toBe("running tests");
-    expect(state.extra.currentTool).toBe("running tests");
+    expect(state.processId).toBe("driver-codex");
+    expect(state.label).toBe("Codex driver");
+    expect(state.detail).toBe("idle");
+    expect(state.extra.currentTool).toBeNull();
   });
 
   it("uses the Codex active snapshot as a tracked session source", async () => {

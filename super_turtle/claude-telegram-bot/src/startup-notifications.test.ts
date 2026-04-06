@@ -22,7 +22,7 @@ async function runStartupNotificationProbe(script: string) {
     env: {
       ...process.env,
       TELEGRAM_BOT_TOKEN: "test-startup-token:abc",
-      CLAUDE_WORKING_DIR: workingDir,
+      SUPER_TURTLE_PROJECT_DIR: workingDir,
       NODE_ENV: "test",
       BUN_TEST: "1",
     },
@@ -103,12 +103,9 @@ describe("startup notifications", () => {
     });
     expect(message).toContain("Welcome, I am your turtle bot! Working in agentic.");
     expect(message).toContain("spin up SubTurtles for longer tasks");
-    expect(message).toContain("handle text, screenshots, photos, documents, and audio");
-    expect(message).toContain("help with office work like presentations, spreadsheets, documents, and reports");
-    expect(message).not.toContain("voice");
-    expect(message).toContain("Useful commands: /usage, /model, /new, /resume, /sub");
+    expect(message).toContain("handle text, voice, screenshots, photos, documents, and audio");
+    expect(message).toContain("Useful commands: /usage, /model, /new, /resume, /sub, /stop");
     expect(message).not.toContain("/switch");
-    expect(message).not.toContain("/stop");
   });
 
   it("uses a generic warm welcome when the runtime should not expose the workdir", () => {

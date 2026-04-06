@@ -5,7 +5,7 @@ import { dirname, join } from "path";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 process.env.CODEX_ENABLED ||= "true";
 process.env.CODEX_CLI_AVAILABLE_OVERRIDE ||= "true";
 

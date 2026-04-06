@@ -178,7 +178,7 @@ function runTraceProbe(): {
       ...process.env,
       TELEGRAM_BOT_TOKEN: token,
       TELEGRAM_ALLOWED_USERS: "123",
-      CLAUDE_WORKING_DIR: projectRoot,
+      SUPER_TURTLE_PROJECT_DIR: projectRoot,
       CODEX_ENABLED: "true",
       CODEX_CLI_AVAILABLE_OVERRIDE: "true",
     },

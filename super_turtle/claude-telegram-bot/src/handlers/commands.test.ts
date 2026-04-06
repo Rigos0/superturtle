@@ -7,7 +7,7 @@ import { getAvailableModels, session } from "../session";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 process.env.CODEX_ENABLED = "false";
 
 const { ALLOWED_USERS } = await import("../config");
@@ -158,7 +158,7 @@ function runSwitchNoArgInIsolatedProcess(codexEnabled: boolean): ReplyRecord[] {
   const script = `
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = "123";
-    process.env.CLAUDE_WORKING_DIR = process.cwd();
+    process.env.SUPER_TURTLE_PROJECT_DIR = process.cwd();
     process.env.CODEX_ENABLED = ${JSON.stringify(codexEnabled ? "true" : "false")};
     process.env.CODEX_CLI_AVAILABLE_OVERRIDE = ${JSON.stringify(codexEnabled ? "true" : "false")};
     console.log = () => {};
@@ -229,7 +229,7 @@ function runHandleStatusProbeInIsolatedProcess(): HandleStatusProbePayload {
   const script = `
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = "123";
-    process.env.CLAUDE_WORKING_DIR = process.cwd();
+    process.env.SUPER_TURTLE_PROJECT_DIR = process.cwd();
     process.env.CODEX_ENABLED = "false";
     process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
     console.log = () => {};
@@ -310,7 +310,7 @@ function runModelPickerProbeInIsolatedProcess(opts: {
     rmSync("/tmp/codex-telegram-test-token-prefs.json", { force: true });
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = "123";
-    process.env.CLAUDE_WORKING_DIR = process.cwd();
+    process.env.SUPER_TURTLE_PROJECT_DIR = process.cwd();
     process.env.CODEX_ENABLED = "true";
     process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "true";
     ${opts.defaultClaudeEffort ? `process.env.DEFAULT_CLAUDE_EFFORT = ${JSON.stringify(opts.defaultClaudeEffort)};` : ""}
@@ -355,7 +355,7 @@ function runSwitchCommandProbeInIsolatedProcess(opts: {
   const script = `
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = "123";
-    process.env.CLAUDE_WORKING_DIR = process.cwd();
+    process.env.SUPER_TURTLE_PROJECT_DIR = process.cwd();
     process.env.CODEX_ENABLED = ${JSON.stringify(opts.codexEnabled ? "true" : "false")};
     process.env.CODEX_CLI_AVAILABLE_OVERRIDE = ${JSON.stringify(
       opts.codexCliAvailable === undefined
@@ -493,7 +493,7 @@ function runSwitchAuthProbeInIsolatedProcess(opts: {
   const script = `
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = ${JSON.stringify(opts.allowedUsers.join(","))};
-    process.env.CLAUDE_WORKING_DIR = process.cwd();
+    process.env.SUPER_TURTLE_PROJECT_DIR = process.cwd();
     process.env.CODEX_ENABLED = "false";
     console.log = () => {};
     console.warn = () => {};
@@ -575,7 +575,7 @@ function runResumeProbeInIsolatedProcess(opts: {
   const script = `
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_ALLOWED_USERS = "123";
-    process.env.CLAUDE_WORKING_DIR = process.cwd();
+    process.env.SUPER_TURTLE_PROJECT_DIR = process.cwd();
     process.env.CODEX_ENABLED = "true";
     process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "true";
     console.log = () => {};
@@ -810,7 +810,7 @@ describe("parseCtlListOutput", () => {
   it("parses real running variants for no-timeout and overdue subturtles", () => {
     const output = [
       "  infra-watch     running  yolo-codex-spark (PID 456) no timeout    Investigate flaky CI",
-      "  migration       running  slow         (PID 7890) OVERDUE      Finish data migration",
+      "  migration       running  yolo-codex      (PID 7890) OVERDUE      Finish data migration",
     ].join("\n");
 
     const turtles = parseCtlListOutput(output);
@@ -828,7 +828,7 @@ describe("parseCtlListOutput", () => {
       {
         name: "migration",
         status: "running",
-        type: "slow",
+        type: "yolo-codex",
         pid: "7890",
         timeRemaining: "OVERDUE",
         task: "Finish data migration",
@@ -1032,10 +1032,10 @@ describe("handlers with mock Context", () => {
     expect(replies[0]!.text).toContain("🔁 <code>SubTurtle worker-a (silent)</code>");
   });
 
-  it("handleModel replies with inline keyboard model options for Claude", async () => {
-    session.activeDriver = "claude";
-    session.model = getAvailableModels()[0]!.value;
-    session.effort = "high";
+  it("handleModel replies with inline keyboard model options for Codex", async () => {
+    session.activeDriver = "codex";
+    codexSession.model = "gpt-5.3-codex";
+    codexSession.reasoningEffort = "high";
 
     const { ctx, replies } = mockContext("/model");
     await handleModel(ctx as any);
@@ -1043,31 +1043,20 @@ describe("handlers with mock Context", () => {
     expect(replies).toHaveLength(1);
     const reply = replies[0]!;
     expect(reply.extra?.parse_mode).toBe("HTML");
-    expect(reply.text).toContain("<b>Model:</b>");
-    expect(reply.text).toContain("Select driver, model, or effort level:");
+    expect(reply.text).toContain("<b>Codex Model:</b>");
+    expect(reply.text).toContain("Select model or reasoning effort:");
 
     const keyboard = getInlineKeyboard(reply);
     expect(keyboard.length).toBeGreaterThan(1);
 
     const callbackData = keyboard.flat().map((button) => button.callback_data || "");
-    for (const model of getAvailableModels()) {
-      expect(callbackData).toContain(`model:${model.value}`);
-    }
-    expect(callbackData).toContain("effort:low");
-    expect(callbackData).toContain("effort:medium");
-    expect(callbackData).toContain("effort:high");
+    expect(callbackData.some((value) => value.startsWith("codex_model:"))).toBe(true);
+    expect(callbackData).toContain("codex_effort:low");
+    expect(callbackData).toContain("codex_effort:medium");
+    expect(callbackData).toContain("codex_effort:high");
   });
 
-  it("handleModel shows configured default effort labels for Claude and Codex", () => {
-    const claudeResult = runModelPickerProbeInIsolatedProcess({
-      activeDriver: "claude",
-      defaultClaudeEffort: "medium",
-    });
-    expect(claudeResult.replies[0]?.text).toContain("<b>Effort:</b> Medium (default)");
-
-    const claudeButtons = getInlineKeyboard(claudeResult.replies[0]!);
-    expect(claudeButtons.flat().some((button) => button.text?.includes("Medium (default)"))).toBe(true);
-
+  it("handleModel shows configured default effort labels for Codex", () => {
     const codexResult = runModelPickerProbeInIsolatedProcess({
       activeDriver: "codex",
       defaultCodexEffort: "low",
@@ -1118,9 +1107,7 @@ describe("handlers with mock Context", () => {
     const callbackData = keyboard.flat().map((button) => button.callback_data || "");
     expect(callbackData).toEqual([
       "codex_resume:codex-newest",
-      "resume:claude-new",
       "codex_resume:codex-mid",
-      "resume:claude-old",
     ]);
   }, 20_000);
 
@@ -1157,7 +1144,6 @@ describe("handlers with mock Context", () => {
     const keyboard = getInlineKeyboard(result.replies[0]!);
     const callbackData = keyboard.flat().map((button) => button.callback_data || "");
     expect(callbackData).toContain("resume_current");
-    expect(callbackData).toContain("resume:claude-current");
     expect(callbackData).toContain("codex_resume:codex-older");
     expect(callbackData).not.toContain("codex_resume:codex-current");
   }, 20_000);
@@ -1180,48 +1166,28 @@ describe("handlers with mock Context", () => {
     ]);
   });
 
-  it("handleModel shows driver row with Codex unavailable when Codex is disabled", () => {
+  it("handleModel returns a Codex unavailable message when Codex is disabled", () => {
     const replies = runSwitchNoArgInIsolatedProcess(false);
     expect(replies).toHaveLength(1);
     const reply = replies[0]!;
-    expect(reply.extra?.parse_mode).toBe("HTML");
-    expect(reply.text).toContain("<b>Driver:</b>");
-
-    const callbackData = getInlineKeyboard(reply).flat().map((button) => button.callback_data || "");
-    expect(callbackData).toContain("switch:claude");
-    expect(callbackData).toContain("switch:codex_unavailable");
+    expect(reply.text).toContain("Codex");
+    expect(reply.extra?.reply_markup).toBeUndefined();
   }, 20_000);
 
-  it("handleModel shows driver row with Codex button when Codex is available", () => {
+  it("handleModel shows the Codex picker when Codex is available", () => {
     const replies = runSwitchNoArgInIsolatedProcess(true);
 
     expect(replies).toHaveLength(1);
     const reply = replies[0]!;
     expect(reply.extra?.parse_mode).toBe("HTML");
-    expect(reply.text).toContain("<b>Driver:</b>");
+    expect(reply.text).toContain("<b>Codex Model:</b>");
 
     const callbackData = getInlineKeyboard(reply).flat().map((button) => button.callback_data || "");
-    expect(callbackData).toContain("switch:claude");
-    expect(callbackData).toContain("switch:codex");
-    expect(callbackData).not.toContain("switch:codex_unavailable");
+    expect(callbackData.some((value) => value.startsWith("codex_model:"))).toBe(true);
+    expect(callbackData).toContain("codex_effort:medium");
   }, 20_000);
 
-  it("handleModel /model codex returns unavailable message when Codex is disabled", () => {
-    const result = runSwitchCommandProbeInIsolatedProcess({
-      command: "/model codex",
-      codexEnabled: false,
-      codexCliAvailable: false,
-    });
-
-    expect(result.activeDriver).toBe("claude");
-    expect(result.startNewThreadCalls).toBe(0);
-    expect(result.sessionKillCalls).toBe(0);
-    expect(result.codexKillCalls).toBe(0);
-    expect(result.replies).toHaveLength(1);
-    expect(result.replies[0]!.text).toContain("Codex is disabled in config");
-  }, 20_000);
-
-  it("handleModel /model codex switches driver and resets sessions when Codex is available", () => {
+  it("handleModel rejects legacy driver arguments with a codex-only hint", () => {
     const result = runSwitchCommandProbeInIsolatedProcess({
       command: "/model codex",
       codexEnabled: true,
@@ -1229,43 +1195,11 @@ describe("handlers with mock Context", () => {
     });
 
     expect(result.activeDriver).toBe("codex");
-    expect(result.startNewThreadCalls).toBe(1);
-    expect(result.sessionKillCalls).toBe(1);
-    expect(result.codexKillCalls).toBe(1);
-    expect(result.replies).toHaveLength(1);
-    expect(result.replies[0]!.extra?.parse_mode).toBe("HTML");
-  }, 20_000);
-
-  it("handleModel /model codex reports failure when Codex thread start fails", () => {
-    const result = runSwitchCommandProbeInIsolatedProcess({
-      command: "/model codex",
-      codexEnabled: true,
-      codexCliAvailable: true,
-      forceStartThreadFailure: true,
-    });
-
-    expect(result.activeDriver).toBe("claude");
-    expect(result.startNewThreadCalls).toBe(1);
-    expect(result.sessionKillCalls).toBe(1);
-    expect(result.codexKillCalls).toBe(1);
-    expect(result.replies).toHaveLength(1);
-    expect(result.replies[0]!.text).toContain("Failed to switch to Codex");
-    expect(result.replies[0]!.text).toContain("forced start failure for test");
-  }, 20_000);
-
-  it("handleModel rejects unknown driver arguments", () => {
-    const result = runSwitchCommandProbeInIsolatedProcess({
-      command: "/model codxe",
-      codexEnabled: true,
-      codexCliAvailable: true,
-    });
-
-    expect(result.activeDriver).toBe("claude");
     expect(result.startNewThreadCalls).toBe(0);
     expect(result.sessionKillCalls).toBe(0);
     expect(result.codexKillCalls).toBe(0);
     expect(result.replies).toHaveLength(1);
-    expect(result.replies[0]!.text).toContain("Unknown driver: codxe");
+    expect(result.replies[0]!.text).toContain("codex-only");
   }, 20_000);
 
   it("handleSwitch keeps the legacy redirect behind authorization", () => {

@@ -46,17 +46,7 @@ echo "unexpected tmux args: $*" >&2
 exit 1
 EOF
 
-cat > "${STUB_DIR}/claude" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "--version" ]]; then
-  echo "claude 1.0.0"
-  exit 0
-fi
-exit 0
-EOF
-
-chmod +x "${STUB_DIR}/bun" "${STUB_DIR}/tmux" "${STUB_DIR}/claude"
+chmod +x "${STUB_DIR}/bun" "${STUB_DIR}/tmux"
 
 SUBDIR_OUTPUT="$(
   cd "${SUBDIR}"
@@ -73,8 +63,8 @@ if [[ -e "${SUBDIR}/.superturtle" ]]; then
   exit 1
 fi
 
-if ! grep -q "^CLAUDE_WORKING_DIR=${ROOT_REPO}$" "${ROOT_REPO}/.superturtle/.env"; then
-  echo "Expected CLAUDE_WORKING_DIR to point at the repo root." >&2
+if ! grep -q "^SUPER_TURTLE_PROJECT_DIR=${ROOT_REPO}$" "${ROOT_REPO}/.superturtle/.env"; then
+  echo "Expected SUPER_TURTLE_PROJECT_DIR to point at the repo root." >&2
   exit 1
 fi
 

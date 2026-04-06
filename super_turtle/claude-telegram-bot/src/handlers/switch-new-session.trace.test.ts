@@ -11,9 +11,7 @@ type TraceSnapshot = {
 
 type TracePayload = {
   commandSwitchToCodex: TraceSnapshot;
-  callbackSwitchToClaude: TraceSnapshot;
   commandNew: TraceSnapshot;
-  streamSwitchToCodex: TraceSnapshot;
   streamNewSession: TraceSnapshot;
 };
 
@@ -38,7 +36,7 @@ async function runTraceProbe(): Promise<TraceResult> {
     ...process.env,
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
-    CLAUDE_WORKING_DIR: process.cwd(),
+    SUPER_TURTLE_PROJECT_DIR: process.cwd(),
     CODEX_ENABLED: "true",
     CODEX_CLI_AVAILABLE_OVERRIDE: "true",
     HOME: process.env.HOME || "/tmp",
@@ -59,7 +57,6 @@ async function runTraceProbe(): Promise<TraceResult> {
     mkdirSync(ipcDir, { recursive: true });
 
     const { handleNew, performDriverSwitch } = await import(commandsPath);
-    const { handleCallback } = await import(callbackPath);
     const { checkPendingBotControlRequests } = await import(streamingPath);
     const { session } = await import(sessionPath);
     const { codexSession } = await import(codexPath);
@@ -131,7 +128,6 @@ async function runTraceProbe(): Promise<TraceResult> {
       },
     });
 
-    const switchRequestFile = \`\${ipcDir}/bot-control-trace-switch.json\`;
     const newRequestFile = \`\${ipcDir}/bot-control-trace-new.json\`;
 
     const originalSendMessage = bot.api.sendMessage;
@@ -172,35 +168,11 @@ async function runTraceProbe(): Promise<TraceResult> {
       await performDriverSwitch("codex");
       const commandSwitchToCodex = snapshot();
 
-      setActiveSessions("claude-callback-switch", "codex-callback-switch");
-      session.activeDriver = "codex";
-      events.length = 0;
-      await handleCallback(mkCtx(undefined, "switch:claude"));
-      const callbackSwitchToClaude = snapshot();
-
       setActiveSessions("claude-command-new", "codex-command-new");
       session.activeDriver = "claude";
       events.length = 0;
       await handleNew(mkCtx("/new"));
       const commandNew = snapshot();
-
-      setActiveSessions("claude-stream-switch", "codex-stream-switch");
-      session.activeDriver = "claude";
-      await Bun.write(
-        switchRequestFile,
-        JSON.stringify({
-          request_id: "trace-switch",
-          action: "switch_driver",
-          params: { driver: "codex" },
-          status: "pending",
-          chat_id: "123",
-          created_at: new Date().toISOString(),
-        })
-      );
-      events.length = 0;
-      await checkPendingBotControlRequests(session, 123);
-      const streamSwitchResult = JSON.parse(await Bun.file(switchRequestFile).text()).result;
-      const streamSwitchToCodex = snapshot(streamSwitchResult);
 
       setActiveSessions("claude-stream-new", "codex-stream-new");
       session.activeDriver = "codex";
@@ -224,9 +196,7 @@ async function runTraceProbe(): Promise<TraceResult> {
         marker +
           JSON.stringify({
             commandSwitchToCodex,
-            callbackSwitchToClaude,
             commandNew,
-            streamSwitchToCodex,
             streamNewSession,
           })
       );
@@ -237,7 +207,6 @@ async function runTraceProbe(): Promise<TraceResult> {
       codexSession.stop = originalCodexStop;
       codexSession.kill = originalCodexKill;
       codexSession.startNewThread = originalStartNewThread;
-      rmSync(switchRequestFile, { force: true });
       rmSync(newRequestFile, { force: true });
     }
   `;
@@ -279,34 +248,20 @@ describe("switch/new-session trace", () => {
     expect(result.payload?.commandSwitchToCodex.events).toEqual([
       "claude.kill",
       "codex.kill",
+      "codex.kill",
       "codex.startNewThread",
     ]);
     expect(result.payload?.commandSwitchToCodex.activeDriver).toBe("codex");
-    expect(result.payload?.commandSwitchToCodex.claudeSessionId).toBeNull();
+    expect(result.payload?.commandSwitchToCodex.claudeSessionId).toBe("trace-codex-new");
     expect(result.payload?.commandSwitchToCodex.codexThreadId).toBe("trace-codex-new");
-
-    expect(result.payload?.callbackSwitchToClaude.events).toEqual([
-      "claude.kill",
-      "codex.kill",
-    ]);
-    expect(result.payload?.callbackSwitchToClaude.activeDriver).toBe("claude");
-    expect(result.payload?.callbackSwitchToClaude.claudeSessionId).toBeNull();
-    expect(result.payload?.callbackSwitchToClaude.codexThreadId).toBeNull();
 
     expect(result.payload?.commandNew.events).toEqual([
       "claude.kill",
       "codex.kill",
+      "codex.kill",
     ]);
     expect(result.payload?.commandNew.claudeSessionId).toBeNull();
     expect(result.payload?.commandNew.codexThreadId).toBeNull();
-
-    expect(result.payload?.streamSwitchToCodex.events).toEqual([
-      "claude.kill",
-      "codex.kill",
-      "codex.startNewThread",
-    ]);
-    expect(result.payload?.streamSwitchToCodex.activeDriver).toBe("codex");
-    expect(result.payload?.streamSwitchToCodex.result).toBe("Switched to Codex");
 
     expect(result.payload?.streamNewSession.events).toEqual([
       "codex.stop",

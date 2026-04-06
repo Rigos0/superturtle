@@ -5,7 +5,7 @@ import { join, resolve } from "path";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 process.env.CODEX_ENABLED ||= "true";
 process.env.CODEX_CLI_AVAILABLE_OVERRIDE ||= "true";
 
@@ -43,7 +43,7 @@ async function probeCodexSession(envOverrides: Record<string, string | undefined
     ...process.env,
     TELEGRAM_BOT_TOKEN: probeTelegramToken,
     TELEGRAM_ALLOWED_USERS: "123",
-    CLAUDE_WORKING_DIR: process.cwd(),
+    SUPER_TURTLE_PROJECT_DIR: process.cwd(),
     CODEX_ENABLED: "true",
     CODEX_CLI_AVAILABLE_OVERRIDE: "true",
   };

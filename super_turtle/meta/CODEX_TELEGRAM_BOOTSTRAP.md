@@ -74,7 +74,7 @@ Both roadmap sections need at least 1 `- ` bullet item each.
 ```bash
 ctl spawn <name> --type <TYPE> --timeout <DURATION> --state-file <PATH|->
 ```
-- Types: `slow`, `yolo`, `yolo-codex`, `yolo-codex-spark`
+- Types: `yolo-codex`, `yolo-codex-spark`
 - yolo-codex types require codex_available=true
 - Timeout format: `30m`, `2h`, `1d`
 - --state-file can be a path or `-` to read from stdin

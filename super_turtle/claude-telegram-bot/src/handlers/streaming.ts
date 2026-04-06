@@ -1,7 +1,7 @@
 /**
- * Shared streaming callback for Claude Telegram Bot handlers.
+ * Shared streaming callback for Telegram bot handlers.
  *
- * Provides a reusable status callback for streaming Claude responses.
+ * Provides a reusable status callback for streamed model responses.
  */
 
 import type { Context } from "grammy";
@@ -828,34 +828,6 @@ async function executeBotControlAction(
         const displayName = currentModel?.displayName || (sessionObj as ClaudeSession).model;
         return `Model: ${displayName}, effort: ${(sessionObj as ClaudeSession).effort}`;
       }
-    }
-
-    case "switch_driver": {
-      const { buildSessionOverviewLines, resetAllDriverSessions } = await import("./commands");
-      const driver = params.driver?.toLowerCase();
-      if (driver !== "codex") {
-        return "Claude Code driver support has been removed in this branch.";
-      }
-
-      if (!CODEX_AVAILABLE) {
-        return `Cannot switch to Codex: ${codexUnavailableBotControlMessage()}`;
-      }
-
-      await resetAllDriverSessions({ stopRunning: true });
-      await codexSession.startNewThread();
-      session.activeDriver = "codex";
-      if (chatId) {
-        try {
-          const lines = await buildSessionOverviewLines("Switched to Codex 🟢");
-          await bot.api.sendMessage(chatId, lines.join("\n"), { parse_mode: "HTML" });
-        } catch (err) {
-          streamLog.warn(
-            { err, action: "switch_driver", driver: "codex", chatId },
-            "Failed to send switch overview"
-          );
-        }
-      }
-      return "Switched to Codex";
     }
 
     case "new_session": {

@@ -5,7 +5,7 @@ import { join, resolve } from "path";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 
 const { getTelegramCommandsForRuntime, parseExactSelfUpdateSpec, parseSelfUpdateRequest } =
   await import("./commands");
@@ -57,14 +57,14 @@ describe("/update handoff", () => {
 
       process.env.TELEGRAM_BOT_TOKEN = "test-token";
       process.env.TELEGRAM_ALLOWED_USERS = "123";
-      process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
+      process.env.SUPER_TURTLE_PROJECT_DIR = ${JSON.stringify(workdir)};
       process.env.SUPERTURTLE_RUNTIME_PROFILE = "managed";
       process.env.SUPERTURTLE_DRIVER = "codex";
       process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "test";
       process.env.CODEX_ENABLED = "false";
       process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
 
-      const dataDir = join(process.env.CLAUDE_WORKING_DIR, ".superturtle");
+      const dataDir = join(process.env.SUPER_TURTLE_PROJECT_DIR, ".superturtle");
       mkdirSync(dataDir, { recursive: true });
       writeFileSync(join(dataDir, "service.pid"), "4242\\n", "utf-8");
 
@@ -136,7 +136,7 @@ describe("/update handoff", () => {
         ...process.env,
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_ALLOWED_USERS: "123",
-        CLAUDE_WORKING_DIR: workdir,
+        SUPER_TURTLE_PROJECT_DIR: workdir,
         SUPERTURTLE_RUNTIME_PROFILE: "managed",
         SUPERTURTLE_DRIVER: "codex",
         CODEX_ENABLED: "false",
@@ -205,14 +205,14 @@ describe("/update handoff", () => {
 
       process.env.TELEGRAM_BOT_TOKEN = "test-token";
       process.env.TELEGRAM_ALLOWED_USERS = "123";
-      process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
+      process.env.SUPER_TURTLE_PROJECT_DIR = ${JSON.stringify(workdir)};
       process.env.SUPERTURTLE_RUNTIME_PROFILE = "managed";
       process.env.SUPERTURTLE_DRIVER = "codex";
       process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "test";
       process.env.CODEX_ENABLED = "false";
       process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
 
-      const dataDir = join(process.env.CLAUDE_WORKING_DIR, ".superturtle");
+      const dataDir = join(process.env.SUPER_TURTLE_PROJECT_DIR, ".superturtle");
       mkdirSync(dataDir, { recursive: true });
 
       let spawnCmd = [];
@@ -294,7 +294,7 @@ describe("/update handoff", () => {
         ...process.env,
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_ALLOWED_USERS: "123",
-        CLAUDE_WORKING_DIR: workdir,
+        SUPER_TURTLE_PROJECT_DIR: workdir,
         SUPERTURTLE_RUNTIME_PROFILE: "managed",
         SUPERTURTLE_DRIVER: "codex",
         CODEX_ENABLED: "false",
@@ -347,14 +347,14 @@ describe("/update handoff", () => {
 
       process.env.TELEGRAM_BOT_TOKEN = "test-token";
       process.env.TELEGRAM_ALLOWED_USERS = "123";
-      process.env.CLAUDE_WORKING_DIR = ${JSON.stringify(workdir)};
+      process.env.SUPER_TURTLE_PROJECT_DIR = ${JSON.stringify(workdir)};
       process.env.SUPERTURTLE_RUNTIME_PROFILE = "managed";
       process.env.SUPERTURTLE_DRIVER = "codex";
       process.env.SUPERTURTLE_RUNTIME_UPDATE_DIST_TAG = "test";
       process.env.CODEX_ENABLED = "false";
       process.env.CODEX_CLI_AVAILABLE_OVERRIDE = "false";
 
-      const dataDir = join(process.env.CLAUDE_WORKING_DIR, ".superturtle");
+      const dataDir = join(process.env.SUPER_TURTLE_PROJECT_DIR, ".superturtle");
       mkdirSync(dataDir, { recursive: true });
       writeFileSync(join(dataDir, "service.pid"), "924\\n", "utf-8");
 
@@ -446,7 +446,7 @@ describe("/update handoff", () => {
         ...process.env,
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_ALLOWED_USERS: "123",
-        CLAUDE_WORKING_DIR: workdir,
+        SUPER_TURTLE_PROJECT_DIR: workdir,
         SUPERTURTLE_RUNTIME_PROFILE: "managed",
         SUPERTURTLE_DRIVER: "codex",
         CODEX_ENABLED: "false",

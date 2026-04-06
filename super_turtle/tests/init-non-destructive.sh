@@ -42,17 +42,7 @@ echo "unexpected tmux args: $*" >&2
 exit 1
 EOF
 
-cat > "${STUB_DIR}/claude" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "--version" ]]; then
-  echo "claude 1.0.0"
-  exit 0
-fi
-exit 0
-EOF
-
-chmod +x "${STUB_DIR}/bun" "${STUB_DIR}/tmux" "${STUB_DIR}/claude"
+chmod +x "${STUB_DIR}/bun" "${STUB_DIR}/tmux"
 
 cat > "${PROJECT_DIR}/CLAUDE.md" <<'EOF'
 USER CLAUDE FILE
@@ -121,12 +111,11 @@ if grep -q '^TELEGRAM_ALLOWED_USERS=' "${PROJECT_DIR}/.superturtle/.env"; then
   exit 1
 fi
 
-if ! grep -q "^CLAUDE_WORKING_DIR=${PROJECT_DIR}$" "${PROJECT_DIR}/.superturtle/.env"; then
-  echo "Expected CLAUDE_WORKING_DIR to point at the repo root." >&2
+if ! grep -q "^SUPER_TURTLE_PROJECT_DIR=${PROJECT_DIR}$" "${PROJECT_DIR}/.superturtle/.env"; then
+  echo "Expected SUPER_TURTLE_PROJECT_DIR to point at the repo root." >&2
   exit 1
 fi
 
-<<<<<<< HEAD
 if [[ ! -f "${PROJECT_DIR}/.superturtle/telegram-owner.json" ]]; then
   echo "Expected .superturtle/telegram-owner.json to be created when --user is provided." >&2
   exit 1

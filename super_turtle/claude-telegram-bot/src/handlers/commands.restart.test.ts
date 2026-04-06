@@ -31,7 +31,7 @@ async function probeRestart(): Promise<RestartProbeResult> {
     ...process.env,
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
-    CLAUDE_WORKING_DIR: process.cwd(),
+    SUPER_TURTLE_PROJECT_DIR: process.cwd(),
     SUPERTURTLE_RUN_LOOP: "0",
   };
 

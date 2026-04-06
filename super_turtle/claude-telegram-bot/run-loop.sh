@@ -7,15 +7,18 @@ set -uo pipefail
 
 cd "$(dirname "$0")"
 
+PROJECT_DIR="${SUPER_TURTLE_PROJECT_DIR:-$(cd ../.. && pwd)}"
+export SUPER_TURTLE_PROJECT_DIR="$PROJECT_DIR"
+
 reload_env() {
     # Re-source the project env before every bot start so /restart picks up
     # connector/runtime changes written after the run-loop shell first booted.
-    if [ -n "${CLAUDE_WORKING_DIR:-}" ] && [ -f "${CLAUDE_WORKING_DIR}/.superturtle/.env" ]; then
+    if [ -f "${PROJECT_DIR}/.superturtle/.env" ]; then
         set -a
-        source "${CLAUDE_WORKING_DIR}/.superturtle/.env"
+        source "${PROJECT_DIR}/.superturtle/.env"
         set +a
     elif [ -f .env ]; then
-        echo "[run-loop] WARNING: Using legacy .env in bot dir. Move it to \${CLAUDE_WORKING_DIR}/.superturtle/.env"
+        echo "[run-loop] WARNING: Using legacy .env in bot dir. Move it to \${PROJECT_DIR}/.superturtle/.env"
         set -a
         source .env
         set +a

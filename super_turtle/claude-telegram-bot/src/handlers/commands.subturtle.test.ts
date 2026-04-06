@@ -8,7 +8,7 @@ process.env.TELEGRAM_ALLOWED_USERS ||= "123";
 
 type CommandsModule = typeof import("./commands");
 
-const originalWorkingDirEnv = process.env.CLAUDE_WORKING_DIR;
+const originalWorkingDirEnv = process.env.SUPER_TURTLE_PROJECT_DIR;
 let workingDir = originalWorkingDirEnv || process.cwd();
 const authorizedUserId = Number(
   (process.env.TELEGRAM_ALLOWED_USERS || "123").split(",")[0]?.trim() || "123"
@@ -42,7 +42,7 @@ async function syncLiveSubturtleBoardForTest(api: any, chatId: number, options?:
 
 beforeEach(async () => {
   workingDir = makeTempWorkingDir();
-  process.env.CLAUDE_WORKING_DIR = workingDir;
+  process.env.SUPER_TURTLE_PROJECT_DIR = workingDir;
   const actualConfig = await loadActualConfig();
   mock.module("../config", () => ({
     ...actualConfig,
@@ -61,9 +61,9 @@ afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
   if (typeof originalWorkingDirEnv === "string") {
-    process.env.CLAUDE_WORKING_DIR = originalWorkingDirEnv;
+    process.env.SUPER_TURTLE_PROJECT_DIR = originalWorkingDirEnv;
   } else {
-    delete process.env.CLAUDE_WORKING_DIR;
+    delete process.env.SUPER_TURTLE_PROJECT_DIR;
   }
 });
 

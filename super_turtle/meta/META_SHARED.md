@@ -158,15 +158,14 @@ SubTurtles signal completion by appending `## Loop Control` + `STOP` to their CL
 {{CTL_PATH}} list                # all SubTurtles + status
 ```
 
-Types: `slow`, `yolo`, `yolo-codex`, `yolo-codex-spark`. Timeouts: `30m`, `1h`, `2h`, `4h`.
+Types: `yolo-codex`, `yolo-codex-spark`. Timeouts: `30m`, `1h`, `2h`, `4h`.
 
 ## Bot controls
 
 Use `bot_control` MCP tool naturally — don't mention the tool name.
 
 - `usage` — show quota
-- `switch_model` — model: `claude-opus-4-6` / `claude-sonnet-4-6` / `claude-haiku-4-5-20251001`, effort: `low` / `medium` / `high`
-- `switch_driver` — `claude` / `codex`
+- `switch_model` — model: use the current Codex runtime identifier, effort: `minimal` / `low` / `medium` / `high` / `xhigh`
 - `new_session` — warn about context loss first
 - `list_sessions` / `resume_session` — use short ID prefixes from `list_sessions`
 - `restart` — restart bot process

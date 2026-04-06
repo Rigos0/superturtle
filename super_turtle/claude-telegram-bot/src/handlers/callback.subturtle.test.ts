@@ -4,11 +4,11 @@ import { join } from "path";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 
 type CallbackModule = typeof import("./callback");
 
-const workingDir = process.env.CLAUDE_WORKING_DIR || process.cwd();
+const workingDir = process.env.SUPER_TURTLE_PROJECT_DIR || process.cwd();
 const subturtlesDir = join(workingDir, ".superturtle", "subturtles");
 const subturtleBoardsDir = join(
   workingDir,

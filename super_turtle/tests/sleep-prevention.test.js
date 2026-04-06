@@ -12,7 +12,7 @@ const { __test__ } = require("../bin/superturtle.js");
   });
 
   assert.strictEqual(darwinCommand.keepAwakeCommand, "caffeinate -s");
-  assert.match(darwinCommand.serviceCommand, /export CLAUDE_WORKING_DIR="\/tmp\/project"/);
+  assert.match(darwinCommand.serviceCommand, /export SUPER_TURTLE_PROJECT_DIR="\/tmp\/project"/);
   assert.match(darwinCommand.serviceCommand, /export SUPERTURTLE_RESTART_ON_CRASH="1"/);
   assert.match(
     darwinCommand.serviceCommand,

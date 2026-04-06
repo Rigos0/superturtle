@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Bot Control MCP Server — lets Claude trigger bot-level actions.
+ * Bot Control MCP Server — lets an MCP client trigger bot-level actions.
  *
  * Actions: usage, switch_model, new_session, list_sessions, resume_session.
  *
@@ -8,7 +8,7 @@
  *   1. Writes request to /tmp/bot-control-{uuid}.json  (status: "pending")
  *   2. Bot's streaming handler picks it up, executes, writes result back (status: "completed")
  *   3. This server polls the file until the result appears (100ms intervals, 10s timeout)
- *   4. Returns result text to Claude
+ *   4. Returns result text to the MCP client
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -28,7 +28,6 @@ const IPC_DIR = process.env.SUPERTURTLE_IPC_DIR || "/tmp";
 const VALID_ACTIONS = [
   "usage",
   "switch_model",
-  "switch_driver",
   "new_session",
   "list_sessions",
   "resume_session",
@@ -64,11 +63,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description: [
         "Control the Telegram bot: check usage, switch model, manage sessions.",
         "Available actions:",
-        '  "usage"          — fetch Claude subscription usage (rate-limit bars)',
+        '  "usage"          — fetch current Codex usage/quota details',
         '  "switch_model"   — change model and/or effort level. params: { model?: string, effort?: string }',
-        '                     models: "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"',
-        '                     effort: "low", "medium", "high"',
-        '  "switch_driver"  — switch active driver. params: { driver: "claude" | "codex" }',
+        '                     model uses the current Codex runtime model identifier',
+        '                     effort: "minimal", "low", "medium", "high", "xhigh"',
         '  "new_session"    — kill current session, start fresh',
         '  "list_sessions"  — list saved sessions (id, title, date)',
         '  "resume_session" — resume a past session. params: { session_id: string }',
@@ -89,8 +87,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Optional parameters for the action",
             properties: {
               model: { type: "string", description: "Model identifier for switch_model" },
-              effort: { type: "string", description: "Effort level for switch_model (low/medium/high)" },
-              driver: { type: "string", description: "Driver for switch_driver (claude/codex)" },
+              effort: {
+                type: "string",
+                description: "Effort level for switch_model (minimal/low/medium/high/xhigh)",
+              },
               session_id: { type: "string", description: "Session ID for resume_session" },
               target: { type: "string", description: "Runtime update target for update_runtime" },
             },
@@ -196,7 +196,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           module: {
             type: "string",
-            description: "Optional module filter (e.g., claude, streaming, bot).",
+            description: "Optional module filter (e.g., codex, streaming, bot).",
           },
         },
       },

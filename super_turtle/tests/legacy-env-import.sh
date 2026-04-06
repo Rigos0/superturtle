@@ -49,23 +49,13 @@ echo "unexpected tmux args: $*" >&2
 exit 1
 EOF
 
-cat > "${STUB_DIR}/claude" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "--version" ]]; then
-  echo "claude 1.0.0"
-  exit 0
-fi
-exit 0
-EOF
-
-chmod +x "${STUB_DIR}/bun" "${STUB_DIR}/tmux" "${STUB_DIR}/claude"
+chmod +x "${STUB_DIR}/bun" "${STUB_DIR}/tmux"
 
 LEGACY_ENV_PATH="${PACKAGE_DIR}/claude-telegram-bot/.env"
 cat > "${LEGACY_ENV_PATH}" <<EOF
 TELEGRAM_BOT_TOKEN=123456:legacy-token
 TELEGRAM_ALLOWED_USERS=424242
-CLAUDE_WORKING_DIR=${PROJECT_DIR}
+SUPER_TURTLE_PROJECT_DIR=${PROJECT_DIR}
 OPENAI_API_KEY=legacy-openai-key
 EOF
 

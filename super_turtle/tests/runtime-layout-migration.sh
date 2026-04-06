@@ -14,7 +14,7 @@ mkdir -p "${PROJECT_DIR}/-s/.superturtle/teleport/runtime-import"
 cat > "${PROJECT_DIR}/.superturtle/.env" <<EOF
 TELEGRAM_BOT_TOKEN=123456:test-token
 TELEGRAM_ALLOWED_USERS=424242
-CLAUDE_WORKING_DIR=${PROJECT_DIR}
+SUPER_TURTLE_PROJECT_DIR=${PROJECT_DIR}
 EOF
 
 cat > "${PROJECT_DIR}/.subturtles/worker-a/CLAUDE.md" <<'EOF'

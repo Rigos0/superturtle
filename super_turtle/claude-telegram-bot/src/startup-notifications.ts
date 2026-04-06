@@ -195,7 +195,7 @@ export function buildWarmWelcomeMessage(options: {
     "• handle text, voice, screenshots, photos, documents, and audio",
     "• spin up SubTurtles for longer tasks and report milestones back here",
     "",
-    "Useful commands: /usage, /switch, /new, /resume, /sub, /stop",
+    "Useful commands: /usage, /model, /new, /resume, /sub, /stop",
     "Send a task in plain English and I’ll take it from there.",
   ].join("\n");
 }

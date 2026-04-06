@@ -3,8 +3,6 @@ const MAX_AUDIT_ENTRIES = 20;
 const MAX_IDENTITIES = 10;
 
 const IDENTITY_PROVIDERS = ["github", "google"];
-const PROVIDER_CREDENTIAL_PROVIDERS = ["claude"];
-const PROVIDER_CREDENTIAL_STATES = ["valid", "invalid", "revoked"];
 const SESSION_STATES = ["pending", "active", "expired", "revoked"];
 const ENTITLEMENT_STATES = ["inactive", "trialing", "active", "past_due", "suspended", "canceled"];
 const INSTANCE_PROVIDERS = ["e2b"];
@@ -304,33 +302,6 @@ function validateAuditLog(value, fieldName = "audit_log") {
   return auditLog.map((entry, index) => validateAuditEntry(entry, `${fieldName}[${index}]`));
 }
 
-function validateProviderCredential(value, fieldName = "credential") {
-  const credential = validateOptionalObject(value, fieldName);
-  if (!credential) {
-    return null;
-  }
-  return {
-    id: validateDisplayField(credential.id, `${fieldName}.id`),
-    provider: validateEnum(
-      credential.provider,
-      PROVIDER_CREDENTIAL_PROVIDERS,
-      `${fieldName}.provider`
-    ),
-    state: validateEnum(credential.state, PROVIDER_CREDENTIAL_STATES, `${fieldName}.state`),
-    account_email: validateDisplayField(credential.account_email, `${fieldName}.account_email`),
-    configured_at: validateTimestamp(credential.configured_at, `${fieldName}.configured_at`),
-    last_validated_at: validateTimestamp(
-      credential.last_validated_at,
-      `${fieldName}.last_validated_at`
-    ),
-    last_error_code: validateDisplayField(credential.last_error_code, `${fieldName}.last_error_code`),
-    last_error_message: validateDisplayField(
-      credential.last_error_message,
-      `${fieldName}.last_error_message`
-    ),
-  };
-}
-
 function validateCliWhoAmIResponse(payload) {
   const response = validateObject(payload, "response");
   return {
@@ -399,35 +370,6 @@ function validateCliTokenResponse(payload) {
   };
 }
 
-function validateCliClaudeAuthStatusResponse(payload) {
-  const response = validateObject(payload, "response");
-  return {
-    provider: validateEnum(
-      response.provider,
-      PROVIDER_CREDENTIAL_PROVIDERS,
-      "provider"
-    ),
-    configured: validateBoolean(response.configured, "configured"),
-    credential: validateProviderCredential(response.credential, "credential"),
-    audit_log: validateAuditLog(response.audit_log, "audit_log"),
-  };
-}
-
-function validateMachineClaudeAuthResponse(payload) {
-  const response = validateObject(payload, "response");
-  return {
-    provider: validateEnum(
-      response.provider,
-      PROVIDER_CREDENTIAL_PROVIDERS,
-      "provider"
-    ),
-    configured: validateBoolean(response.configured, "configured"),
-    access_token: validateDisplayField(response.access_token, "access_token"),
-    credential: validateProviderCredential(response.credential, "credential"),
-    audit_log: validateAuditLog(response.audit_log, "audit_log"),
-  };
-}
-
 function canTransition(transitionMap, fromState, toState) {
   if (!Object.prototype.hasOwnProperty.call(transitionMap, fromState)) {
     return false;
@@ -457,8 +399,6 @@ module.exports = {
   INSTANCE_PROVIDERS,
   MANAGED_INSTANCE_STATES,
   MANAGED_INSTANCE_TRANSITIONS,
-  PROVIDER_CREDENTIAL_PROVIDERS,
-  PROVIDER_CREDENTIAL_STATES,
   PROVISIONING_JOB_KINDS,
   PROVISIONING_JOB_STATES,
   PROVISIONING_JOB_TRANSITIONS,
@@ -466,9 +406,7 @@ module.exports = {
   assertManagedInstanceTransition,
   assertProvisioningJobTransition,
   canTransition,
-  validateCliClaudeAuthStatusResponse,
   validateCliCloudStatusResponse,
-  validateMachineClaudeAuthResponse,
   validateCliTeleportTargetResponse,
   validateCliTokenResponse,
   validateCliWhoAmIResponse,

@@ -28,7 +28,7 @@ RestartSec=5
 # Environment variables (update these)
 Environment=TELEGRAM_BOT_TOKEN=your-bot-token-here
 Environment=TELEGRAM_ALLOWED_USERS=123456789
-Environment=CLAUDE_WORKING_DIR=/home/USERNAME/projects/agentic
+Environment=SUPER_TURTLE_PROJECT_DIR=/home/USERNAME/projects/agentic
 Environment=SUPERTURTLE_BIN=superturtle
 Environment=PATH=/home/USERNAME/.local/bin:/home/USERNAME/.bun/bin:/usr/local/bin:/usr/bin:/bin
 

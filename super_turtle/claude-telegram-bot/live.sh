@@ -3,17 +3,17 @@ set -uo pipefail
 
 cd "$(dirname "$0")"
 
-# Default CLAUDE_WORKING_DIR to repo root (two levels up from claude-telegram-bot/)
-export CLAUDE_WORKING_DIR="${CLAUDE_WORKING_DIR:-$(cd ../.. && pwd)}"
+PROJECT_DIR="${SUPER_TURTLE_PROJECT_DIR:-$(cd ../.. && pwd)}"
+export SUPER_TURTLE_PROJECT_DIR="$PROJECT_DIR"
 
 # Load project env before deriving token/session/log names.
-if [ -f "${CLAUDE_WORKING_DIR}/.superturtle/.env" ]; then
+if [ -f "${PROJECT_DIR}/.superturtle/.env" ]; then
   set -a
   # shellcheck disable=SC1090
-  source "${CLAUDE_WORKING_DIR}/.superturtle/.env"
+  source "${PROJECT_DIR}/.superturtle/.env"
   set +a
 elif [ -f .env ]; then
-  echo "[live] WARNING: Using legacy .env in bot dir. Move it to \${CLAUDE_WORKING_DIR}/.superturtle/.env"
+  echo "[live] WARNING: Using legacy .env in bot dir. Move it to \${PROJECT_DIR}/.superturtle/.env"
   set -a
   source .env
   set +a
@@ -27,7 +27,7 @@ TOKEN_PREFIX="$(echo "$TOKEN_PREFIX" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0
 TOKEN_PREFIX="${TOKEN_PREFIX#-}"
 TOKEN_PREFIX="${TOKEN_PREFIX%-}"
 TOKEN_PREFIX="${TOKEN_PREFIX:-default}"
-PROJECT_SLUG="$(basename "$CLAUDE_WORKING_DIR" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_-' '-')"
+PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_-' '-')"
 PROJECT_SLUG="${PROJECT_SLUG#-}"
 PROJECT_SLUG="${PROJECT_SLUG%-}"
 PROJECT_SLUG="${PROJECT_SLUG:-project}"
@@ -60,7 +60,7 @@ case "$(uname -s)" in
     ;;
 esac
 
-RUN_CMD="cd \"$PWD\" && export CLAUDE_WORKING_DIR=\"$CLAUDE_WORKING_DIR\" && export SUPERTURTLE_RUN_LOOP=1 && export SUPERTURTLE_LOOP_LOG_PATH=\"$LOOP_LOG_PATH\" && ${KEEP_AWAKE_CMD:+$KEEP_AWAKE_CMD }./run-loop.sh 2>&1 | tee -a \"$LOOP_LOG_PATH\""
+RUN_CMD="cd \"$PWD\" && export SUPER_TURTLE_PROJECT_DIR=\"$PROJECT_DIR\" && export SUPERTURTLE_RUN_LOOP=1 && export SUPERTURTLE_LOOP_LOG_PATH=\"$LOOP_LOG_PATH\" && ${KEEP_AWAKE_CMD:+$KEEP_AWAKE_CMD }./run-loop.sh 2>&1 | tee -a \"$LOOP_LOG_PATH\""
 
 if ! command -v tmux >/dev/null 2>&1; then
   echo "[live] ERROR: tmux is required."

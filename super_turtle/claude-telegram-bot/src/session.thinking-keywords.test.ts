@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 
 process.env.TELEGRAM_BOT_TOKEN ||= "test-token";
 process.env.TELEGRAM_ALLOWED_USERS ||= "123";
-process.env.CLAUDE_WORKING_DIR ||= process.cwd();
+process.env.SUPER_TURTLE_PROJECT_DIR ||= process.cwd();
 
 const originalSpawn = Bun.spawn;
 const originalSpawnSync = Bun.spawnSync;

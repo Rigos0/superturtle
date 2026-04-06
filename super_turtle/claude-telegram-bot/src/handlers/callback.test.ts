@@ -27,7 +27,7 @@ async function runCallbackProbe<T>(
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
     TELEGRAM_PROGRESS_INITIAL_DELAY_MS: "0",
-    CLAUDE_WORKING_DIR: process.cwd(),
+    SUPER_TURTLE_PROJECT_DIR: process.cwd(),
     CODEX_ENABLED: opts?.codexEnabled === false ? "false" : "true",
     CODEX_CLI_AVAILABLE_OVERRIDE: opts?.codexCliAvailable === false ? "false" : "true",
     HOME: process.env.HOME || "/tmp",
@@ -131,13 +131,13 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
     expect(result.payload?.callbackAnswers).toEqual([{}]);
-    expect(result.payload?.lastEdit?.text || "").toContain("2 / 3");
-    expect(result.payload?.lastEdit?.text || "").toContain("Answer draft 2");
+    expect(result.payload?.lastEdit?.text || "").toContain("1 / 2");
+    expect(result.payload?.lastEdit?.text || "").toContain("Answer draft 1");
     expect(
       result.payload?.lastEdit?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
       )
-    ).toEqual(["progress_nav:back", "progress_nav:next"]);
+    ).toEqual(["progress_nav:next"]);
   });
 
   it("silently answers retained progress navigation at the history boundary", async () => {
@@ -207,7 +207,7 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.payload?.editCountAfterBoundaryTap).toBe(
       result.payload?.editCountBeforeBoundaryTap
     );
-    expect(result.payload?.lastEditText || "").toContain("1 / 3");
+    expect(result.payload?.lastEditText || "").toContain("1 / 2");
     expect(result.payload?.lastEditText || "").toContain("Answer draft 1");
   });
 
@@ -346,237 +346,6 @@ describe("handleCallback Codex switching and controls", () => {
     expect(result.payload?.replies).toEqual([]);
   }, 15000);
 
-  it("claude model callback re-renders the picker keyboard after selection", async () => {
-    const result = await runCallbackProbe<{
-      model: string;
-      callbackAnswers: Array<{ text?: string }>;
-      editCalls: Array<{
-        text: string;
-        extra?: {
-          parse_mode?: string;
-          reply_markup?: {
-            inline_keyboard?: Array<Array<{ callback_data?: string }>>;
-          };
-        };
-      }>;
-    }>(`
-      const { handleCallback } = await import(callbackPath);
-      const { session, getAvailableModels } = await import(sessionPath);
-
-      const models = getAvailableModels();
-      const targetModel = models[0]?.value || "claude-opus-4-6";
-
-      session.activeDriver = "claude";
-      session.model = targetModel;
-      session.effort = "medium";
-
-      const callbackAnswers = [];
-      const editCalls = [];
-      const ctx = {
-        from: { id: 123, username: "tester" },
-        chat: { id: 123, type: "private" },
-        callbackQuery: { data: "model:" + targetModel },
-        answerCallbackQuery: async (payload) => {
-          callbackAnswers.push(payload || {});
-        },
-        editMessageText: async (text, extra) => {
-          editCalls.push({ text: String(text), extra: extra || {} });
-        },
-      };
-
-      await handleCallback(ctx);
-
-      console.log(marker + JSON.stringify({
-        model: session.model,
-        callbackAnswers,
-        editCalls,
-      }));
-    `);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or effort level:");
-    expect(
-      result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
-        (button) => button.callback_data || ""
-      )
-    ).toContain("effort:medium");
-  });
-
-  it("claude effort callback re-renders the picker keyboard after selection", async () => {
-    const result = await runCallbackProbe<{
-      effort: string;
-      callbackAnswers: Array<{ text?: string }>;
-      editCalls: Array<{
-        text: string;
-        extra?: {
-          parse_mode?: string;
-          reply_markup?: {
-            inline_keyboard?: Array<Array<{ callback_data?: string }>>;
-          };
-        };
-      }>;
-    }>(`
-      const { handleCallback } = await import(callbackPath);
-      const { session } = await import(sessionPath);
-
-      session.activeDriver = "claude";
-      session.model = "claude-sonnet-4-6";
-      session.effort = "high";
-
-      const callbackAnswers = [];
-      const editCalls = [];
-      const ctx = {
-        from: { id: 123, username: "tester" },
-        chat: { id: 123, type: "private" },
-        callbackQuery: { data: "effort:low" },
-        answerCallbackQuery: async (payload) => {
-          callbackAnswers.push(payload || {});
-        },
-        editMessageText: async (text, extra) => {
-          editCalls.push({ text: String(text), extra: extra || {} });
-        },
-      };
-
-      await handleCallback(ctx);
-
-      console.log(marker + JSON.stringify({
-        effort: session.effort,
-        callbackAnswers,
-        editCalls,
-      }));
-    `);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.effort).toBe("low");
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or effort level:");
-    expect(
-      result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
-        (button) => button.callback_data || ""
-      )
-    ).toContain("effort:low");
-  });
-
-  it("switch:codex returns unavailable alert and does not switch when Codex is unavailable", async () => {
-    const result = await runCallbackProbe<{
-      activeDriver: string;
-      startNewThreadCalls: number;
-      callbackAnswers: Array<{ text?: string; show_alert?: boolean }>;
-      editTexts: string[];
-    }>(
-      `
-      const { handleCallback } = await import(callbackPath);
-      const { session } = await import(sessionPath);
-      const { codexSession } = await import(codexPath);
-
-      let startNewThreadCalls = 0;
-      codexSession.startNewThread = async () => {
-        startNewThreadCalls += 1;
-      };
-
-      const callbackAnswers = [];
-      const editTexts = [];
-      session.activeDriver = "claude";
-
-      const ctx = {
-        from: { id: 123, username: "tester" },
-        chat: { id: 123, type: "private" },
-        callbackQuery: { data: "switch:codex" },
-        answerCallbackQuery: async (payload) => {
-          callbackAnswers.push(payload || {});
-        },
-        editMessageText: async (text) => {
-          editTexts.push(String(text));
-        },
-      };
-
-      await handleCallback(ctx);
-
-      console.log(marker + JSON.stringify({
-        activeDriver: session.activeDriver,
-        startNewThreadCalls,
-        callbackAnswers,
-        editTexts,
-      }));
-      `,
-      { codexEnabled: false, codexCliAvailable: false }
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.activeDriver).toBe("claude");
-    expect(result.payload?.startNewThreadCalls).toBe(0);
-    expect(result.payload?.editTexts || []).toHaveLength(0);
-    expect(result.payload?.callbackAnswers[0]?.show_alert).toBe(true);
-    expect(result.payload?.callbackAnswers[0]?.text || "").toContain("Codex");
-  });
-
-  it("switch:codex resets sessions, starts new thread, and updates active driver when Codex is available", async () => {
-    const result = await runCallbackProbe<{
-      activeDriver: string;
-      startNewThreadCalls: number;
-      sessionKillCalls: number;
-      codexKillCalls: number;
-      callbackAnswers: Array<{ text?: string; show_alert?: boolean }>;
-      editTexts: string[];
-    }>(`
-      const { handleCallback } = await import(callbackPath);
-      const { session } = await import(sessionPath);
-      const { codexSession } = await import(codexPath);
-
-      let startNewThreadCalls = 0;
-      let sessionKillCalls = 0;
-      let codexKillCalls = 0;
-      session.stopTyping = () => {};
-      session.kill = async () => {
-        sessionKillCalls += 1;
-      };
-      codexSession.kill = async () => {
-        codexKillCalls += 1;
-      };
-      codexSession.startNewThread = async () => {
-        startNewThreadCalls += 1;
-      };
-
-      const callbackAnswers = [];
-      const editTexts = [];
-      session.activeDriver = "claude";
-
-      const ctx = {
-        from: { id: 123, username: "tester" },
-        chat: { id: 123, type: "private" },
-        callbackQuery: { data: "switch:codex" },
-        answerCallbackQuery: async (payload) => {
-          callbackAnswers.push(payload || {});
-        },
-        editMessageText: async (text) => {
-          editTexts.push(String(text));
-        },
-      };
-
-      await handleCallback(ctx);
-
-      console.log(marker + JSON.stringify({
-        activeDriver: session.activeDriver,
-        startNewThreadCalls,
-        sessionKillCalls,
-        codexKillCalls,
-        callbackAnswers,
-        editTexts,
-      }));
-    `);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.activeDriver).toBe("codex");
-    expect(result.payload?.startNewThreadCalls).toBe(1);
-    expect(result.payload?.sessionKillCalls).toBe(1);
-    expect(result.payload?.codexKillCalls).toBe(1);
-    expect(result.payload?.callbackAnswers[0]?.text).toBe("Switched to Codex");
-    expect(result.payload?.editTexts[0] || "").toContain("Select driver, model, or reasoning effort:");
-  });
-
   it("codex_model callback with active session preserves the current thread and only updates prefs", async () => {
     const result = await runCallbackProbe<{
       model: string;
@@ -650,7 +419,7 @@ describe("handleCallback Codex switching and controls", () => {
       ["codex-thread-model", result.payload?.targetModel || "", "medium"],
     ]);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Codex model updated for current convo");
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or reasoning effort:");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or reasoning effort:");
     expect(
       result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
@@ -728,7 +497,7 @@ describe("handleCallback Codex switching and controls", () => {
       ["codex-thread-effort", result.payload?.model || "", "high"],
     ]);
     expect(result.payload?.callbackAnswers[0]?.text).toBe("Codex effort updated for current convo");
-    expect(result.payload?.editCalls[0]?.text || "").toContain("Select driver, model, or reasoning effort:");
+    expect(result.payload?.editCalls[0]?.text || "").toContain("Select model or reasoning effort:");
     expect(
       result.payload?.editCalls[0]?.extra?.reply_markup?.inline_keyboard?.flat().map(
         (button) => button.callback_data || ""
@@ -808,57 +577,6 @@ describe("handleCallback Codex switching and controls", () => {
 });
 
 describe("handleCallback resume_current", () => {
-  it("continues the active Claude session", async () => {
-    const result = await runCallbackProbe<{
-      callbackAnswers: Array<{ text?: string; show_alert?: boolean }>;
-      replies: string[];
-      editTexts: string[];
-    }>(`
-      const { handleCallback } = await import(callbackPath);
-      const { session } = await import(sessionPath);
-
-      session.activeDriver = "claude";
-      session.sessionId = "claude-current-123";
-      session.recentMessages = [
-        { role: "user", text: "hello" },
-        { role: "assistant", text: "hi there" },
-      ];
-
-      const callbackAnswers = [];
-      const replies = [];
-      const editTexts = [];
-      const ctx = {
-        from: { id: 123, username: "tester" },
-        chat: { id: 123, type: "private" },
-        callbackQuery: { data: "resume_current" },
-        answerCallbackQuery: async (payload) => {
-          callbackAnswers.push(payload || {});
-        },
-        reply: async (text) => {
-          replies.push(String(text));
-        },
-        editMessageText: async (text) => {
-          editTexts.push(String(text));
-        },
-      };
-
-      await handleCallback(ctx);
-
-      console.log(marker + JSON.stringify({
-        callbackAnswers,
-        replies,
-        editTexts,
-      }));
-    `);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.payload).not.toBeNull();
-    expect(result.payload?.callbackAnswers[0]?.text).toBe("Continuing current Claude session");
-    expect(result.payload?.callbackAnswers[0]?.show_alert).toBeUndefined();
-    expect(result.payload?.editTexts[0]).toContain("Continuing current Claude session");
-    expect(result.payload?.replies[0]).toContain("📝 Current Claude session");
-  });
-
   it("continues the active Codex session", async () => {
     const result = await runCallbackProbe<{
       callbackAnswers: Array<{ text?: string; show_alert?: boolean }>;
@@ -919,9 +637,11 @@ describe("handleCallback resume_current", () => {
     }>(`
       const { handleCallback } = await import(callbackPath);
       const { session } = await import(sessionPath);
+      const { codexSession } = await import(codexPath);
 
       session.activeDriver = "claude";
       session.sessionId = null;
+      codexSession.threadId = null;
 
       const callbackAnswers = [];
       const replies = [];
@@ -953,7 +673,7 @@ describe("handleCallback resume_current", () => {
     expect(result.exitCode).toBe(0);
     expect(result.payload).not.toBeNull();
     expect(result.payload?.callbackAnswers[0]?.show_alert).toBe(true);
-    expect(result.payload?.callbackAnswers[0]?.text).toBe("No active Claude session");
+    expect(result.payload?.callbackAnswers[0]?.text).toBe("No active Codex session");
     expect(result.payload?.replies).toHaveLength(0);
     expect(result.payload?.editTexts).toHaveLength(0);
   });

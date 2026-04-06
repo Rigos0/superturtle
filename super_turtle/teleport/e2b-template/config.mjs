@@ -62,8 +62,6 @@ const buildTags = uniq([
   ...parseCsv(process.env.SUPERTURTLE_E2B_TEMPLATE_TAGS),
 ]);
 const bunVersion = process.env.SUPERTURTLE_E2B_BUN_VERSION?.trim() || "1.3.5";
-const claudeCodeVersion =
-  process.env.SUPERTURTLE_CLAUDE_CODE_VERSION?.trim() || "2.1.76";
 const codexInstallSpec = process.env.SUPERTURTLE_CODEX_INSTALL_SPEC?.trim() || "@openai/codex";
 const cpuCount = parsePositiveInt(process.env.SUPERTURTLE_E2B_TEMPLATE_CPU, 2);
 const memoryMB = parsePositiveInt(process.env.SUPERTURTLE_E2B_TEMPLATE_MEMORY_MB, 2048);
@@ -78,7 +76,6 @@ export const templateConfig = {
   templateChannelTag,
   buildTags,
   bunVersion,
-  claudeCodeVersion,
   codexInstallSpec,
   cpuCount,
   memoryMB,

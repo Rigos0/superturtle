@@ -16,7 +16,7 @@ async function runOwnerProbe(script: string) {
     env: {
       ...process.env,
       TELEGRAM_BOT_TOKEN: "test-owner-token:abc",
-      CLAUDE_WORKING_DIR: workingDir,
+      SUPER_TURTLE_PROJECT_DIR: workingDir,
       NODE_ENV: "test",
       BUN_TEST: "1",
       TELEGRAM_ALLOWED_USERS: "",

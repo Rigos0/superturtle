@@ -166,11 +166,6 @@ export async function handleCallback(ctx: Context): Promise<void> {
     callbackDataTruncated: callbackData.length > 200,
   });
 
-  if (callbackData === "switch:codex_unavailable") {
-    await ctx.answerCallbackQuery({ text: codexUnavailableCallbackText(), show_alert: true });
-    return;
-  }
-
   // 2. Handle Codex model selection: codex_model:{model_id}
   if (callbackData.startsWith("codex_model:")) {
     if (!CODEX_AVAILABLE) {

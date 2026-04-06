@@ -35,7 +35,7 @@ async function probeCodexFlow(): Promise<CodexFlowResult> {
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_ALLOWED_USERS: "123",
     TELEGRAM_PROGRESS_INITIAL_DELAY_MS: "0",
-    CLAUDE_WORKING_DIR: process.cwd(),
+    SUPER_TURTLE_PROJECT_DIR: process.cwd(),
     CODEX_ENABLED: "true",
     CODEX_CLI_AVAILABLE_OVERRIDE: "true",
     HOME: process.env.HOME || "/tmp",

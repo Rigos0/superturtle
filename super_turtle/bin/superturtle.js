@@ -1449,17 +1449,6 @@ function hasTmux() {
   }
 }
 
-function checkClaude() {
-  try {
-    execSync("claude --version", { stdio: "pipe" });
-    ok("claude");
-    return true;
-  } catch {
-    warn("claude CLI not found — https://claude.ai/code");
-    return false;
-  }
-}
-
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
@@ -1549,7 +1538,6 @@ async function init() {
   // --- Prerequisites ---
   checkBun();
   checkTmux();
-  checkClaude();
   blank();
 
   if (gitCreated) {
