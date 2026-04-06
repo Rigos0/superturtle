@@ -677,6 +677,42 @@ describe("streaming notifications", () => {
     expectCompletedProgressText(String(editCalls[1]?.[2]), "Final answer");
   });
 
+  it("omits pagination controls when retained progress history has only one snapshot", async () => {
+    const { StreamingState, createStatusCallback } = await loadFreshStreamingModule();
+    const editMessageTextMock = mock(async () => {});
+
+    const ctx = {
+      chat: { id: 458 },
+      reply: mock(async () => ({
+        chat: { id: 458 },
+        message_id: 1,
+      })),
+      api: {
+        deleteMessage: mock(async () => {}),
+        editMessageText: editMessageTextMock,
+      },
+    } as unknown as Context;
+
+    const state = new StreamingState();
+    const statusCallback = createStatusCallback(ctx, state, { showToolStatus: true });
+    await state.progressUpdateChain;
+
+    await statusCallback("thinking", "Working through it");
+    await statusCallback("segment_end", "Final answer", 0);
+    await statusCallback("done", "");
+
+    expect(state.progressSnapshots).toHaveLength(1);
+    expect(state.progressSnapshots[0]?.progressState).toBe("Writing answer");
+    expect(state.progressSnapshots[0]?.terminal).toBe(true);
+    expect(state.selectedProgressSnapshotIndex).toBe(0);
+
+    const finalEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
+    expect(String(finalEdit?.[2])).toContain("Final answer");
+    expect(String(finalEdit?.[2])).toContain("Elapsed ");
+    expect(String(finalEdit?.[2])).not.toContain("1 / 1");
+    expect((finalEdit?.[3] as any)?.reply_markup).toBeUndefined();
+  });
+
   it("does not send a new silent progress message after teardown completes", async () => {
     const {
       StreamingState,
@@ -1045,6 +1081,102 @@ describe("streaming notifications", () => {
       process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
       rmSync(customIpcDir, { recursive: true, force: true });
       clearStreamingState(123);
+    }
+  });
+
+  it("retains artifact progress history and pagination when visible progress precedes a final image", async () => {
+    const {
+      checkPendingSendImageRequests,
+      clearStreamingState,
+      createStatusCallback,
+      navigateRetainedProgressViewer,
+      StreamingState,
+    } = await loadFreshStreamingModule();
+    const customIpcDir = `/tmp/streaming-image-history-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const previousIpcDir = process.env.SUPERTURTLE_IPC_DIR;
+    mkdirSync(customIpcDir, { recursive: true });
+    process.env.SUPERTURTLE_IPC_DIR = customIpcDir;
+
+    try {
+      const requestId = `streaming-send-image-history-${Date.now()}`;
+      const requestFile = `${customIpcDir}/send-image-${requestId}.json`;
+      const editMessageTextMock = mock(async () => {});
+      const deleteMessageMock = mock(async () => {});
+      const replyMock = mock(async () => ({
+        chat: { id: 124 },
+        message_id: 1,
+      }));
+      const replyWithPhotoMock = mock(async () => ({
+        chat: { id: 124 },
+        message_id: 2,
+        photo: [{ file_id: "photo-file-id" }],
+      }));
+
+      await Bun.write(
+        requestFile,
+        JSON.stringify({
+          request_id: requestId,
+          source: "https://example.com/final-image.png",
+          caption: "Turtle portrait",
+          status: "pending",
+          chat_id: "124",
+          created_at: new Date().toISOString(),
+        })
+      );
+
+      const ctx = {
+        chat: { id: 124 },
+        callbackQuery: {
+          data: "progress_nav:back",
+          message: { message_id: 1 },
+        },
+        reply: replyMock,
+        replyWithPhoto: replyWithPhotoMock,
+        api: {
+          deleteMessage: deleteMessageMock,
+          editMessageText: editMessageTextMock,
+        },
+      } as unknown as Context;
+
+      const state = new StreamingState();
+      const statusCallback = createStatusCallback(ctx, state, { showToolStatus: true });
+      await state.progressUpdateChain;
+
+      await statusCallback("thinking", "Rendering the final result");
+      const handled = await checkPendingSendImageRequests(ctx, 124);
+      expect(handled).toBe(true);
+      expect(replyWithPhotoMock).not.toHaveBeenCalled();
+
+      await statusCallback("done", "");
+
+      expect(replyMock).toHaveBeenCalledTimes(1);
+      expect(replyWithPhotoMock).toHaveBeenCalledTimes(1);
+      expect(deleteMessageMock).not.toHaveBeenCalled();
+      expect(state.progressSnapshots).toHaveLength(2);
+      expect(state.progressSnapshots[0]?.summary).toContain("Preparing final image");
+      expect(state.progressSnapshots[1]?.summary).toContain("Final image ready");
+      expect(state.progressSnapshots[1]?.terminal).toBe(true);
+      expect(state.selectedProgressSnapshotIndex).toBe(1);
+
+      const finalEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
+      expect(String(finalEdit?.[2])).toContain("Final image ready: Turtle portrait");
+      expect(String(finalEdit?.[2])).toContain("2 / 2");
+      expect((finalEdit?.[3] as any)?.reply_markup?.inline_keyboard).toEqual([
+        [{ text: "⬅️", callback_data: "progress_nav:back" }],
+      ]);
+
+      const backResult = await navigateRetainedProgressViewer(ctx, "back");
+      expect(backResult).toBe("updated");
+      const afterBackEdit = getEditMessageTextCalls(editMessageTextMock).at(-1);
+      expect(String(afterBackEdit?.[2])).toContain("Preparing final image: Turtle portrait");
+      expect(String(afterBackEdit?.[2])).toContain("1 / 2");
+      expect((afterBackEdit?.[3] as any)?.reply_markup?.inline_keyboard).toEqual([
+        [{ text: "➡️", callback_data: "progress_nav:next" }],
+      ]);
+    } finally {
+      process.env.SUPERTURTLE_IPC_DIR = previousIpcDir || IPC_DIR;
+      rmSync(customIpcDir, { recursive: true, force: true });
+      clearStreamingState(124);
     }
   });
 
