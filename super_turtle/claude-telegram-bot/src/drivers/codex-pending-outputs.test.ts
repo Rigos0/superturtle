@@ -31,6 +31,7 @@ describe("createCodexPendingOutputCoordinator().handleToolCompletion()", () => {
           await wait(35);
           return true;
         },
+        send_file: async () => false,
         send_image: async () => false,
         send_turtle: async () => false,
         bot_control: async () => false,
@@ -54,6 +55,7 @@ describe("createCodexPendingOutputCoordinator().handleToolCompletion()", () => {
       chatId: 123,
       checks: {
         ask_user: async () => false,
+        send_file: async () => false,
         send_image: async () => {
           sendImageCalls += 1;
           await wait(35);
@@ -70,5 +72,33 @@ describe("createCodexPendingOutputCoordinator().handleToolCompletion()", () => {
 
     expect(handled).toBe(false);
     expect(sendImageCalls).toBe(3);
+  });
+
+  it("retries send_file pending checks without the ask_user grace window", async () => {
+    process.env.CODEX_PENDING_REQUEST_TIMEOUT_MS = "20";
+
+    let sendFileCalls = 0;
+    const coordinator = createCodexPendingOutputCoordinator({
+      driverId: "codex",
+      chatId: 123,
+      checks: {
+        ask_user: async () => false,
+        send_file: async () => {
+          sendFileCalls += 1;
+          await wait(35);
+          return true;
+        },
+        send_image: async () => false,
+        send_turtle: async () => false,
+        bot_control: async () => false,
+        pino_logs: async () => false,
+      },
+      outboundMessageKindForTool: () => null,
+    });
+
+    const handled = await coordinator.handleToolCompletion("send_file");
+
+    expect(handled).toBe(false);
+    expect(sendFileCalls).toBe(3);
   });
 });

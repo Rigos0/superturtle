@@ -460,6 +460,120 @@ export async function checkPendingSendImageRequests(
 }
 
 /**
+ * Check for pending send-file requests and send documents to Telegram.
+ */
+export async function checkPendingSendFileRequests(
+  ctx: Context,
+  chatId: number
+): Promise<boolean> {
+  const ipcDir = getIpcDir();
+  const glob = new Bun.Glob("send-file-*.json");
+  let fileSent = false;
+
+  for await (const filename of glob.scan({ cwd: ipcDir, absolute: false })) {
+    const filepath = `${ipcDir}/${filename}`;
+    const releaseLock = tryAcquirePendingRequestLock(filepath);
+    if (!releaseLock) continue;
+    try {
+      const file = Bun.file(filepath);
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      if (data.status !== "pending") continue;
+      const targetChatId = getRequestChatId(data);
+      if (!targetChatId) {
+        data.status = "error";
+        data.error = "Missing chat_id on pending send-file request";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
+      if (targetChatId !== String(chatId)) continue;
+      if (isPendingRequestStale(data)) {
+        data.status = "expired";
+        data.error = "Pending send-file request expired before delivery";
+        await Bun.write(filepath, JSON.stringify(data, null, 2));
+        continue;
+      }
+
+      const source: string = data.source || "";
+      const caption: string = data.caption || undefined;
+      const state = getStreamingState(chatId);
+
+      if (source) {
+        try {
+          const isUrl = source.startsWith("http://") || source.startsWith("https://");
+          if (!isUrl) {
+            const fileData = Bun.file(source);
+            if (!(await fileData.exists())) {
+              throw new Error(`File not found: ${source}`);
+            }
+          }
+
+          if (state) {
+            await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
+              summary: buildArtifactProgressSummary("file", caption),
+              toolHint: null,
+              storeSnapshot: true,
+            });
+            queueTerminalOutput(
+              state,
+              [],
+              async (targetCtx, notify) =>
+                sendFileOutput(targetCtx, source, { caption, notify }),
+              {
+                kind: "final_artifact",
+                progressSummary: buildArtifactDoneSummary("file", caption),
+              }
+            );
+          } else {
+            await sendFileOutput(ctx, source, { caption, notify: true });
+          }
+          fileSent = true;
+        } catch (sendError) {
+          streamLog.warn(
+            { err: sendError, filepath, source, chatId },
+            "Failed to send file, falling back to link/path"
+          );
+          const fallback = source.startsWith("http") ? source : `📎 ${source}`;
+          const fallbackText = `${fallback}${caption ? `\n${caption}` : ""}`;
+          if (state) {
+            await maybeApplyTerminalProgressStateUpdate(ctx, state, "Writing answer", {
+              summary: buildArtifactProgressSummary("file", caption),
+              toolHint: null,
+              storeSnapshot: true,
+            });
+            queueTerminalOutput(
+              state,
+              [],
+              async (targetCtx, notify) => [
+                await sendTextMessage(targetCtx, fallbackText, { notify }),
+              ],
+              {
+                kind: "final_artifact",
+                progressSummary: buildArtifactDoneSummary("file", caption),
+              }
+            );
+          } else {
+            await sendTextMessage(ctx, fallbackText, { notify: true });
+          }
+          fileSent = true;
+        }
+
+        data.status = "sent";
+        data.sent_at = new Date().toISOString();
+        await Bun.write(filepath, JSON.stringify(data));
+      }
+    } catch (error) {
+      streamLog.warn({ err: error, filepath, chatId }, "Failed to process send-file file");
+    } finally {
+      releaseLock();
+    }
+  }
+
+  return fileSent;
+}
+
+/**
  * Check for pending bot-control requests, execute the action, and write
  * the result back so the MCP server's polling loop can pick it up.
  *
@@ -1076,6 +1190,7 @@ async function clearProgressMessage(ctx: Context, state: StreamingState): Promis
 }
 
 type ReplyExtra = NonNullable<Parameters<Context["reply"]>[1]>;
+type DocumentReplyExtra = NonNullable<Parameters<Context["replyWithDocument"]>[1]>;
 type PhotoReplyExtra = NonNullable<Parameters<Context["replyWithPhoto"]>[1]>;
 type StickerReplyExtra = NonNullable<Parameters<Context["replyWithSticker"]>[1]>;
 
@@ -1093,6 +1208,13 @@ function withSilentPhotoNotification(extra?: PhotoReplyExtra): PhotoReplyExtra {
   } as PhotoReplyExtra;
 }
 
+function withSilentDocumentNotification(extra?: DocumentReplyExtra): DocumentReplyExtra {
+  return {
+    ...(extra || {}),
+    disable_notification: true,
+  } as DocumentReplyExtra;
+}
+
 function withSilentStickerNotification(extra?: StickerReplyExtra): StickerReplyExtra {
   return {
     ...(extra || {}),
@@ -1100,11 +1222,18 @@ function withSilentStickerNotification(extra?: StickerReplyExtra): StickerReplyE
   } as StickerReplyExtra;
 }
 
+function hasSendableTelegramText(text: string): boolean {
+  return toPlainProgressText(text).replace(/[\u200B-\u200D\uFEFF]/g, "").trim().length > 0;
+}
+
 async function replySilently(
   ctx: Context,
   text: string,
   extra?: ReplyExtra
 ): Promise<Message> {
+  if (!hasSendableTelegramText(text)) {
+    throw new Error("Refusing to send empty Telegram text");
+  }
   return ctx.reply(text, withSilentNotification(extra));
 }
 
@@ -1151,10 +1280,15 @@ function summarizeToolHint(content: string): string | null {
 }
 
 function buildArtifactProgressSummary(
-  noun: "image" | "sticker",
+  noun: "file" | "image" | "sticker",
   caption?: string
 ): string {
-  const prefix = noun === "image" ? "Preparing final image" : "Preparing final sticker";
+  const prefix =
+    noun === "image"
+      ? "Preparing final image"
+      : noun === "file"
+        ? "Preparing final file"
+        : "Preparing final sticker";
   const normalizedCaption =
     typeof caption === "string" ? normalizeProgressLine(caption) : "";
   const summary = normalizedCaption ? `${prefix}: ${normalizedCaption}` : `${prefix}.`;
@@ -1162,10 +1296,15 @@ function buildArtifactProgressSummary(
 }
 
 function buildArtifactDoneSummary(
-  noun: "image" | "sticker",
+  noun: "file" | "image" | "sticker",
   caption?: string
 ): string {
-  const prefix = noun === "image" ? "Final image ready" : "Final sticker ready";
+  const prefix =
+    noun === "image"
+      ? "Final image ready"
+      : noun === "file"
+        ? "Final file ready"
+        : "Final sticker ready";
   const normalizedCaption =
     typeof caption === "string" ? normalizeProgressLine(caption) : "";
   const summary = normalizedCaption ? `${prefix}: ${normalizedCaption}` : `${prefix}.`;
@@ -1338,7 +1477,7 @@ function isEffectivelyBlankProgressText(text: string | null): boolean {
   if (!text) {
     return true;
   }
-  return toPlainProgressText(text).replace(/[\u200B-\u200D\uFEFF]/g, "").trim().length === 0;
+  return !hasSendableTelegramText(text);
 }
 
 async function waitForMinimumVisibleProgressDuration(state: StreamingState): Promise<void> {
@@ -1445,6 +1584,13 @@ async function updateProgressMessage(
   await waitForMinimumVisibleProgressDuration(state);
 
   if (state.teardownCompleted && !state.progressViewerCompleted) {
+    return;
+  }
+
+  if (isEffectivelyBlankProgressText(payload.text)) {
+    if (!state.progressMessage) {
+      clearPendingProgressRender(state);
+    }
     return;
   }
 
@@ -1603,6 +1749,13 @@ function getPhotoNotificationExtra(
   return notify ? extra : withSilentPhotoNotification(extra);
 }
 
+function getDocumentNotificationExtra(
+  notify: boolean,
+  extra?: DocumentReplyExtra
+): DocumentReplyExtra | undefined {
+  return notify ? extra : withSilentDocumentNotification(extra);
+}
+
 function getStickerNotificationExtra(
   notify: boolean,
   extra?: StickerReplyExtra
@@ -1615,6 +1768,9 @@ async function sendTextMessage(
   text: string,
   options: { parseModeHtml?: boolean; notify?: boolean } = {}
 ): Promise<Message> {
+  if (!hasSendableTelegramText(text)) {
+    throw new Error("Refusing to send empty Telegram text");
+  }
   if (options.parseModeHtml) {
     return ctx.reply(
       text,
@@ -1648,6 +1804,39 @@ async function sendImageOutput(
     return [await ctx.replyWithPhoto(new InputFile(buffer, fileName), replyOptions)];
   } catch (sendError) {
     streamLog.warn({ err: sendError, source }, "Failed to send image, falling back to link/path");
+    const fallback = source.startsWith("http") ? source : `📎 ${source}`;
+    const fallbackText = `${fallback}${caption ? `\n${caption}` : ""}`;
+    return [await sendTextMessage(ctx, fallbackText, { notify })];
+  }
+}
+
+async function sendFileOutput(
+  ctx: Context,
+  source: string,
+  options: { caption?: string; notify?: boolean } = {}
+): Promise<Message[]> {
+  const caption = options.caption || undefined;
+  const notify = options.notify ?? false;
+  const replyOptions = getDocumentNotificationExtra(
+    notify,
+    caption ? { caption } : undefined
+  );
+
+  try {
+    const isUrl = source.startsWith("http://") || source.startsWith("https://");
+    if (isUrl) {
+      return [await ctx.replyWithDocument(source, replyOptions)];
+    }
+
+    const fileData = Bun.file(source);
+    if (!(await fileData.exists())) {
+      throw new Error(`File not found: ${source}`);
+    }
+    const buffer = Buffer.from(await fileData.arrayBuffer());
+    const fileName = source.split("/").pop() || "attachment";
+    return [await ctx.replyWithDocument(new InputFile(buffer, fileName), replyOptions)];
+  } catch (sendError) {
+    streamLog.warn({ err: sendError, source }, "Failed to send file, falling back to link/path");
     const fallback = source.startsWith("http") ? source : `📎 ${source}`;
     const fallbackText = `${fallback}${caption ? `\n${caption}` : ""}`;
     return [await sendTextMessage(ctx, fallbackText, { notify })];

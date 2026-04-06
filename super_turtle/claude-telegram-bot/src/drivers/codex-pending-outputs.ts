@@ -13,6 +13,7 @@ const FINAL_FLUSH_ATTEMPTS = 3;
 
 type PendingCheckName =
   | "ask_user"
+  | "send_file"
   | "send_image"
   | "send_turtle"
   | "bot_control"
@@ -43,6 +44,10 @@ const TOOL_COMPLETION_CONFIG: Partial<Record<string, ToolCompletionConfig>> = {
   send_turtle: {
     checkName: "send_turtle",
     logMessage: "Send-turtle tool completed, checking for pending requests",
+  },
+  send_file: {
+    checkName: "send_file",
+    logMessage: "Send-file tool completed, checking for pending requests",
   },
   send_image: {
     checkName: "send_image",
@@ -272,6 +277,7 @@ export function buildCodexPendingChecks(input: {
   ctx: Context;
   chatId: number;
   checkPendingAskUserRequests: (ctx: Context, chatId: number) => Promise<boolean>;
+  checkPendingSendFileRequests: (ctx: Context, chatId: number) => Promise<boolean>;
   checkPendingSendImageRequests: (ctx: Context, chatId: number) => Promise<boolean>;
   checkPendingSendTurtleRequests: (ctx: Context, chatId: number) => Promise<boolean>;
   checkPendingBotControlRequests: (sessionObj: typeof codexSession, chatId: number) => Promise<boolean>;
@@ -279,6 +285,7 @@ export function buildCodexPendingChecks(input: {
 }): PendingCheckSet {
   return {
     ask_user: () => input.checkPendingAskUserRequests(input.ctx, input.chatId),
+    send_file: () => input.checkPendingSendFileRequests(input.ctx, input.chatId),
     send_image: () => input.checkPendingSendImageRequests(input.ctx, input.chatId),
     send_turtle: () => input.checkPendingSendTurtleRequests(input.ctx, input.chatId),
     bot_control: () => input.checkPendingBotControlRequests(codexSession, input.chatId),

@@ -328,5 +328,6 @@ describe("ClaudeSession ask_user tool routing", () => {
     expect(allowedTools).toContain("SlashCommand");
     expect(allowedTools).toContain("mcp__send-turtle__send_turtle");
     expect(allowedTools).toContain("mcp__bot-control__ask_user");
+    expect(allowedTools).toContain("mcp__bot-control__send_file");
   });
 });

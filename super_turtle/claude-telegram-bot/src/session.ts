@@ -32,6 +32,7 @@ import {
   checkPendingAskUserRequests,
   checkPendingBotControlRequests,
   checkPendingPinoLogsRequests,
+  checkPendingSendFileRequests,
   checkPendingSendImageRequests,
   checkPendingSendTurtleRequests,
 } from "./handlers/streaming";
@@ -105,6 +106,7 @@ const CLAUDE_BOT_MCP_ALLOWED_TOOLS = [
   "mcp__send-turtle__send_turtle",
   "mcp__bot-control__bot_control",
   "mcp__bot-control__ask_user",
+  "mcp__bot-control__send_file",
   "mcp__bot-control__send_image",
   "mcp__bot-control__pino_logs",
 ] as const;
@@ -865,6 +867,9 @@ export class ClaudeSession {
               const isSendImageTool =
                 normalizedToolName === "mcp__send_image" ||
                 normalizedToolName.endsWith("__send_image");
+              const isSendFileTool =
+                normalizedToolName === "mcp__send_file" ||
+                normalizedToolName.endsWith("__send_file");
               const isPinoLogsTool =
                 normalizedToolName === "mcp__pino_logs" ||
                 normalizedToolName.endsWith("__pino_logs");
@@ -875,6 +880,7 @@ export class ClaudeSession {
               if (
                 !isAskUserTool &&
                 !isSendTurtleTool &&
+                !isSendFileTool &&
                 !isSendImageTool &&
                 !isBotControlServerTool &&
                 !isPinoLogsTool
@@ -935,6 +941,22 @@ export class ClaudeSession {
 
                 for (let attempt = 0; attempt < 3; attempt++) {
                   const sent = await checkPendingSendImageRequests(
+                    ctx,
+                    chatId
+                  );
+                  if (sent) break;
+                  if (attempt < 2) {
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                  }
+                }
+              }
+
+              // Check for pending send_file requests after send-file MCP tool
+              if (isSendFileTool && ctx && chatId) {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+
+                for (let attempt = 0; attempt < 3; attempt++) {
+                  const sent = await checkPendingSendFileRequests(
                     ctx,
                     chatId
                   );

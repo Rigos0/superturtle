@@ -34,6 +34,9 @@ describe("classifyCodexToolCompletionMessage()", () => {
     expect(classifyCodexToolCompletionMessage("ask_user")).toBe(
       OutboundMessageKind.InteractiveSideEffect
     );
+    expect(classifyCodexToolCompletionMessage("send_file")).toBe(
+      OutboundMessageKind.InteractiveSideEffect
+    );
     expect(classifyCodexToolCompletionMessage("send-image")).toBe(
       OutboundMessageKind.InteractiveSideEffect
     );
