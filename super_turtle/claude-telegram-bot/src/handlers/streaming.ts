@@ -1319,6 +1319,15 @@ function isBlankProgressSummary(text: string): boolean {
   return text.replace(/[\u200B-\u200D\uFEFF]/g, "").trim().length === 0;
 }
 
+function progressSummariesMatch(left: string, right: string): boolean {
+  const normalizedLeft = normalizeProgressLine(toPlainProgressText(left));
+  const normalizedRight = normalizeProgressLine(toPlainProgressText(right));
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  return normalizedLeft === normalizedRight;
+}
+
 function recordProgressSnapshot(
   state: StreamingState,
   options: { force?: boolean; terminal?: boolean } = {}
@@ -1360,6 +1369,23 @@ function recordProgressSnapshot(
 
   state.progressSnapshots.push(snapshot);
   trimProgressSnapshots(state);
+}
+
+function pruneTrailingDuplicateFinalSuccessSnapshots(
+  state: StreamingState,
+  finalSummary: string
+): void {
+  while (state.progressSnapshots.length > 0) {
+    const lastSnapshot = state.progressSnapshots[state.progressSnapshots.length - 1];
+    if (
+      !lastSnapshot ||
+      lastSnapshot.progressState !== "Writing answer" ||
+      !progressSummariesMatch(lastSnapshot.summary, finalSummary)
+    ) {
+      break;
+    }
+    state.progressSnapshots.pop();
+  }
 }
 
 function finalizeExistingProgressHistory(state: StreamingState): boolean {
@@ -2258,6 +2284,7 @@ export function createStatusCallback(
           retainProgressMessage = true;
         } else {
           if (shouldRenderTerminalProgress(state)) {
+            pruneTrailingDuplicateFinalSuccessSnapshots(state, doneSummary);
             retainProgressMessage = finalizeExistingProgressHistory(state);
             if (!retainProgressMessage && state.visibleProgressMaterialized) {
               await applyProgressStateUpdate(ctx, state, "Done", {
