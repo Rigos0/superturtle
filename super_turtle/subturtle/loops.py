@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from . import statefile
+from . import prompts, statefile
 from .subturtle_loop.agents import Codex
 
 # Package root (super_turtle/), used for resolving skills directory.

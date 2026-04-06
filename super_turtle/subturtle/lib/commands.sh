@@ -265,7 +265,7 @@ try:
 except (ValueError, TypeError):
     skills = []
 
-def _can_write_home(path: str | None) -> bool:
+def _can_write_home(path):
     if not path:
         return False
     try:
