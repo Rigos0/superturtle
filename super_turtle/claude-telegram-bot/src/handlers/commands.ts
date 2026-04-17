@@ -1709,6 +1709,7 @@ function getClaudeAccessToken(): string | null {
     const home = process.env.HOME || "";
     const credPaths = [
       `${home}/.config/claude-code/credentials.json`,
+      `${home}/.claude/.credentials.json`,
       `${home}/.claude/credentials.json`,
     ];
 
