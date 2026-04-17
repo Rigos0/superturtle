@@ -6,7 +6,7 @@
 
 import type { Context } from "grammy";
 import { sequentialize } from "@grammyjs/runner";
-import { basename } from "path";
+import { basename, dirname } from "path";
 import {
   WORKING_DIR,
   CTL_PATH,
@@ -272,6 +272,7 @@ function refreshConductorHandoff(): void {
         ...process.env,
         SUPER_TURTLE_PROJECT_DIR: WORKING_DIR,
         CLAUDE_WORKING_DIR: WORKING_DIR,
+        PYTHONPATH: `${dirname(SUPER_TURTLE_DIR)}:${process.env.PYTHONPATH ?? ""}`,
       },
     }
   );
