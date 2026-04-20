@@ -85,6 +85,15 @@ You can decompose a request into multiple SubTurtles. See `{{SUPER_TURTLE_DIR}}/
 
 Target: **up to 5 parallel SubTurtles**. Default type: `yolo-codex` when available, else `yolo`. Use `slow` only for complex spec-heavy tasks. If B depends on A, spawn A first and queue B.
 
+**Result-passing (sequential dependencies):**
+When spawning B after A completes, always read A's result file first:
+```bash
+cat .superturtle/state/results/<A-name>.json
+```
+Inject `summary`, `key_decisions`, `artifacts`, and `questions_for_orchestrator` from A's result
+into B's `## Inputs from upstream workers` subsection inside `# End goal with specs`.
+See `{{SUPER_TURTLE_DIR}}/meta/DECOMPOSITION_PROMPT.md` for the full injection format.
+
 ## Writing CLAUDE.md for SubTurtles
 
 **YOLO loops have NO Plan/Groom phase** — the CLAUDE.md must be concrete:

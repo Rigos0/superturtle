@@ -118,6 +118,18 @@ export type SubturtleEventView = {
   lifecycleState: string | null;
 };
 
+export type WorkerResultRecord = {
+  schema_version: number;
+  worker_name: string;
+  completed_at: string;
+  status: string;
+  summary: string;
+  artifacts: string[];
+  key_decisions: string[];
+  blockers: string[];
+  questions_for_orchestrator: string[];
+};
+
 export type SubturtleDetailResponse = {
   generatedAt: string;
   name: string;
@@ -137,6 +149,7 @@ export type SubturtleDetailResponse = {
   backlogSummary: BacklogSummary;
   conductor: SubturtleConductorView | null;
   events: SubturtleEventView[];
+  workerResult: WorkerResultRecord | null;
 };
 
 export type SubturtleLogsResponse = {

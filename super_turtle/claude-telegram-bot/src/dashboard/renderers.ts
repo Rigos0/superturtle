@@ -1092,6 +1092,33 @@ export function renderSubturtleDetailHtml(
       }).join("")}</div>`
     : `<p class="empty-state">No events recorded.</p>`;
 
+  const resultHtml = detail.workerResult
+    ? (() => {
+        const r = detail.workerResult;
+        const list = (items: string[]) =>
+          items.length > 0
+            ? `<ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`
+            : `<p class="empty-state">None.</p>`;
+        return (
+          `<p style="margin:0 0 6px"><strong>Status:</strong> ${escapeHtml(r.status)} &nbsp;·&nbsp; ` +
+          `<strong>Completed:</strong> ${escapeHtml(formatTimestamp(r.completed_at))}</p>` +
+          `<p style="margin:0 0 10px">${escapeHtml(r.summary)}</p>` +
+          (r.artifacts.length > 0
+            ? `<details open><summary>Artifacts (${r.artifacts.length})</summary>${list(r.artifacts)}</details>`
+            : "") +
+          (r.key_decisions.length > 0
+            ? `<details open><summary>Key decisions</summary>${list(r.key_decisions)}</details>`
+            : "") +
+          (r.questions_for_orchestrator.length > 0
+            ? `<details><summary>Questions for orchestrator</summary>${list(r.questions_for_orchestrator)}</details>`
+            : "") +
+          (r.blockers.length > 0
+            ? `<details><summary>Blockers</summary>${list(r.blockers)}</details>`
+            : "")
+        );
+      })()
+    : `<p class="empty-state">No result file written yet.</p>`;
+
   const pct = detail.backlogSummary.progressPct;
   const progressHtml = detail.backlog.length > 0
     ? `<div class="progress-bar-container">` +
@@ -1317,6 +1344,11 @@ ${DETAIL_THEME_CSS}
       ${detail.task ? `<section class="card"><p style="margin:0;font-size:14px"><strong>Task:</strong> ${escapeHtml(detail.task)}</p></section>` : ""}
 
       ${progressHtml ? `<section class="card"><h2>Progress</h2>${progressHtml}${renderBacklogChecklist(detail.backlog)}</section>` : `<section class="card"><h2>Backlog</h2>${renderBacklogChecklist(detail.backlog)}</section>`}
+
+      <section class="card">
+        <h2>Worker result</h2>
+        ${resultHtml}
+      </section>
 
       <div class="two-col">
         <section class="card">

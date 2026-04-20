@@ -474,6 +474,74 @@ Ship the shipped thing
     expect(events).toContain('"event_type":"worker.notification_sent"');
   });
 
+  it("embeds result file data in the inbox text when result file exists", async () => {
+    const baseDir = makeStateDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    const archiveWorkspace = join(baseDir, ".superturtle/subturtles", ".archive", "worker-result");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+    mkdirSync(join(stateDir, "results"), { recursive: true });
+    mkdirSync(archiveWorkspace, { recursive: true });
+
+    writeFileSync(join(archiveWorkspace, "CLAUDE.md"), "# Current task\n\nDone\n# Backlog\n- [x] Ship it\n", "utf-8");
+
+    writeJson(join(stateDir, "results", "worker-result.json"), {
+      schema_version: 1,
+      worker_name: "worker-result",
+      completed_at: "2026-03-08T01:00:00Z",
+      status: "completed",
+      summary: "Implemented JWT middleware with RS256. 12 tests passing.",
+      artifacts: ["src/auth/jwt.ts", "tests/auth/jwt.test.ts"],
+      key_decisions: ["RS256 over HS256 for public-key verification"],
+      blockers: [],
+      questions_for_orchestrator: ["Should refresh token TTL be configurable?"],
+    });
+
+    writeJson(join(stateDir, "workers", "worker-result.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-result",
+      run_id: "run-result",
+      lifecycle_state: "archived",
+      workspace: archiveWorkspace,
+      current_task: "Ship it",
+      metadata: {},
+    });
+    writeJson(join(stateDir, "wakeups", "wake-result.json"), {
+      kind: "wakeup",
+      schema_version: 1,
+      id: "wake-result",
+      worker_name: "worker-result",
+      run_id: "run-result",
+      category: "notable",
+      delivery_state: "pending",
+      summary: "worker result done",
+      created_at: "2026-03-08T00:00:00Z",
+      updated_at: "2026-03-08T00:00:00Z",
+      delivery: { attempts: 0 },
+      payload: { kind: "completion_requested" },
+      metadata: {},
+    });
+
+    await processPendingConductorWakeups({
+      stateDir,
+      defaultChatId: 123,
+      listJobs: () => [],
+      removeJob: () => false,
+      sendMessage: async () => {},
+      isWorkerRunning: () => false,
+      nowIso: () => "2026-03-08T01:00:00Z",
+    });
+
+    const inboxItem = JSON.parse(
+      readFileSync(join(stateDir, "inbox", "inbox_wake-result.json"), "utf-8")
+    );
+    expect(inboxItem.text).toContain("Implemented JWT middleware with RS256");
+    expect(inboxItem.text).toContain("RS256 over HS256");
+    expect(inboxItem.text).toContain("src/auth/jwt.ts");
+    expect(inboxItem.text).toContain("Should refresh token TTL be configurable?");
+  });
+
   it("reconciles fatal worker wakeups into a failed state", async () => {
     const baseDir = makeStateDir();
     const stateDir = join(baseDir, ".superturtle", "state");

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -40,7 +41,11 @@ def _assert_imports_succeed(tmp_path, pythonpath_root: Path, module_names: list[
 
 
 def test_yolo_prompt_allows_rewriting_blocked_backlog_items() -> None:
-    prompt = subturtle_prompts.YOLO_PROMPT.format(state_file=".superturtle/subturtles/demo/CLAUDE.md")
+    prompt = subturtle_prompts.YOLO_PROMPT.format(
+        state_file=".superturtle/subturtles/demo/CLAUDE.md",
+        worker_name="demo",
+        result_file=".superturtle/state/results/demo.json",
+    )
 
     assert "If it is blocked, too vague, or not feasible with the current repo/context, rewrite the backlog" in prompt
     assert "move `<- current` to the next actionable item" in prompt
@@ -53,6 +58,45 @@ def test_slow_loop_prompts_allow_blocked_item_replanning() -> None:
     assert "plan the smallest\n  actionable unblocker or backlog rewrite needed to restore forward progress" in prompts["planner"]
     assert "rewrite it\n     into concrete unblocker tasks" in prompts["groomer"]
     assert "Rewrite the backlog so the next iteration has a concrete unblocker" in prompts["reviewer"]
+
+
+def test_yolo_prompt_format_with_all_variables() -> None:
+    state_file = ".superturtle/subturtles/worker-auth/CLAUDE.md"
+    worker_name = "worker-auth"
+    result_file = ".superturtle/state/results/worker-auth.json"
+
+    prompt = subturtle_prompts.YOLO_PROMPT.format(
+        state_file=state_file,
+        worker_name=worker_name,
+        result_file=result_file,
+    )
+
+    assert worker_name in prompt
+    assert result_file in prompt
+    assert state_file in prompt
+    assert "Writing your result" in prompt
+
+
+def test_build_prompts_reviewer_contains_worker_name_and_result_file() -> None:
+    state_file = ".superturtle/subturtles/demo/CLAUDE.md"
+    worker_name = "worker-demo"
+    result_file = ".superturtle/state/results/worker-demo.json"
+
+    prompts = subturtle_prompts.build_prompts(
+        state_file,
+        worker_name=worker_name,
+        result_file=result_file,
+    )
+
+    assert worker_name in prompts["reviewer"]
+    assert result_file in prompts["reviewer"]
+    assert "Write result file" in prompts["reviewer"]
+
+
+def test_result_file_path() -> None:
+    project_dir = Path("/project")
+    path = subturtle_statefile.result_file_path(project_dir, "worker-auth")
+    assert path == Path("/project/.superturtle/state/results/worker-auth.json")
 
 
 def test_main_dispatches_to_run_loop(monkeypatch, tmp_path) -> None:
@@ -361,6 +405,65 @@ def test_record_completion_pending_writes_state_event_and_wakeup(tmp_path) -> No
     assert len(wakeups) == 1
     assert wakeups[0]["category"] == "notable"
     assert wakeups[0]["worker_name"] == "worker-2"
+
+    # Fallback result file should be written since no agent-written result exists.
+    result_path = subturtle_statefile.result_file_path(project_dir, "worker-2")
+    assert result_path.exists()
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["status"] == "completed"
+    assert result["worker_name"] == "worker-2"
+    assert result["_generated_by"] == "infrastructure_fallback"
+
+
+def test_record_completion_pending_does_not_overwrite_agent_result(tmp_path) -> None:
+    state_dir = tmp_path / ".superturtle/subturtles" / "worker-3"
+    project_dir = tmp_path
+    state_dir.mkdir(parents=True)
+    (state_dir / "CLAUDE.md").write_text("# Current task\n\nDone\n", encoding="utf-8")
+
+    store = ConductorStateStore(project_dir / ".superturtle" / "state")
+    store.write_worker_state(store.make_worker_state(
+        worker_name="worker-3", lifecycle_state="running", updated_by="subturtle",
+    ))
+
+    # Pre-write an agent result (not a fallback).
+    result_path = subturtle_statefile.result_file_path(project_dir, "worker-3")
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    agent_result = {"schema_version": 1, "worker_name": "worker-3", "status": "completed",
+                    "summary": "Agent wrote this.", "artifacts": ["src/foo.ts"],
+                    "key_decisions": [], "blockers": [], "questions_for_orchestrator": []}
+    result_path.write_text(json.dumps(agent_result), encoding="utf-8")
+
+    subturtle_statefile.record_completion_pending(state_dir, "worker-3", project_dir)
+
+    # Should NOT have been overwritten.
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["summary"] == "Agent wrote this."
+    assert "_generated_by" not in result
+
+
+def test_record_failure_pending_writes_failure_result(tmp_path) -> None:
+    state_dir = tmp_path / ".superturtle/subturtles" / "worker-fail"
+    project_dir = tmp_path
+    state_dir.mkdir(parents=True)
+    (state_dir / "CLAUDE.md").write_text("# Current task\n\nFailed task\n", encoding="utf-8")
+
+    store = ConductorStateStore(project_dir / ".superturtle" / "state")
+    store.write_worker_state(store.make_worker_state(
+        worker_name="worker-fail", lifecycle_state="running", updated_by="subturtle",
+    ))
+
+    subturtle_statefile.record_failure_pending(
+        state_dir, "worker-fail", project_dir, "yolo", "max consecutive failures reached"
+    )
+
+    result_path = subturtle_statefile.result_file_path(project_dir, "worker-fail")
+    assert result_path.exists()
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["status"] == "failed"
+    assert result["worker_name"] == "worker-fail"
+    assert "max consecutive failures" in result["blockers"][0]
+    assert result["_generated_by"] == "infrastructure_fallback"
 
 
 def test_record_checkpoint_updates_worker_state_and_event(monkeypatch, tmp_path) -> None:

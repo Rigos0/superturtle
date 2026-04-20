@@ -169,8 +169,13 @@ def _run_single_agent_loop(
 ) -> None:
     """Run the shared retry/checkpoint loop used by single-agent variants."""
     state_file, state_ref = _resolve_state_ref(state_dir, name)
-    prompt = prompts.YOLO_PROMPT.format(state_file=state_ref)
     project_dir = Path.cwd()
+    result_file = str(statefile.result_file_path(project_dir, name))
+    prompt = prompts.YOLO_PROMPT.format(
+        state_file=state_ref,
+        worker_name=name,
+        result_file=result_file,
+    )
     iteration = 0
     consecutive_failures = 0
     stopped_by_directive = False
@@ -214,14 +219,15 @@ def run_slow_loop(state_dir: Path, name: str, skills: list[str] | None = None) -
     _require_cli(name, "codex")
 
     state_file, state_ref = _resolve_state_ref(state_dir, name)
-    prompt_bundle = prompts.build_prompts(state_ref)
+    project_dir = Path.cwd()
+    result_file = str(statefile.result_file_path(project_dir, name))
+    prompt_bundle = prompts.build_prompts(state_ref, worker_name=name, result_file=result_file)
 
     _log_loop_start(name, "slow loop: plan -> groom -> execute -> review", state_ref, skills)
 
     add_dirs = _skill_dirs(skills)
     claude = Claude(add_dirs=add_dirs)
     codex = Codex(add_dirs=add_dirs)
-    project_dir = Path.cwd()
     iteration = 0
     consecutive_failures = 0
     stopped_by_directive = False

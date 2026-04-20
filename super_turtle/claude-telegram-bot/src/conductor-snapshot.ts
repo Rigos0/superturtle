@@ -24,6 +24,7 @@ interface ConductorSnapshotContext {
   workerStateJson: string;
   recentEventsJson: string;
   wakeupsJson: string;
+  workerResultJson: string;
   prepErrors: string[];
 }
 
@@ -152,6 +153,12 @@ export function loadConductorSnapshotContext(
     : null;
   const resolvedState = supervisorResolvedState(workerState);
 
+  const resultPath = join(stateDir, "results", `${options.workerName}.json`);
+  const workerResult = readJsonObject<Record<string, unknown>>(resultPath);
+  const workerResultSummary = workerResult
+    ? (asString(workerResult.summary) || "(no summary)")
+    : "(no result file)";
+
   const summaryLines = [
     `Worker: ${options.workerName}`,
     `Lifecycle state: ${workerState?.lifecycle_state || "(missing)"}`,
@@ -163,6 +170,7 @@ export function loadConductorSnapshotContext(
     `Last checkpoint: ${checkpointSummary || "(none)"}`,
     `Resolved terminal state: ${resolvedState || "(none)"}`,
     `Pending wakeups: ${pendingWakeups.length > 0 ? pendingWakeups.map(summarizeWakeup).join(" || ") : "(none)"}`,
+    `Result: ${workerResultSummary}`,
   ];
 
   return {
@@ -174,6 +182,7 @@ export function loadConductorSnapshotContext(
     ),
     recentEventsJson: stringifyPromptJson(recentEvents, "[]"),
     wakeupsJson: stringifyPromptJson(wakeups, "[]"),
+    workerResultJson: stringifyPromptJson(workerResult, "(no result file)"),
     prepErrors,
   };
 }
@@ -209,6 +218,10 @@ export function buildPreparedSnapshotPrompt(snapshot: PreparedSupervisionSnapsho
     "<worker_wakeups_json>",
     snapshot.wakeupsJson || "(empty)",
     "</worker_wakeups_json>",
+    "",
+    "<worker_result_json>",
+    snapshot.workerResultJson || "(no result file)",
+    "</worker_result_json>",
     "",
     "Supporting context (secondary):",
     "<ctl_status>",

@@ -7,6 +7,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Structured worker result files: SubTurtles now write `.superturtle/state/results/<name>.json` at completion containing `summary`, `artifacts`, `key_decisions`, and `questions_for_orchestrator`. The meta agent can read these when spawning dependent workers, enabling true multi-agent orchestration with result passing between agents.
+- Python infrastructure writes a fallback result automatically if the agent forgets to, covering both clean completion and fatal failure cases.
+- Conductor inbox items for completed workers now embed the result summary, key decisions, artifacts, and open questions directly in the notification text — the meta agent no longer needs to manually inspect the workspace to spawn a well-informed downstream worker.
+- Dashboard SubTurtle detail page shows a "Worker result" card with the structured output.
+- `DECOMPOSITION_PROMPT.md` updated with a "Result-Passing Pattern" section and injection template for wiring upstream results into downstream `CLAUDE.md` files.
+- `META_SHARED.md` updated with a result-passing note under task decomposition.
+
 ## [0.2.9] - 2026-03-28
 
 ### Changed

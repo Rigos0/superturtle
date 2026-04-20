@@ -55,6 +55,11 @@ def run_state_dir(project_dir: Path) -> Path:
     return project_dir / ".superturtle" / "state"
 
 
+def result_file_path(project_dir: Path, worker_name: str) -> Path:
+    """Return the canonical result file path for a worker."""
+    return run_state_dir(project_dir) / "results" / f"{worker_name}.json"
+
+
 def extract_current_task(state_file: Path) -> str | None:
     """Read the first non-empty line from the Current task section."""
     try:
@@ -104,6 +109,44 @@ def git_head_sha(project_dir: Path) -> str | None:
     return sha or None
 
 
+def _write_fallback_result(
+    project_dir: Path,
+    name: str,
+    status: str,
+    summary: str,
+    blockers: list[str] | None = None,
+    questions: list[str] | None = None,
+    timestamp: str | None = None,
+) -> None:
+    """Write a minimal result file if the agent did not write one.
+
+    Only writes if no result file already exists — never overwrites an
+    agent-written result.
+    """
+    result_path = result_file_path(project_dir, name)
+    if result_path.exists():
+        return
+    fallback: dict = {
+        "schema_version": 1,
+        "worker_name": name,
+        "completed_at": timestamp or utc_now_iso(),
+        "status": status,
+        "summary": summary,
+        "artifacts": [],
+        "key_decisions": [],
+        "blockers": blockers or [],
+        "questions_for_orchestrator": questions or [],
+        "_generated_by": "infrastructure_fallback",
+    }
+    try:
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(
+            json.dumps(fallback, indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
 def record_completion_pending(state_dir: Path, name: str, project_dir: Path) -> None:
     """Persist a self-stop completion request and enqueue reconciliation."""
     state_file = state_dir / "CLAUDE.md"
@@ -120,6 +163,7 @@ def record_completion_pending(state_dir: Path, name: str, project_dir: Path) -> 
         payload={"kind": "self_stop", "stop_directive": True},
     )
 
+    current_task = extract_current_task(state_file) or existing.get("current_task") or ""
     state = store.make_worker_state(
         worker_name=name,
         lifecycle_state="completion_pending",
@@ -130,7 +174,7 @@ def record_completion_pending(state_dir: Path, name: str, project_dir: Path) -> 
         pid=existing.get("pid"),
         timeout_seconds=existing.get("timeout_seconds"),
         cron_job_id=existing.get("cron_job_id"),
-        current_task=extract_current_task(state_file) or existing.get("current_task"),
+        current_task=current_task or None,
         stop_reason="completed",
         completion_requested_at=completion_requested_at,
         terminal_at=existing.get("terminal_at"),
@@ -145,6 +189,17 @@ def record_completion_pending(state_dir: Path, name: str, project_dir: Path) -> 
         else None,
     )
     store.write_worker_state(state)
+
+    # Write a fallback result file if the agent did not write a structured one.
+    fallback_summary = (
+        f"{name} completed: {current_task}"
+        if current_task
+        else f"{name} completed all backlog items."
+    ) + " (Fallback — no structured agent result written; see CLAUDE.md and git log.)"
+    _write_fallback_result(
+        project_dir, name, "completed", fallback_summary,
+        timestamp=completion_requested_at,
+    )
 
     wakeup = store.make_wakeup(
         worker_name=name,
@@ -287,6 +342,17 @@ def record_failure_pending(
         )
         store.write_worker_state(state)
 
+        # Write a failure result so downstream orchestration sees what went wrong.
+        _write_fallback_result(
+            project_dir,
+            name,
+            "failed",
+            f"{name} failed after consecutive agent failures: {message}",
+            blockers=[message],
+            questions=["Worker failed — should this be retried, reassigned, or skipped?"],
+            timestamp=event["timestamp"],
+        )
+
         wakeup = store.make_wakeup(
             worker_name=name,
             category="critical",
@@ -350,6 +416,7 @@ __all__ = [
     "record_fatal_error",
     "refresh_handoff",
     "resolve_state_ref",
+    "result_file_path",
     "run_state_dir",
     "should_stop",
     "utc_now_iso",

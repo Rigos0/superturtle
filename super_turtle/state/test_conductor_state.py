@@ -22,8 +22,38 @@ class ConductorStateStoreTests(unittest.TestCase):
             self.assertTrue(paths.runs_jsonl_file.exists())
             self.assertTrue(paths.workers_dir.exists())
             self.assertTrue(paths.wakeups_dir.exists())
+            self.assertTrue(paths.results_dir.exists())
             self.assertEqual(paths.events_jsonl_file.read_text(encoding="utf-8"), "")
             self.assertEqual(paths.runs_jsonl_file.read_text(encoding="utf-8"), "")
+
+    def test_load_worker_result_returns_none_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = ConductorStateStore(tmp_dir)
+            result = store.load_worker_result("nonexistent-worker")
+            self.assertIsNone(result)
+
+    def test_load_worker_result_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = ConductorStateStore(tmp_dir)
+            result_data = {
+                "schema_version": 1,
+                "worker_name": "worker-x",
+                "completed_at": "2026-04-20T14:00:00Z",
+                "status": "completed",
+                "summary": "Implemented the thing.",
+                "artifacts": ["src/foo.ts"],
+                "key_decisions": ["Used RS256"],
+                "blockers": [],
+                "questions_for_orchestrator": [],
+            }
+            result_path = store.result_path("worker-x")
+            result_path.write_text(json.dumps(result_data), encoding="utf-8")
+
+            loaded = store.load_worker_result("worker-x")
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded["worker_name"], "worker-x")
+            self.assertEqual(loaded["status"], "completed")
+            self.assertEqual(loaded["artifacts"], ["src/foo.ts"])
 
     def test_write_and_load_worker_state_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

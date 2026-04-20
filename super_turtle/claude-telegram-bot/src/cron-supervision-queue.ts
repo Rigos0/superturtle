@@ -9,6 +9,7 @@ export interface PreparedSupervisionSnapshot {
   workerStateJson: string;
   recentEventsJson: string;
   wakeupsJson: string;
+  workerResultJson: string;
   statusOutput: string;
   stateExcerpt: string;
   gitLog: string;

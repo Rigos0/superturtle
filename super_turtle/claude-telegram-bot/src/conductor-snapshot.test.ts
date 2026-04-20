@@ -172,6 +172,46 @@ describe("loadConductorSnapshotContext", () => {
     expect(context.workerStateJson).toBe("(missing canonical worker state)");
     expect(context.prepErrors[0]).toContain("canonical worker state missing");
   });
+
+  it("includes worker result summary when result file exists", () => {
+    const baseDir = makeTempDir();
+    const stateDir = join(baseDir, ".superturtle", "state");
+    mkdirSync(join(stateDir, "workers"), { recursive: true });
+    mkdirSync(join(stateDir, "wakeups"), { recursive: true });
+    mkdirSync(join(stateDir, "results"), { recursive: true });
+
+    writeJson(join(stateDir, "workers", "worker-with-result.json"), {
+      kind: "worker_state",
+      schema_version: 1,
+      worker_name: "worker-with-result",
+      run_id: "run-wr",
+      lifecycle_state: "completed",
+      workspace: "/tmp/worker-with-result",
+      current_task: "Build the auth system",
+      metadata: {},
+    });
+
+    writeJson(join(stateDir, "results", "worker-with-result.json"), {
+      schema_version: 1,
+      worker_name: "worker-with-result",
+      completed_at: "2026-04-20T14:00:00Z",
+      status: "completed",
+      summary: "Implemented JWT middleware with RS256. 12 tests passing.",
+      artifacts: ["src/auth/jwt.ts"],
+      key_decisions: ["RS256 over HS256"],
+      blockers: [],
+      questions_for_orchestrator: ["Should refresh TTL be configurable?"],
+    });
+
+    const context = loadConductorSnapshotContext({
+      stateDir,
+      workerName: "worker-with-result",
+    });
+
+    expect(context.workerResultJson).toContain("Implemented JWT middleware with RS256");
+    expect(context.workerResultJson).toContain("RS256 over HS256");
+    expect(context.conductorSummary).toContain("Result: Implemented JWT middleware with RS256");
+  });
 });
 
 describe("buildPreparedSnapshotPrompt", () => {
@@ -187,6 +227,7 @@ describe("buildPreparedSnapshotPrompt", () => {
       workerStateJson: '{"worker_name":"worker-a"}',
       recentEventsJson: '[{"event_type":"worker.checkpoint"}]',
       wakeupsJson: '[{"delivery_state":"pending"}]',
+      workerResultJson: "(no result file)",
       statusOutput: "worker-a running as 999",
       stateExcerpt: "# Current task\n\nShip it",
       gitLog: "abc123 Ship it",

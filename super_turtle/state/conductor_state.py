@@ -95,6 +95,7 @@ class ConductorPaths:
     events_jsonl_file: Path
     workers_dir: Path
     wakeups_dir: Path
+    results_dir: Path
     runs_jsonl_file: Path
     handoff_md_file: Path
 
@@ -103,6 +104,7 @@ def ensure_conductor_state_paths(state_dir: str | Path) -> ConductorPaths:
     base_dir = Path(state_dir)
     workers_dir = base_dir / "workers"
     wakeups_dir = base_dir / "wakeups"
+    results_dir = base_dir / "results"
     events_jsonl_file = base_dir / "events.jsonl"
     runs_jsonl_file = base_dir / "runs.jsonl"
     handoff_md_file = base_dir / "handoff.md"
@@ -110,6 +112,7 @@ def ensure_conductor_state_paths(state_dir: str | Path) -> ConductorPaths:
     base_dir.mkdir(parents=True, exist_ok=True)
     workers_dir.mkdir(parents=True, exist_ok=True)
     wakeups_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
     events_jsonl_file.touch(exist_ok=True)
     runs_jsonl_file.touch(exist_ok=True)
 
@@ -118,6 +121,7 @@ def ensure_conductor_state_paths(state_dir: str | Path) -> ConductorPaths:
         events_jsonl_file=events_jsonl_file,
         workers_dir=workers_dir,
         wakeups_dir=wakeups_dir,
+        results_dir=results_dir,
         runs_jsonl_file=runs_jsonl_file,
         handoff_md_file=handoff_md_file,
     )
@@ -144,6 +148,21 @@ class ConductorStateStore:
         if not isinstance(loaded, dict):
             raise ValueError(f"worker state at {path} must be a JSON object")
         return loaded
+
+    def result_path(self, worker_name: str) -> Path:
+        """Return the canonical result file path for a worker."""
+        return self.paths.results_dir / f"{_validate_worker_name(worker_name)}.json"
+
+    def load_worker_result(self, worker_name: str) -> dict[str, Any] | None:
+        """Load a worker's structured result file if it exists."""
+        path = self.result_path(worker_name)
+        if not path.exists():
+            return None
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            return loaded if isinstance(loaded, dict) else None
+        except (OSError, json.JSONDecodeError):
+            return None
 
     def delete_worker_state(self, worker_name: str) -> bool:
         path = self.worker_state_path(worker_name)

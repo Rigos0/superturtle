@@ -535,11 +535,61 @@ function buildMetaAgentInboxTitle(
     : `SubTurtle ${workerName} update`;
 }
 
+function loadWorkerResultForInbox(
+  stateDir: string,
+  workerName: string
+): Record<string, unknown> | null {
+  const resultPath = join(stateDir, "results", `${workerName}.json`);
+  if (!existsSync(resultPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(resultPath, "utf-8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeFallbackResultIfAbsent(
+  stateDir: string,
+  workerName: string,
+  opts: {
+    status: string;
+    summary: string;
+    blockers?: string[];
+    questions?: string[];
+    timestamp?: string;
+  }
+): void {
+  const resultPath = join(stateDir, "results", `${workerName}.json`);
+  if (existsSync(resultPath)) return;
+  try {
+    mkdirSync(join(stateDir, "results"), { recursive: true });
+    const fallback = {
+      schema_version: 1,
+      worker_name: workerName,
+      completed_at: opts.timestamp || new Date().toISOString(),
+      status: opts.status,
+      summary: opts.summary,
+      artifacts: [] as string[],
+      key_decisions: [] as string[],
+      blockers: opts.blockers || [],
+      questions_for_orchestrator: opts.questions || [],
+      _generated_by: "infrastructure_fallback",
+    };
+    writeFileSync(resultPath, `${JSON.stringify(fallback, null, 2)}\n`, "utf-8");
+  } catch {
+    // Best-effort — never throw from result file writing.
+  }
+}
+
 function buildMetaAgentInboxText(
   wakeup: WakeupRecord,
   workerState: WorkerStateRecord | null,
   stateText: string | null,
-  chatId: number | null
+  chatId: number | null,
+  stateDir: string
 ): string {
   const payloadKind = typeof wakeup.payload?.kind === "string" ? wakeup.payload.kind : "";
   const lines: string[] = [];
@@ -551,10 +601,38 @@ function buildMetaAgentInboxText(
     lines.push(`Task: ${workerState.current_task.trim()}`);
   }
   if (payloadKind === "completion_requested") {
+    const result = loadWorkerResultForInbox(stateDir, wakeup.worker_name);
+    if (result) {
+      const isFallback = result._generated_by === "infrastructure_fallback";
+      const summary = typeof result.summary === "string" ? result.summary.trim() : "";
+      if (summary) lines.push(`Result: ${summary}`);
+
+      const decisions = Array.isArray(result.key_decisions)
+        ? result.key_decisions.filter((d): d is string => typeof d === "string")
+        : [];
+      if (!isFallback && decisions.length > 0) {
+        lines.push(`Key decisions: ${decisions.slice(0, 3).join(" | ")}`);
+      }
+
+      const artifacts = Array.isArray(result.artifacts)
+        ? result.artifacts.filter((a): a is string => typeof a === "string")
+        : [];
+      if (!isFallback && artifacts.length > 0) {
+        lines.push(`Key artifacts: ${artifacts.slice(0, 4).join(", ")}`);
+      }
+
+      const questions = Array.isArray(result.questions_for_orchestrator)
+        ? result.questions_for_orchestrator.filter((q): q is string => typeof q === "string")
+        : [];
+      if (!isFallback && questions.length > 0) {
+        lines.push(`Questions for you: ${questions.slice(0, 2).join(" | ")}`);
+      }
+    }
+
     const completedItems = stateText ? parseCompletedBacklogItems(stateText).slice(0, 4) : [];
     if (completedItems.length > 0) {
       lines.push(`Completed items: ${completedItems.join(" | ")}`);
-    } else {
+    } else if (!result) {
       lines.push("Completion was reconciled and cleanup verified.");
     }
   } else if (payloadKind === "fatal_error") {
@@ -1387,11 +1465,24 @@ export async function processPendingConductorWakeups(
         writeWorkerState(stateDir, workingState);
       }
 
+      // Write a fallback result for terminal wakeup kinds that have no Python-side result writer.
+      // completion_requested and fatal_error are covered by Python's record_completion_pending /
+      // record_failure_pending. Timeout is resolved entirely on the TypeScript side.
+      if (payloadKind === "timeout") {
+        writeFallbackResultIfAbsent(stateDir, wakeup.worker_name, {
+          status: "blocked",
+          summary: `${wakeup.worker_name} timed out before completing all backlog items.`,
+          blockers: ["Worker exceeded its configured timeout."],
+          questions: ["Should this worker be restarted with a longer timeout, or is the task done?"],
+          timestamp: now,
+        });
+      }
+
       const chatId = deriveChatId(wakeup, options.defaultChatId ?? ALLOWED_USERS[0] ?? null);
       const stateText = readWorkspaceStateText(workingState);
       if (wakeup.category !== "silent") {
         const inboxTitle = buildMetaAgentInboxTitle(wakeup, workingState);
-        const inboxText = buildMetaAgentInboxText(wakeup, workingState, stateText, chatId);
+        const inboxText = buildMetaAgentInboxText(wakeup, workingState, stateText, chatId, stateDir);
         const { item: inboxItem, created } = ensureMetaAgentInboxItem({
           stateDir,
           item: {
