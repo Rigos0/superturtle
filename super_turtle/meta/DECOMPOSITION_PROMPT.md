@@ -47,11 +47,42 @@ Do not decompose when any of these apply:
 ## Dependency Handling Rule
 
 If B depends on A:
-- Spawn A first.
-- Record B as queued.
-- Spawn B immediately after A reaches completion.
+- Spawn A first and record B as queued.
+- When A completes, read `.superturtle/state/results/<A-name>.json` before spawning B.
+- Inject A's results into B's CLAUDE.md using the format below.
+- Never spawn a blocked SubTurtle "just in case."
 
-Never spawn a blocked SubTurtle "just in case."
+## Result-Passing Pattern
+
+Workers write a structured result file at `.superturtle/state/results/<worker-name>.json` when
+they complete all backlog items. When spawning a dependent worker B after A completes, always
+read A's result file first, then inject A's output into B's `# End goal with specs` section
+as a `## Inputs from upstream workers` subsection:
+
+```markdown
+## Inputs from upstream workers
+
+**<A-name>** completed at <completed_at from result file>.
+Summary: <summary field>
+
+Key decisions your work must conform to:
+- <key_decisions[0]>
+- <key_decisions[1]>
+
+Artifacts to read before starting:
+- <artifacts[0]>
+- <artifacts[1]>
+
+Open questions from upstream (address each or note N/A):
+- <questions_for_orchestrator[0]>
+```
+
+Rules for injection:
+- Always read the actual result file — never rely on memory or assumption about what A built.
+- `key_decisions` define interfaces B must conform to — mandatory reading.
+- `artifacts` are the files B will integrate with — read them before coding.
+- If the result file does not exist yet, check A's CLAUDE.md and `git log` as a fallback
+  and note that structured results were unavailable.
 
 ## Pattern 1: Frontend Feature (Component-per-SubTurtle)
 

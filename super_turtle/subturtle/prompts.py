@@ -82,6 +82,13 @@ You are the reviewer. The plan below has been implemented. Your job:
    - Split the blocked item into smaller steps, prerequisites, or diagnostics.
 6. If ALL backlog items in {state_file} are `[x]`, append `## Loop Control\nSTOP`
    to {state_file}.
+7. **Write result file when all work is done** — If ALL backlog items are `[x]`:
+   Create `.superturtle/state/results/` if needed (`mkdir -p`), then write `{result_file}`
+   with `schema_version` 1, `worker_name` `{worker_name}`, `completed_at` (current UTC ISO-8601),
+   `status` "completed", `summary` (1-2 factual sentences: what was built, key files, test status),
+   `artifacts` (key output files a downstream worker must read), `key_decisions` (choices downstream
+   must conform to), `blockers` (empty array on clean completion), and `questions_for_orchestrator`
+   (unresolved questions for the meta agent). Include this file in the final commit alongside STOP.
 
 ## The plan that was executed
 
@@ -130,16 +137,50 @@ Do ONE commit's worth of focused work on the current task. Follow this sequence:
 - You MUST NOT leave a blocked current item unchanged and simply retry it next iteration without new evidence, a narrower plan, or a rewritten actionable backlog item.
 - Do NOT ask questions. Make reasonable decisions and move forward.
 - Do NOT over-scope. One commit, one focused change. Stop after committing.
+
+## Writing your result (on completion)
+
+When ALL backlog items are `[x]` and you are about to append `## Loop Control\\nSTOP`:
+
+1. Create `.superturtle/state/results/` if it does not exist (`mkdir -p`), then write `{result_file}`:
+
+```json
+{{
+  "schema_version": 1,
+  "worker_name": "{worker_name}",
+  "completed_at": "<current UTC ISO-8601 timestamp, e.g. 2026-04-20T14:30:00Z>",
+  "status": "completed",
+  "summary": "<1-2 factual sentences: what was built, key files, test status>",
+  "artifacts": ["<files a downstream worker MUST read to integrate your work>"],
+  "key_decisions": ["<choices that constrain downstream workers, e.g. API shape, data model, library>"],
+  "blockers": [],
+  "questions_for_orchestrator": ["<unresolved questions the meta agent should answer before spawning downstream workers>"]
+}}
+```
+
+2. Include `{result_file}` in the same commit as the STOP directive.
+3. `summary`: factual and specific ("Implemented RS256 JWT middleware at src/auth/jwt.ts, 3 endpoints, 12 tests passing").
+4. `artifacts`: only files a downstream worker needs to integrate. Omit intermediate/scratch files.
+5. `key_decisions`: anything a downstream worker MUST conform to (API contract, data model, chosen library).
+6. If you stopped without completing all backlog items, set `"status": "blocked"` and list blockers.
 """
 
 
-def build_prompts(state_file: str) -> dict[str, str]:
-    """Build slow-loop prompts with the state-file path baked in."""
+def build_prompts(
+    state_file: str,
+    worker_name: str = "",
+    result_file: str = "",
+) -> dict[str, str]:
+    """Build slow-loop prompts with the state-file path, worker name, and result file baked in."""
     return {
         "planner": PLANNER_PROMPT.format(state_file=state_file),
         "groomer": GROOMER_PROMPT.format(state_file=state_file),
         "executor": EXECUTOR_PROMPT.format(state_file=state_file),
-        "reviewer": REVIEWER_PROMPT.format(state_file=state_file),
+        "reviewer": REVIEWER_PROMPT.format(
+            state_file=state_file,
+            worker_name=worker_name,
+            result_file=result_file,
+        ),
     }
 
 

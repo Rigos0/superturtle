@@ -17,6 +17,7 @@ import type {
   SubturtleDetailResponse,
   SubturtleExtra,
   SubturtleLogsResponse,
+  WorkerResultRecord,
 } from "../dashboard-types";
 import {
   buildCurrentJobs,
@@ -101,6 +102,22 @@ function readFullWorkerState(name: string): Record<string, unknown> | null {
   }
 }
 
+function readWorkerResult(name: string): WorkerResultRecord | null {
+  const path = join(CONDUCTOR_STATE_DIR, "results", `${name}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
+    return parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as Record<string, unknown>).worker_name === "string"
+      ? (parsed as WorkerResultRecord)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildSubturtleDetail(name: string): Promise<SubturtleDetailResponse | null> {
   const turtles = await readSubturtles();
   const turtle = turtles.find((entry) => entry.name === name);
@@ -108,6 +125,7 @@ export async function buildSubturtleDetail(name: string): Promise<SubturtleDetai
 
   const elapsed = turtle.status === "running" ? await getSubTurtleElapsed(name) : "0s";
   const workerState = readFullWorkerState(name);
+  const workerResult = readWorkerResult(name);
   const workspaceDir = (workerState?.workspace as string) || `${SUPERTURTLE_SUBTURTLES_DIR}/${name}`;
 
   const claudeMdPath = join(workspaceDir, "CLAUDE.md");
@@ -179,6 +197,7 @@ export async function buildSubturtleDetail(name: string): Promise<SubturtleDetai
     },
     conductor,
     events: loadWorkerEventsForDetail(name),
+    workerResult,
   };
 }
 
