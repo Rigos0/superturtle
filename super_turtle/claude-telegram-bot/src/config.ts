@@ -108,6 +108,14 @@ const VALID_CODEX_EFFORTS = new Set<CodexEffortLevel>([
   "xhigh",
 ]);
 
+export function isValidCodexModel(model: string): boolean {
+  return VALID_CODEX_MODELS.has(model);
+}
+
+export function isValidCodexEffort(effort: string): boolean {
+  return VALID_CODEX_EFFORTS.has(effort as CodexEffortLevel);
+}
+
 function parseDefaultModel(
   envKey: string,
   fallback: string,

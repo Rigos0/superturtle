@@ -13,6 +13,8 @@ import {
   CODEX_META_BOOTSTRAP_PROMPT,
   DEFAULT_CODEX_EFFORT,
   DEFAULT_CODEX_MODEL,
+  isValidCodexEffort,
+  isValidCodexModel,
   MCP_SERVERS,
   META_CODEX_APPROVAL_POLICY,
   META_CODEX_NETWORK_ACCESS,
@@ -60,7 +62,27 @@ interface CodexPrefs {
 function loadCodexPrefs(): CodexPrefs {
   try {
     const text = readFileSync(CODEX_PREFS_FILE, "utf-8");
-    return JSON.parse(text);
+    const prefs = JSON.parse(text) as CodexPrefs;
+
+    // Self-heal retired/invalid persisted values (e.g. a model that was removed
+    // in an upgrade). Dropping the field lets the caller fall back to the
+    // current DEFAULT_CODEX_MODEL/EFFORT instead of repeatedly failing at runtime.
+    if (prefs.model && !isValidCodexModel(prefs.model)) {
+      codexLog.warn(
+        { model: prefs.model, fallback: DEFAULT_CODEX_MODEL },
+        `Persisted Codex model "${prefs.model}" is no longer valid; falling back to "${DEFAULT_CODEX_MODEL}"`
+      );
+      delete prefs.model;
+    }
+    if (prefs.reasoningEffort && !isValidCodexEffort(prefs.reasoningEffort)) {
+      codexLog.warn(
+        { reasoningEffort: prefs.reasoningEffort, fallback: DEFAULT_CODEX_EFFORT },
+        `Persisted Codex effort "${prefs.reasoningEffort}" is no longer valid; falling back to "${DEFAULT_CODEX_EFFORT}"`
+      );
+      delete prefs.reasoningEffort;
+    }
+
+    return prefs;
   } catch {
     return {};
   }

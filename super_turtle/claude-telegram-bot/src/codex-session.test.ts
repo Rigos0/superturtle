@@ -139,6 +139,32 @@ describe("CodexSession", () => {
     expect(result.payload?.reasoningEffort).toBe("low");
   });
 
+  it("self-heals a retired persisted Codex model back to the configured default", async () => {
+    const result = await probeCodexSession({
+      DEFAULT_CODEX_MODEL: "gpt-5.6-luna",
+      DEFAULT_CODEX_EFFORT: "medium",
+      // "gpt-5.3-codex" was removed in an upgrade; effort "medium" is still valid.
+      CODEX_PREFS_JSON: JSON.stringify({ model: "gpt-5.3-codex", reasoningEffort: "medium" }),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.payload?.model).toBe("gpt-5.6-luna");
+    expect(result.payload?.reasoningEffort).toBe("medium");
+  });
+
+  it("self-heals an invalid persisted Codex effort back to the configured default", async () => {
+    const result = await probeCodexSession({
+      DEFAULT_CODEX_MODEL: "gpt-5.6-luna",
+      DEFAULT_CODEX_EFFORT: "high",
+      CODEX_PREFS_JSON: JSON.stringify({ model: "gpt-5.6-terra", reasoningEffort: "ludicrous" }),
+    });
+
+    expect(result.exitCode).toBe(0);
+    // Valid model is preserved; only the bogus effort falls back.
+    expect(result.payload?.model).toBe("gpt-5.6-terra");
+    expect(result.payload?.reasoningEffort).toBe("high");
+  });
+
   it("parses Codex transcripts into conversation history and injection evidence", async () => {
     const { parseCodexTranscript } = await loadCodexSessionModule("parse-transcript");
     const transcript = [

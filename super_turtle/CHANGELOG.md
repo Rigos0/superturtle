@@ -13,6 +13,9 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added an **`xhigh`** Claude effort level (supported by Opus 4.8 / Sonnet 5) to `/model` and the `switch_model` control tool
 - Bumped SDKs to current releases: `@openai/codex-sdk` 0.105.0 → 0.144.1, `openai` → 6.46.0, `@modelcontextprotocol/sdk` → 1.29.0, `grammy` → 1.44.0, `zod` → 4.4.3
 
+### Fixed
+- self-heal persisted Codex preferences: a saved `model`/`reasoningEffort` that is no longer valid (e.g. a model retired in an upgrade) is now dropped on load so the driver falls back to `DEFAULT_CODEX_MODEL`/`DEFAULT_CODEX_EFFORT` instead of repeatedly failing at runtime with "model is not supported"
+
 ## [0.2.9] - 2026-03-28
 
 ### Changed
