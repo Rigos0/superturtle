@@ -83,7 +83,7 @@ export type SuperTurtleRuntimeRole = "local" | "teleport-remote";
 export type SuperTurtleRemoteMode = "control" | "agent";
 
 const DEFAULT_CLAUDE_MODEL_FALLBACK = "claude-opus-4-8";
-const DEFAULT_CLAUDE_EFFORT_FALLBACK: ClaudeEffortLevel = "high";
+const DEFAULT_CLAUDE_EFFORT_FALLBACK: ClaudeEffortLevel = "medium";
 const DEFAULT_CODEX_MODEL_FALLBACK = "gpt-5.6-terra";
 const DEFAULT_CODEX_EFFORT_FALLBACK: CodexEffortLevel = "medium";
 
