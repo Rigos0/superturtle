@@ -437,9 +437,11 @@ export interface CodexModelInfo {
 }
 
 const DEFAULT_CODEX_MODELS: CodexModelInfo[] = [
-  { value: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", description: "Most capable (recommended)" },
-  { value: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark", description: "Fast, real-time (Pro)" },
-  { value: "gpt-5.2-codex", displayName: "GPT-5.2 Codex", description: "Previous generation" },
+  { value: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", description: "Flagship, most capable" },
+  { value: "gpt-5.6-terra", displayName: "GPT-5.6 Terra", description: "Balanced for everyday work (recommended)" },
+  { value: "gpt-5.6-luna", displayName: "GPT-5.6 Luna", description: "Fastest, most affordable" },
+  { value: "gpt-5.5", displayName: "GPT-5.5", description: "Previous-generation frontier" },
+  { value: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark", description: "Real-time coding preview" },
 ];
 
 export function getAvailableCodexModels(): CodexModelInfo[] {

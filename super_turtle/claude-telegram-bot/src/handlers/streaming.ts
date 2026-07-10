@@ -25,6 +25,7 @@ import {
   CODEX_USER_ENABLED,
   RESTART_FILE,
   IPC_DIR,
+  type ClaudeEffortLevel,
 } from "../config";
 import { session, type ClaudeSession } from "../session";
 import { codexSession, type CodexSession } from "../codex-session";
@@ -690,11 +691,11 @@ async function executeBotControlAction(
           const model = (sessionObj as CodexSession).model;
           return `Model switched. Now using: ${model}, reasoning effort: ${effort}`;
         } else {
-          // Claude uses: low, medium, high
-          if (!["low", "medium", "high"].includes(effort)) {
-            return `Invalid effort "${params.effort}". Use: low, medium, high`;
+          // Claude uses: low, medium, high, xhigh
+          if (!["low", "medium", "high", "xhigh"].includes(effort)) {
+            return `Invalid effort "${params.effort}". Use: low, medium, high, xhigh`;
           }
-          (sessionObj as ClaudeSession).effort = effort as "low" | "medium" | "high";
+          (sessionObj as ClaudeSession).effort = effort as ClaudeEffortLevel;
           const { getAvailableModels } = await import("../session");
           const models = getAvailableModels();
           const currentModel = models.find((m) => m.value === (sessionObj as ClaudeSession).model);

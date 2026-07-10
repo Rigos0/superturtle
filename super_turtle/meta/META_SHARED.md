@@ -165,7 +165,7 @@ Types: `slow`, `yolo`, `yolo-codex`, `yolo-codex-spark`. Timeouts: `30m`, `1h`, 
 Use `bot_control` MCP tool naturally — don't mention the tool name.
 
 - `usage` — show quota
-- `switch_model` — model: `claude-opus-4-6` / `claude-sonnet-4-6` / `claude-haiku-4-5-20251001`, effort: `low` / `medium` / `high`
+- `switch_model` — model: `claude-opus-4-8` / `claude-sonnet-5` / `claude-haiku-4-5-20251001`, effort: `low` / `medium` / `high` / `xhigh`
 - `switch_driver` — `claude` / `codex`
 - `new_session` — warn about context loss first
 - `list_sessions` / `resume_session` — use short ID prefixes from `list_sessions`

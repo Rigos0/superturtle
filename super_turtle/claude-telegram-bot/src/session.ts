@@ -302,6 +302,7 @@ export const EFFORT_DISPLAY: Record<EffortLevel, string> = {
   low: `Low${DEFAULT_CLAUDE_EFFORT === "low" ? " (default)" : ""}`,
   medium: `Medium${DEFAULT_CLAUDE_EFFORT === "medium" ? " (default)" : ""}`,
   high: `High${DEFAULT_CLAUDE_EFFORT === "high" ? " (default)" : ""}`,
+  xhigh: `Extra high${DEFAULT_CLAUDE_EFFORT === "xhigh" ? " (default)" : ""}`,
 };
 
 const PREFS_FILE = `/tmp/claude-telegram-${TOKEN_PREFIX}-prefs.json`;
@@ -337,8 +338,8 @@ export interface ModelInfo {
 }
 
 const AVAILABLE_MODELS: ModelInfo[] = [
-  { value: "claude-opus-4-6", displayName: "Opus 4.6", description: "Most capable for complex work" },
-  { value: "claude-sonnet-4-6", displayName: "Sonnet 4.6", description: "Best for everyday tasks" },
+  { value: "claude-opus-4-8", displayName: "Opus 4.8", description: "Most capable for complex work" },
+  { value: "claude-sonnet-5", displayName: "Sonnet 5", description: "Best for everyday tasks" },
   { value: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", description: "Fastest for quick answers" },
 ];
 

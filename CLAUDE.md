@@ -4,6 +4,7 @@ This file is for humans and turtles working in this repo after installing or upg
 
 ## Latest release highlights
 
+- Updated model line-up: Claude **Opus 4.8** / **Sonnet 5** (with new `xhigh` effort), and Codex **GPT-5.6** Sol/Terra/Luna (default: `gpt-5.6-terra`); SDKs bumped to current releases
 - Fixed a Codex stalling issue around pending tool output delivery
 - Reduced Telegram push noise: intermediate updates are silent, while the final reply still notifies normally
 - Improved process startup and shutdown reliability to reduce duplicate runners and restart cleanup issues

@@ -309,7 +309,7 @@ describe("ClaudeSession conductor inbox delivery", () => {
     const claude = new ClaudeSession();
     const targetModel =
       getAvailableModels().find((model: { value: string }) => model.value !== claude.model)?.value ||
-      "claude-sonnet-4-6";
+      "claude-sonnet-5";
 
     claude.activeDriver = "codex";
     claude.activeDriver = "claude";

@@ -242,7 +242,7 @@ describe("CodexSession", () => {
 
     const { CodexSession } = await loadCodexSessionModule("start-new-thread");
     const codex = new CodexSession();
-    await codex.startNewThread("gpt-5.2-codex", "high");
+    await codex.startNewThread("gpt-5.6-terra", "high");
 
     expect(constructorCalls).toHaveLength(1);
     expect(constructorCalls[0]).toMatchObject({
@@ -257,14 +257,14 @@ describe("CodexSession", () => {
       sandboxMode: expect.any(String),
       approvalPolicy: expect.any(String),
       networkAccessEnabled: expect.any(Boolean),
-      model: "gpt-5.2-codex",
+      model: "gpt-5.6-terra",
       modelReasoningEffort: "high",
     });
     expect(codex.getThreadId()).toBe("thread-start-123");
 
     const prefs = JSON.parse(readFileSync(CODEX_PREFS_FILE, "utf-8")) as Record<string, unknown>;
     expect(prefs.threadId).toBe("thread-start-123");
-    expect(prefs.model).toBe("gpt-5.2-codex");
+    expect(prefs.model).toBe("gpt-5.6-terra");
     expect(prefs.reasoningEffort).toBe("high");
 
     const savedSessions = JSON.parse(readFileSync(CODEX_SESSION_FILE, "utf-8")) as {
@@ -336,7 +336,7 @@ describe("CodexSession", () => {
       CODEX_PREFS_FILE,
       JSON.stringify({
         threadId: "saved-thread-id",
-        model: "gpt-5.2-codex",
+        model: "gpt-5.6-terra",
         reasoningEffort: "low",
       })
     );
@@ -366,7 +366,7 @@ describe("CodexSession", () => {
     const { CodexSession } = await loadCodexSessionModule("resume-thread");
     const codex = new CodexSession();
 
-    expect(codex.model).toBe("gpt-5.2-codex");
+    expect(codex.model).toBe("gpt-5.6-terra");
     expect(codex.reasoningEffort).toBe("low");
     expect(codex.getThreadId()).toBe("saved-thread-id");
 
@@ -381,7 +381,7 @@ describe("CodexSession", () => {
         sandboxMode: expect.any(String),
         approvalPolicy: expect.any(String),
         networkAccessEnabled: expect.any(Boolean),
-        model: "gpt-5.2-codex",
+        model: "gpt-5.6-terra",
         modelReasoningEffort: "low",
       }),
     });
@@ -402,13 +402,13 @@ describe("CodexSession", () => {
       DEFAULT_CODEX_EFFORT: "low",
       CODEX_PREFS_JSON: JSON.stringify({
         threadId: "saved-thread-id",
-        model: "gpt-5.2-codex",
+        model: "gpt-5.6-terra",
         reasoningEffort: "high",
       }),
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.payload?.model).toBe("gpt-5.2-codex");
+    expect(result.payload?.model).toBe("gpt-5.6-terra");
     expect(result.payload?.reasoningEffort).toBe("high");
   });
 
