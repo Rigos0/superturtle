@@ -45,7 +45,7 @@ describe("ClaudeSession resume history", () => {
       userId: 1,
       username: "tester",
       chatId: 1,
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-8",
       effort: "high",
       originalMessage: "Older Claude user message",
       effectivePrompt: "[Current date/time: ...]\n\nOlder Claude user message",

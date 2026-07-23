@@ -236,7 +236,7 @@ describe.skipIf(!CODEX_INTEGRATION)(
           "--config", `mcp_servers.send-turtle.cwd="${BOT_ROOT}"`,
           "--sandbox", "danger-full-access",
           "--skip-git-repo-check",
-          "--model", "gpt-5.3-codex",
+          "--model", "gpt-5.6-terra",
           "--config", 'model_reasoning_effort="low"',
         ],
         cwd: resolve(BOT_ROOT, "../.."),

@@ -76,25 +76,28 @@ export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 export const E2B_API_KEY = process.env.E2B_API_KEY || "";
 export const TELEPORT_COMMANDS_ENABLED = E2B_API_KEY.trim().length > 0;
 
-export type ClaudeEffortLevel = "low" | "medium" | "high";
+export type ClaudeEffortLevel = "low" | "medium" | "high" | "xhigh";
 export type CodexEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type MainProvider = "claude" | "codex";
 export type SuperTurtleRuntimeRole = "local" | "teleport-remote";
 export type SuperTurtleRemoteMode = "control" | "agent";
 
-const DEFAULT_CLAUDE_MODEL_FALLBACK = "claude-opus-4-6";
-const DEFAULT_CLAUDE_EFFORT_FALLBACK: ClaudeEffortLevel = "high";
-const DEFAULT_CODEX_MODEL_FALLBACK = "gpt-5.3-codex";
+const DEFAULT_CLAUDE_MODEL_FALLBACK = "claude-opus-4-8";
+const DEFAULT_CLAUDE_EFFORT_FALLBACK: ClaudeEffortLevel = "medium";
+const DEFAULT_CODEX_MODEL_FALLBACK = "gpt-5.6-terra";
 const DEFAULT_CODEX_EFFORT_FALLBACK: CodexEffortLevel = "medium";
 
 const VALID_CLAUDE_MODELS = new Set([
-  "claude-opus-4-6",
-  "claude-sonnet-4-6",
+  "claude-opus-4-8",
+  "claude-sonnet-5",
   "claude-haiku-4-5-20251001",
 ]);
-const VALID_CLAUDE_EFFORTS = new Set<ClaudeEffortLevel>(["low", "medium", "high"]);
+const VALID_CLAUDE_EFFORTS = new Set<ClaudeEffortLevel>(["low", "medium", "high", "xhigh"]);
 const VALID_CODEX_MODELS = new Set([
-  "gpt-5.3-codex",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-5.5",
   "gpt-5.3-codex-spark",
 ]);
 const VALID_CODEX_EFFORTS = new Set<CodexEffortLevel>([
@@ -104,6 +107,14 @@ const VALID_CODEX_EFFORTS = new Set<CodexEffortLevel>([
   "high",
   "xhigh",
 ]);
+
+export function isValidCodexModel(model: string): boolean {
+  return VALID_CODEX_MODELS.has(model);
+}
+
+export function isValidCodexEffort(effort: string): boolean {
+  return VALID_CODEX_EFFORTS.has(effort as CodexEffortLevel);
+}
 
 function parseDefaultModel(
   envKey: string,

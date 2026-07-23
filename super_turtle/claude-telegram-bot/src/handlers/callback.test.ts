@@ -361,7 +361,7 @@ describe("handleCallback Codex switching and controls", () => {
       const { session, getAvailableModels } = await import(sessionPath);
 
       const models = getAvailableModels();
-      const targetModel = models[0]?.value || "claude-opus-4-6";
+      const targetModel = models[0]?.value || "claude-opus-4-8";
 
       session.activeDriver = "claude";
       session.model = targetModel;
@@ -418,7 +418,7 @@ describe("handleCallback Codex switching and controls", () => {
       const { session } = await import(sessionPath);
 
       session.activeDriver = "claude";
-      session.model = "claude-sonnet-4-6";
+      session.model = "claude-sonnet-5";
       session.effort = "high";
 
       const callbackAnswers = [];
@@ -596,7 +596,7 @@ describe("handleCallback Codex switching and controls", () => {
       const { codexSession, getAvailableCodexModelsLive } = await import(codexPath);
 
       const models = await getAvailableCodexModelsLive();
-      const targetModel = models[0]?.value || "gpt-5.3-codex";
+      const targetModel = models[0]?.value || "gpt-5.6-terra";
       const initialModel = models[1]?.value || targetModel;
 
       codexSession.model = initialModel;
@@ -676,7 +676,7 @@ describe("handleCallback Codex switching and controls", () => {
       const { codexSession, getAvailableCodexModelsLive } = await import(codexPath);
 
       const models = await getAvailableCodexModelsLive();
-      const modelValue = models[0]?.value || "gpt-5.3-codex";
+      const modelValue = models[0]?.value || "gpt-5.6-terra";
 
       codexSession.model = modelValue;
       codexSession.reasoningEffort = "medium";
@@ -745,7 +745,7 @@ describe("handleCallback Codex switching and controls", () => {
       const { codexSession, getAvailableCodexModelsLive } = await import(codexPath);
 
       const models = await getAvailableCodexModelsLive();
-      const targetModel = models[0]?.value || "gpt-5.3-codex";
+      const targetModel = models[0]?.value || "gpt-5.6-terra";
 
       codexSession.model = targetModel;
       codexSession.reasoningEffort = "medium";

@@ -7,6 +7,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Claude driver models updated to the current generation: Opus 4.6 → **Opus 4.8** (new default), Sonnet 4.6 → **Sonnet 5** (Haiku 4.5 unchanged)
+- Codex driver models updated to the **GPT-5.6 family** (Sol / Terra / Luna) plus GPT-5.5 and the GPT-5.3 Codex Spark real-time preview; the deprecated `gpt-5.3-codex` / `gpt-5.2-codex` were removed. Default Codex model is now **`gpt-5.6-terra`**
+- Added an **`xhigh`** Claude effort level (supported by Opus 4.8 / Sonnet 5) to `/model` and the `switch_model` control tool
+- Bumped SDKs to current releases: `@openai/codex-sdk` 0.105.0 → 0.144.1, `openai` → 6.46.0, `@modelcontextprotocol/sdk` → 1.29.0, `grammy` → 1.44.0, `zod` → 4.4.3
+
+### Fixed
+- self-heal persisted Codex preferences: a saved `model`/`reasoningEffort` that is no longer valid (e.g. a model retired in an upgrade) is now dropped on load so the driver falls back to `DEFAULT_CODEX_MODEL`/`DEFAULT_CODEX_EFFORT` instead of repeatedly failing at runtime with "model is not supported"
+
 ## [0.2.9] - 2026-03-28
 
 ### Changed

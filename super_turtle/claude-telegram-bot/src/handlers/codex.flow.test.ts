@@ -223,7 +223,7 @@ async function probeCodexFlow(): Promise<CodexFlowResult> {
       // /model and select a model callback
       await handleModel(mkCtx("/model"));
       const callbackCtx = mkCtx(undefined);
-      callbackCtx.callbackQuery = { data: "codex_model:gpt-5.2-codex" };
+      callbackCtx.callbackQuery = { data: "codex_model:gpt-5.6-terra" };
       await handleCallback(callbackCtx);
 
       // Make session inactive and verify /resume list routes to codex callbacks
@@ -236,7 +236,7 @@ async function probeCodexFlow(): Promise<CodexFlowResult> {
         askUserButtonsShown: replies.some((r) => r.includes("❓ Pick one")),
         botControlRequestCompleted,
         modelPickerShowsCodexButtons: keyboardCallbacks.some((c) => c.startsWith("codex_model:")),
-        modelSelectionStartedFreshThread: startThreadCalls >= 1 && (resumeThreadCalls >= 1 || codexSession.model === "gpt-5.2-codex"),
+        modelSelectionStartedFreshThread: startThreadCalls >= 1 && (resumeThreadCalls >= 1 || codexSession.model === "gpt-5.6-terra"),
         stopCalled: stopCalls >= 0,
         resumeUsesCodexCallbacks: keyboardCallbacks.some((c) => c.startsWith("codex_resume:")),
         usageCaptured: codexSession.lastUsage?.input_tokens === 33 && codexSession.lastUsage?.output_tokens === 21,

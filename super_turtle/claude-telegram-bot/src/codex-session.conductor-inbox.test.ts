@@ -230,7 +230,7 @@ describe.serial("CodexSession conductor inbox delivery", () => {
     const codex = new CodexSession();
     const targetModel =
       getAvailableCodexModels().find((model: { value: string }) => model.value !== codex.model)?.value ||
-      "gpt-5.2-codex";
+      "gpt-5.6-terra";
 
     codex.model = targetModel;
     codex.reasoningEffort = "high";
